@@ -1,0 +1,181 @@
+@using ChurchMinistry.ViewComponents
+@inject Microsoft.Extensions.Configuration.IConfiguration Config
+@inject CurrentMemberViewComponent MemberVc
+
+@{
+    var me = User.Identity?.IsAuthenticated == true
+        ? await MemberVc.GetModelAsync()
+        : new CurrentMemberViewModel();
+}
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>@(ViewData["Title"] ?? @Config["Church:Name"])</title>
+    <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" />
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Urbanist:ital,wght@0,100..900;1,100..900&display=swap" rel="stylesheet">
+</head>
+<body>
+    <nav class="navbar">
+        <div class="nav-container">
+            <a class="nav-brand" asp-controller="Home" asp-action="Index" style="background-color: black; border-radius: 10px; padding: 5px; margin: 2px;">
+                <img src="/images/logo.png" alt="logo" width="80" style="height: auto; aspect-ratio: 16 / 9;">
+            </a>
+            @* <span class="brand-icon">✝</span>
+            <span>@Config["Church:Name"]</span> *@
+            <button class="nav-toggle" id="navToggle"><i class="fas fa-bars"></i></button>
+            <ul class="nav-links" id="navLinks">
+                <li><a asp-controller="Home" asp-action="Index">Home</a></li>
+                <li><a asp-controller="Media" asp-action="Index">Sermons</a></li>
+                <li><a asp-controller="Media" asp-action="Live">Live</a></li>
+                <li><a asp-controller="Events" asp-action="Index">Events</a></li>
+                <li><a asp-controller="Prayer" asp-action="Index">Prayer</a></li>
+                <li><a asp-controller="Meeting" asp-action="Index"><i class="fas fa-video"></i> Meetings</a></li>
+                @if (User.Identity?.IsAuthenticated == true)
+                {
+                    <li><a asp-controller="Community" asp-action="Index">Community</a></li>
+                    <li><a asp-controller="Giving" asp-action="Give" class="btn-give">Give</a></li>
+
+                    <li class="nav-user">
+                        <a asp-controller="Members" asp-action="Dashboard">
+                            <i class="fas fa-user-circle"></i> My Account
+                        </a>
+                        @if (User.IsInRole("Admin") || User.IsInRole("Pastor"))
+                        {
+                            <a asp-controller="Admin" asp-action="Index" class="admin-link">
+                                <i class="fas fa-cog"></i> Admin
+                            </a>
+                        }
+                        <form asp-controller="Account" asp-action="Logout" method="post" style="display:inline">
+                            <button type="submit" class="btn-logout">Sign Out</button>
+                        </form>
+                    </li>
+                    @* {{ --Notification Bell--}} *@
+                    <li class="nav-notif" id="notifBell">
+                        <button class="notif-bell-btn" onclick="toggleNotifDropdown()" title="Notifications">
+                            <i class="fas fa-bell"></i>
+                            <span class="notif-count" id="notifCount" style="display:none">0</span>
+                        </button>
+                        <div class="notif-dropdown" id="notifDropdown">
+                            <div class="notif-dropdown-header">
+                                <strong>Notifications</strong>
+                                <button class="mark-all-btn" onclick="markAllRead()">Mark all read</button>
+                            </div>
+                            <div class="notif-dropdown-list" id="notifList">
+                                <div class="notif-loading"><i class="fas fa-spinner fa-spin"></i></div>
+                            </div>
+                            <div class="notif-dropdown-footer">
+                                <a asp-controller="Notifications" asp-action="Index">View all notifications</a>
+                            </div>
+                        </div>
+                    </li>
+                }
+                else
+                {
+                    <li><a asp-controller="Giving" asp-action="Give" class="btn-give">Give Online</a></li>
+                    <li><a asp-controller="Account" asp-action="Login">Login</a></li>
+                    <li><a asp-controller="Account" asp-action="Register" class="btn-join">Join Us</a></li>
+                }
+            </ul>
+        </div>
+    </nav>
+
+    @if (TempData["Success"] != null)
+    {
+        <div class="alert alert-success"><i class="fas fa-check-circle"></i> @TempData["Success"]</div>
+    }
+    @if (TempData["Error"] != null)
+    {
+        <div class="alert alert-error"><i class="fas fa-exclamation-circle"></i> @TempData["Error"]</div>
+    }
+    @if (TempData["Info"] != null)
+    {
+        <div class="alert alert-info"><i class="fas fa-info-circle"></i> @TempData["Info"]</div>
+    }
+
+    <main>
+        <div class="member-layout">
+            <aside class="member-sidebar">
+                <div class="member-avatar">
+                    <img src="@(me.ProfilePhoto ?? "/images/avatar-default.png")" alt="Profile" />
+                    <h3>@me.FullName</h3>
+                    <span class="badge-member">@me.MembershipType</span>
+                </div>
+                <nav class="sidebar-nav">
+                    <a asp-controller="Members" asp-action="Dashboard" class="active"><i class="fas fa-home"></i> Dashboard</a>
+                    <a asp-controller="Members" asp-action="Profile"><i class="fas fa-user"></i> My Profile</a>
+                    <a asp-controller="Members" asp-action="MyQrCode"><i class="fas fa-qrcode"></i> My QR Code</a>
+                    <a asp-controller="Members" asp-action="Attendance"><i class="fas fa-calendar-check"></i> Attendance</a>
+                    <a asp-controller="Giving" asp-action="Give"><i class="fas fa-hand-holding-heart"></i> Give</a>
+                    <a asp-controller="Giving" asp-action="History"><i class="fas fa-history"></i> Giving History</a>
+                    <a asp-controller="Prayer" asp-action="Submit"><i class="fas fa-hands-praying"></i> Prayer Request</a>
+                    <a asp-controller="Community" asp-action="Index"><i class="fas fa-comments"></i> Community</a>
+                    <a asp-controller="Community" asp-action="Chat"><i class="fas fa-comment-dots"></i> Live Chat</a>
+                    <a asp-controller="Members" asp-action="Directory"><i class="fas fa-address-book"></i> Directory</a>
+                </nav>
+            </aside>
+            <div class="member-main">
+                @RenderBody()
+            </div>
+        </div>
+    </main>
+
+    <footer class="footer">
+        <div class="footer-grid">
+            <div class="footer-col">
+                <h3>✝ @Config["Church:Name"]</h3>
+                <p>@Config["Church:Motto"]</p>
+                <div class="social-links">
+                    <a href="#"><i class="fab fa-facebook"></i></a>
+                    <a href="#"><i class="fab fa-youtube"></i></a>
+                    <a href="#"><i class="fab fa-instagram"></i></a>
+                    <a href="#"><i class="fab fa-twitter"></i></a>
+                </div>
+            </div>
+            <div class="footer-col">
+                <h4>Quick Links</h4>
+                <ul>
+                    <li><a asp-controller="Media" asp-action="Index">Sermons</a></li>
+                    <li><a asp-controller="Events" asp-action="Index">Events</a></li>
+                    <li><a asp-controller="Prayer" asp-action="Submit">Prayer Request</a></li>
+                    <li><a asp-controller="Giving" asp-action="Give">Give Online</a></li>
+                    <li><a asp-controller="Newsletter" asp-action="Index">Newsletter</a></li>
+                </ul>
+            </div>
+            <div class="footer-col">
+                <h4>Service Times</h4>
+                <p><strong>Sunday Service</strong><br>8:00 AM & 10:30 AM</p>
+                <p><strong>Midweek Bible Study</strong><br>Wednesday 6:30 PM</p>
+                <p><strong>Prayer Meeting</strong><br>Friday 6:00 PM</p>
+            </div>
+            <div class="footer-col">
+                <h4>Contact</h4>
+                <p><i class="fas fa-map-marker-alt"></i> @Config["Church:Address"]</p>
+                <p><i class="fas fa-phone"></i> @Config["Church:Phone"]</p>
+                <p><i class="fas fa-envelope"></i> @Config["Church:Email"]</p>
+                <form asp-controller="Home" asp-action="Subscribe" method="post" class="footer-subscribe">
+                    <input type="email" name="Email" placeholder="Your email" required />
+                    <button type="submit">Subscribe</button>
+                </form>
+            </div>
+        </div>
+        <div class="footer-bottom">
+            <p>&copy; @DateTime.Now.Year @Config["Church:Name"]. All rights reserved.</p>
+        </div>
+    </footer>
+
+    <script src="~/js/site.js" asp-append-version="true"></script>
+    @await RenderSectionAsync("Scripts", required: false)
+    @if (User.Identity?.IsAuthenticated == true)
+    {
+        <link rel="stylesheet" href="~/css/notification.css" asp-append-version="true" />
+        <script src="~/js/notification.js"></script>
+    }
+</body>
+</html>

@@ -1,0 +1,58 @@
+@model ChurchMinistry.ViewModels.MemberDashboardViewModel
+@{
+    ViewData["Title"] = "My Dashboard"; Layout = "~/Views/Shared/_MemberDashboard_Layout.cshtml";
+}
+<div style="padding: 2rem;">
+    <h1>Welcome back, @Model.Member.FirstName! 👋</h1>
+    <div class="kpi-grid">
+        <div class="kpi-card kpi-purple">
+            <div class="kpi-icon"><i class="fas fa-calendar-check"></i></div>
+            <div class="kpi-info"><span class="kpi-label">Attendance This Month</span><span class="kpi-value">@Model.AttendanceThisMonth</span></div>
+        </div>
+        @* <div class="kpi-card kpi-green">
+            <div class="kpi-icon"><i class="fas fa-hand-holding-heart"></i></div>
+            <div class="kpi-info"><span class="kpi-label">Given This Year</span><span class="kpi-value">UGX @Model.TotalGivingThisYear.ToString("N0")</span></div>
+        </div> *@
+        <div class="kpi-card kpi-amber">
+            <div class="kpi-icon"><i class="fas fa-hands-praying"></i></div>
+            <div class="kpi-info"><span class="kpi-label">Prayer Requests</span><span class="kpi-value">@Model.PrayerRequestsCount</span></div>
+        </div>
+    </div>
+    @if (Model.Notifications.Any())
+    {
+        <div class="notifications-box">
+            <h3><i class="fas fa-bell"></i> Notifications</h3>
+            @foreach (var n in Model.Notifications)
+            {
+                <div class="notif-item"><strong>@n.Title</strong><p>@n.Message</p><small>@n.CreatedAt.ToString("dd MMM, HH:mm")</small></div>
+            }
+        </div>
+    }
+    <div class="section-header"><h2>Recent Sermons</h2><a asp-controller="Media" asp-action="Index" class="btn btn-outline btn-sm">View All</a></div>
+    <div class="cards-grid">
+        @foreach (var s in Model.RecentSermons)
+        {
+            <div class="card sermon-card">
+                <div class="card-body">
+                    <h3>@s.Title</h3>
+                    <p class="meta">@s.Speaker · @s.SermonDate.ToString("dd MMM yyyy")</p>
+                    <a asp-controller="Media" asp-action="Watch" asp-route-id="@s.Id" class="btn btn-primary btn-sm">Watch</a>
+                </div>
+            </div>
+        }
+    </div>
+    <div class="section-header"><h2>Upcoming Events</h2></div>
+    <div class="events-list-row">
+        @foreach (var ev in Model.UpcomingEvents)
+        {
+            <div class="event-item">
+                <div class="event-date"><span class="day">@ev.StartDate.Day</span><span class="month">@ev.StartDate.ToString("MMM")</span></div>
+                <div class="event-info">
+                    <h3>@ev.Title</h3><span>@ev.StartDate.ToString("h:mm tt")</span>
+                    <span>@ev.Location</span>
+                </div>
+                <a asp-controller="Events" asp-action="Details" asp-route-id="@ev.Id" class="btn btn-outline btn-sm">Details</a>
+            </div>
+        }
+    </div>
+</div>

@@ -1,0 +1,292 @@
+@model List<ChurchMinistry.Models.PrayerRequest>
+@using ChurchMinistry.Models
+@{
+    ViewData["Title"] = "My Prayer Requests";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+    PrayerCategory? category = ViewBag.Category;
+    string? status           = ViewBag.Status;
+}
+
+<section class="page-header">
+    <h1><i class="fas fa-hands-praying"></i> My Prayer Requests</h1>
+    <p>Track, manage and testify about your personal prayer journey</p>
+</section>
+
+<div class="my-prayer-page">
+
+    @* {{-- Stats Row --}} *@
+    <div class="prayer-stats-row">
+        <div class="prayer-stat">
+            <span class="prayer-stat-value">@ViewBag.TotalCount</span>
+            <span class="prayer-stat-label">Total</span>
+        </div>
+        <div class="prayer-stat prayer-stat-active">
+            <span class="prayer-stat-value">@ViewBag.ActiveCount</span>
+            <span class="prayer-stat-label">Active</span>
+        </div>
+        <div class="prayer-stat prayer-stat-answered">
+            <span class="prayer-stat-value">@ViewBag.AnsweredCount</span>
+            <span class="prayer-stat-label">Answered</span>
+        </div>
+        <div class="prayer-stat prayer-stat-praying">
+            <span class="prayer-stat-value">@ViewBag.PrayerCount</span>
+            <span class="prayer-stat-label">People Praying</span>
+        </div>
+    </div>
+
+    @* {{-- Toolbar --}} *@
+    <div class="prayer-toolbar">
+        <div class="prayer-filters">
+
+            @* {{-- Status filter --}} *@
+            <div class="filter-group">
+                <a href="@Url.Action("MyRequests", new { category })"
+                   class="filter-pill @(status == null ? "active" : "")">
+                    All
+                </a>
+                <a href="@Url.Action("MyRequests", new { category, status = "active" })"
+                   class="filter-pill @(status == "active" ? "active" : "")">
+                    <i class="fas fa-circle-dot"></i> Active
+                </a>
+                <a href="@Url.Action("MyRequests", new { category, status = "answered" })"
+                   class="filter-pill @(status == "answered" ? "active" : "")">
+                    <i class="fas fa-check-circle"></i> Answered
+                </a>
+            </div>
+
+            @* {{-- Category filter --}} *@
+            <select class="form-control prayer-cat-select"
+                    onchange="window.location=this.value">
+                @* <option value="@Url.Action("MyRequests", new { status })"
+                        @(category == null ? "selected" : "")>All Categories</option> *@
+                <option value="@Url.Action("MyRequests", new { status })"
+                        selected="@(category == null)">All Categories</option>
+                @foreach (var cat in Enum.GetValues<PrayerCategory>())
+                {
+                    @* <option value="@Url.Action("MyRequests", new { category = cat, status })"
+                            @(category == cat ? "selected" : "")>@cat</option> *@
+                    <option value="@Url.Action("MyRequests", new { category = cat, status })"
+                            selected="@(category == cat)">@cat</option>
+                }
+            </select>
+        </div>
+
+        <div style="display:flex;gap:.6rem">
+            <a asp-action="Submit" class="btn btn-primary btn-sm">
+                <i class="fas fa-plus"></i> New Request
+            </a>
+            <a asp-action="Index" class="btn btn-outline btn-sm">
+                <i class="fas fa-globe"></i> Prayer Wall
+            </a>
+        </div>
+    </div>
+
+    @* {{-- List --}} *@
+    @if (!Model.Any())
+    {
+        <div class="prayer-empty">
+            <i class="fas fa-hands-praying fa-3x"></i>
+            <h3>No prayer requests found</h3>
+            <p>@(status == "answered" ? "No answered prayers yet - keep believing!" : "Submit your first prayer request below.")</p>
+            <a asp-action="Submit" class="btn btn-primary" style="margin-top:1rem">
+                <i class="fas fa-plus"></i> Submit Prayer Request
+            </a>
+        </div>
+    }
+    else
+    {
+        <div class="my-prayer-list">
+            @foreach (var p in Model)
+            {
+                <div class="my-prayer-card @(p.IsAnswered ? "is-answered" : "")">
+
+                    <div class="my-prayer-card-header">
+                        <div style="display:flex;align-items:center;gap:.6rem;flex-wrap:wrap">
+                            <span class="prayer-tag">@p.Category</span>
+                            @if (p.IsAnswered)
+                            {
+                                <span class="answered-pill">
+                                    <i class="fas fa-check-circle"></i> Answered
+                                    @if (p.AnsweredAt.HasValue)
+                                    { <span>· @p.AnsweredAt.Value.ToString("dd MMM yyyy")</span> }
+                                </span>
+                            }
+                            @if (!p.IsPublic)
+                            {
+                                <span class="private-pill"><i class="fas fa-lock"></i> Private</span>
+                            }
+                        </div>
+                        <span class="prayer-date meta">@p.CreatedAt.ToString("dd MMM yyyy")</span>
+                    </div>
+
+                    <p class="my-prayer-text">@p.Request</p>
+
+                    @if (p.IsAnswered && !string.IsNullOrEmpty(p.AnswerTestimony))
+                    {
+                        <div class="testimony-preview">
+                            <i class="fas fa-star" style="color:var(--amber)"></i>
+                            <em>@p.AnswerTestimony</em>
+                        </div>
+                    }
+
+                    <div class="my-prayer-footer">
+                        @if (p.IsAnswered && !string.IsNullOrEmpty(p.AnswerTestimony))
+                        {
+                            <span class="prayer-pray-count">
+                                <i class="fas fa-hands-praying"></i> @p.PrayerCount prayed
+                            </span>
+                        }
+                        else
+                        {
+                            <span class="prayer-pray-count">
+                                <i class="fas fa-hands-praying"></i> @p.PrayerCount praying
+                            </span>
+                        }
+
+                        <div class="my-prayer-actions">
+                            @if (!p.IsAnswered)
+                            {
+                                <a asp-action="MarkAnswered" asp-route-id="@p.Id"
+                                   class="btn btn-sm prayer-action-btn answered-btn"
+                                   title="Mark as answered">
+                                    <i class="fas fa-check"></i> Mark Answered
+                                </a>
+                            }
+
+                            @if (p.IsAnswered && string.IsNullOrEmpty(p.AnswerTestimony))
+                            {
+                                <a asp-action="Testify" asp-route-id="@p.Id"
+                                   class="btn btn-sm prayer-action-btn testify-btn"
+                                   title="Share testimony in community">
+                                    <i class="fas fa-bullhorn"></i> Testify
+                                </a>
+                            }
+
+                            <button class="btn btn-outline btn-sm prayer-action-btn"
+                                    onclick="togglePublic(@p.Id, this)"
+                                    title="@(p.IsPublic ? "Make private" : "Make public")">
+                                <i class="fas @(p.IsPublic ? "fa-eye-slash" : "fa-eye")"></i>
+                                @(p.IsPublic ? "Make Private" : "Make Public")
+                            </button>
+
+                            <form asp-action="Delete" method="post" style="display:inline"
+                                  onsubmit="return confirm('Delete this prayer request?')">
+                                <input type="hidden" name="id" value="@p.Id" />
+                                <button type="submit" class="btn btn-outline btn-sm prayer-action-btn delete-btn"
+                                        title="Delete">
+                                    <i class="fas fa-trash"></i>
+                                </button>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+            }
+        </div>
+    }
+
+</div>
+
+@section Scripts {
+<script>
+async function togglePublic(id, btn) {
+    const res  = await fetch('/Prayer/TogglePublic', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(id)
+    });
+    const data = await res.json();
+    const icon = btn.querySelector('i');
+    if (data.isPublic) {
+        icon.className = 'fas fa-eye-slash';
+        btn.innerHTML = '<i class="fas fa-eye-slash"></i> Make Private';
+    } else {
+        icon.className = 'fas fa-eye';
+        btn.innerHTML = '<i class="fas fa-eye"></i> Make Public';
+    }
+}
+</script>
+
+<style>
+.my-prayer-page        { max-width: 860px; margin: 2rem auto; padding: 0 1.5rem; }
+
+/* Stats */
+.prayer-stats-row      { display: grid; grid-template-columns: repeat(4, 1fr);
+                         gap: 1rem; margin-bottom: 1.75rem; }
+.prayer-stat           { background: var(--white); border: 1px solid var(--border);
+                         border-radius: var(--radius); padding: 1.1rem; text-align: center;
+                         box-shadow: var(--shadow); }
+.prayer-stat-value     { display: block; font-size: 1.75rem; font-weight: 800;
+                         color: var(--purple); line-height: 1; }
+.prayer-stat-label     { display: block; font-size: .75rem; color: var(--text-s);
+                         font-weight: 600; text-transform: uppercase;
+                         letter-spacing: .04em; margin-top: .3rem; }
+.prayer-stat-answered .prayer-stat-value { color: var(--green); }
+.prayer-stat-praying .prayer-stat-value  { color: var(--amber); }
+.prayer-stat-active .prayer-stat-value   { color: var(--blue); }
+
+/* Toolbar */
+.prayer-toolbar        { display: flex; justify-content: space-between;
+                         align-items: center; gap: 1rem; flex-wrap: wrap;
+                         margin-bottom: 1.25rem; }
+.prayer-filters        { display: flex; align-items: center; gap: .6rem; flex-wrap: wrap; }
+.filter-group          { display: flex; gap: .35rem; background: var(--white);
+                         border: 1px solid var(--border); border-radius: 10px;
+                         padding: .25rem; }
+.filter-pill           { padding: .35rem .8rem; border-radius: 8px; font-size: .82rem;
+                         font-weight: 600; color: var(--text-s); transition: all .15s;
+                         display: flex; align-items: center; gap: .3rem; }
+.filter-pill:hover     { background: var(--purple-l); color: var(--purple); }
+.filter-pill.active    { background: var(--purple); color: white; }
+.prayer-cat-select     { width: auto; min-width: 160px; padding: .45rem .65rem;
+                         font-size: .82rem; }
+
+/* Cards */
+.my-prayer-list        { display: flex; flex-direction: column; gap: .85rem; }
+.my-prayer-card        { background: var(--white); border: 1px solid var(--border);
+                         border-radius: var(--radius); padding: 1.25rem;
+                         box-shadow: var(--shadow); transition: box-shadow .15s; }
+.my-prayer-card:hover  { box-shadow: var(--shadow-m); }
+.my-prayer-card.is-answered { border-left: 3px solid var(--green); }
+
+.my-prayer-card-header { display: flex; justify-content: space-between;
+                         align-items: flex-start; gap: 1rem; margin-bottom: .75rem; }
+.answered-pill         { display: inline-flex; align-items: center; gap: .3rem;
+                         background: #d1fae5; color: #065f46; font-size: .75rem;
+                         font-weight: 700; padding: .2rem .6rem; border-radius: 100px; }
+.private-pill          { display: inline-flex; align-items: center; gap: .3rem;
+                         background: #f3f4f6; color: var(--text-s); font-size: .75rem;
+                         font-weight: 700; padding: .2rem .6rem; border-radius: 100px; }
+.my-prayer-text        { font-size: .92rem; line-height: 1.7; margin-bottom: .85rem;
+                         color: var(--text); }
+.testimony-preview     { background: #fef9ec; border-left: 3px solid var(--amber);
+                         border-radius: 0 8px 8px 0; padding: .65rem .9rem;
+                         font-size: .85rem; line-height: 1.6; margin-bottom: .85rem;
+                         display: flex; gap: .5rem; align-items: flex-start; }
+
+.my-prayer-footer      { display: flex; justify-content: space-between;
+                         align-items: center; flex-wrap: wrap; gap: .6rem;
+                         padding-top: .75rem; border-top: 1px solid var(--border); }
+.prayer-pray-count     { font-size: .82rem; color: var(--text-s); }
+.my-prayer-actions     { display: flex; gap: .4rem; flex-wrap: wrap; }
+
+.prayer-action-btn     { font-size: .78rem !important; padding: .3rem .7rem !important; }
+.answered-btn          { background: #d1fae5 !important; color: #065f46 !important;
+                         border-color: #a7f3d0 !important; font-weight: 700 !important; }
+.answered-btn:hover    { background: #a7f3d0 !important; }
+.testify-btn           { background: var(--purple-l) !important; color: var(--purple) !important;
+                         border-color: #c4b5fd !important; font-weight: 700 !important; }
+.testify-btn:hover     { background: #ddd6fe !important; }
+.delete-btn            { color: var(--coral) !important; border-color: #fecaca !important; }
+.delete-btn:hover      { background: #fee2e2 !important; }
+
+.prayer-empty          { text-align: center; padding: 4rem 1.5rem; color: var(--text-s); }
+.prayer-empty i        { color: var(--border); margin-bottom: 1rem; display: block; }
+.prayer-empty h3       { font-size: 1.2rem; font-weight: 700; color: var(--text);
+                         margin-bottom: .4rem; }
+
+@@media (max-width: 640px) {
+    .prayer-stats-row  { grid-template-columns: repeat(2, 1fr); }
+    .prayer-toolbar    { flex-direction: column; align-items: flex-start; }
+}
+</style>
+}

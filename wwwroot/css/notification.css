@@ -1,0 +1,215 @@
+﻿.nav-notif {
+    position: relative;
+}
+
+.notif-bell-btn {
+    position: relative;
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: .4rem .5rem;
+    border-radius: 8px;
+    color: var(--text);
+    font-size: 1rem;
+    transition: all .15s;
+}
+
+    .notif-bell-btn:hover {
+        background: var(--purple-l);
+        color: var(--purple);
+    }
+
+.notif-count {
+    position: absolute;
+    top: 2px;
+    right: 2px;
+    background: var(--coral);
+    color: white;
+    border-radius: 100px;
+    font-size: .62rem;
+    font-weight: 800;
+    min-width: 16px;
+    height: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0 3px;
+    line-height: 1;
+    pointer-events: none;
+}
+
+.notif-dropdown {
+    display: none;
+    position: absolute;
+    top: calc(100% + 8px);
+    right: -10px;
+    width: 340px;
+    background: var(--white);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    box-shadow: var(--shadow-l);
+    z-index: 200;
+    overflow: hidden;
+}
+
+    .notif-dropdown.open {
+        display: block;
+        animation: dropIn .18s ease;
+    }
+
+@@keyframes dropIn {
+    from {
+        opacity: 0;
+        transform: translateY(-6px)
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0)
+    }
+}
+
+.notif-dropdown-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: .75rem 1rem;
+    border-bottom: 1px solid var(--border);
+    background: #fafafa;
+}
+
+    .notif-dropdown-header strong {
+        font-size: .88rem;
+    }
+
+.mark-all-btn {
+    background: none;
+    border: none;
+    font-size: .78rem;
+    color: var(--purple);
+    cursor: pointer;
+    font-weight: 600;
+}
+
+    .mark-all-btn:hover {
+        text-decoration: underline;
+    }
+
+.notif-dropdown-list {
+    max-height: 320px;
+    overflow-y: auto;
+}
+
+.notif-loading {
+    padding: 1.5rem;
+    text-align: center;
+    color: var(--text-s);
+    font-size: .88rem;
+}
+
+.notif-drop-item {
+    display: flex;
+    align-items: flex-start;
+    gap: .7rem;
+    padding: .75rem 1rem;
+    border-bottom: 1px solid var(--border);
+    cursor: pointer;
+    transition: background .12s;
+    text-decoration: none;
+    color: var(--text);
+}
+
+    .notif-drop-item:last-child {
+        border-bottom: none;
+    }
+
+    .notif-drop-item:hover {
+        background: var(--purple-l);
+    }
+
+    .notif-drop-item.unread {
+        background: #fafafe;
+    }
+
+        .notif-drop-item.unread:hover {
+            background: var(--purple-l);
+        }
+
+.notif-drop-icon {
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
+    background: var(--purple-l);
+    color: var(--purple);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: .8rem;
+    flex-shrink: 0;
+    margin-top: .1rem;
+}
+
+.notif-drop-body {
+    flex: 1;
+    min-width: 0;
+}
+
+    .notif-drop-body strong {
+        display: block;
+        font-size: .82rem;
+        font-weight: 700;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    .notif-drop-body p {
+        font-size: .78rem;
+        color: var(--text-s);
+        margin: .1rem 0;
+        display: -webkit-box;
+        -webkit-line-clamp: 2;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+    }
+
+    .notif-drop-body small {
+        font-size: .7rem;
+        color: var(--text-s);
+    }
+
+.notif-unread-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--purple);
+    flex-shrink: 0;
+    margin-top: .45rem;
+}
+
+.notif-empty {
+    padding: 2rem 1rem;
+    text-align: center;
+    color: var(--text-s);
+    font-size: .85rem;
+}
+
+    .notif-empty i {
+        display: block;
+        font-size: 1.5rem;
+        margin-bottom: .5rem;
+        color: var(--border);
+    }
+
+.notif-dropdown-footer {
+    padding: .6rem 1rem;
+    border-top: 1px solid var(--border);
+    text-align: center;
+    background: #fafafa;
+}
+
+    .notif-dropdown-footer a {
+        font-size: .82rem;
+        color: var(--purple);
+        font-weight: 600;
+    }

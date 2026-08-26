@@ -1,0 +1,39 @@
+# Build results
+bin/
+obj/
+publish/
+*.dll
+*.exe
+*.pdb
+
+# Visual Studio
+.vs/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# Rider / VS Code
+.idea/
+.vscode/
+
+# NuGet
+*.nupkg
+**/[Pp]ackages/*
+!**/[Pp]ackages/build/
+
+# Logs
+*.log
+
+# OS files
+Thumbs.db
+.DS_Store
+
+# Uploaded user content
+wwwroot/uploads/*
+!wwwroot/uploads/.gitkeep
+
+# Secrets (real config with live credentials; see appsettings.example.json for the template)
+appsettings.json
+appsettings.*.json
+!appsettings.example.json

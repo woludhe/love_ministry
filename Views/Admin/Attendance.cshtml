@@ -1,0 +1,92 @@
+@{
+    ViewData["Title"] = "Attendance Management";
+    Layout = "~/Views/Shared/_AdminDashboard_Layout.cshtml";
+}
+@using ChurchMinistry.Models
+
+    <div class="admin-main">
+        <div class="admin-topbar"><h1>Attendance Management</h1></div>
+
+        <div class="two-col-layout">
+            <div class="table-card">
+                <h3>Create Service Session</h3>
+                <form asp-action="CreateSession" method="post">
+                    <div class="form-group"><label>Service Title</label><input name="Title" class="form-control" required placeholder="e.g. Sunday Morning Service" /></div>
+                    <div class="form-group">
+                        <label>Service Type</label>
+                        <select name="ServiceType" class="form-control">
+                            @foreach (var t in Enum.GetValues<ServiceType>())
+                            {
+                                <option>@t</option>
+                            }
+                        </select>
+                    </div>
+                    <div class="form-group"><label>Speaker</label><input name="Speaker" class="form-control" /></div>
+                    <div class="form-group"><label>Sermon Title</label><input name="SermonTitle" class="form-control" /></div>
+                    <div class="form-group"><label>Date & Time</label><input name="ServiceDate" type="datetime-local" class="form-control" required /></div>
+                    <button type="submit" class="btn btn-primary">Create Session</button>
+                </form>
+            </div>
+
+            <div class="table-card">
+                <h3>QR Check-in Scanner</h3>
+                <div class="form-group">
+                    <label>Select Service Session</label>
+                    <select id="sessionSelect" class="form-control">
+                        @foreach (ServiceSession s in (ViewBag.Sessions ?? new List<ServiceSession>()))
+                        {
+                            <option value="@s.Id">@s.Title – @s.ServiceDate.ToString("dd MMM yyyy")</option>
+                        }
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Scan / Enter QR Code</label>
+                    <input type="text" id="qrInput" class="form-control" placeholder="Scan QR or type member code..." />
+                    <small>Focus this field and scan with a barcode scanner</small>
+                </div>
+                <button onclick="checkIn()" class="btn btn-primary"><i class="fas fa-qrcode"></i> Check In</button>
+                @* <button onclick="checkIn()" class="btn btn-primary">Manual Check In</button> *@
+                <div id="checkinResult" style="margin-top:1rem"></div>
+            </div>
+        </div>
+
+        <div class="table-card" style="margin-top:2rem">
+            <h3>Recent Service Sessions</h3>
+            <table class="data-table">
+                <thead><tr><th>Title</th><th>Type</th><th>Date</th><th>Speaker</th><th>Attendance</th><th>Actions</th></tr></thead>
+                <tbody>
+                    @foreach (ServiceSession s in (ViewBag.Sessions ?? new List<ServiceSession>()))
+                    {
+                        <tr>
+                            <td>@s.Title</td>
+                            <td>@s.ServiceType</td>
+                            <td>@s.ServiceDate.ToString("dd MMM yyyy h:mm tt")</td>
+                            <td>@s.Speaker</td>
+                            <td>@s.AttendanceRecords.Count</td>
+                            <td><a asp-action="AttendanceReport" asp-route-sessionId="@s.Id" class="btn btn-outline btn-xs">Report</a></td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+@section Scripts {
+    <script>
+        async function checkIn() {
+            const qr = document.getElementById('qrInput').value.trim();
+            const sessionId = document.getElementById('sessionSelect').value;
+            if (!qr) return;
+            const r = await fetch('/Admin/CheckInMember', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ qrCode: qr, serviceSessionId: parseInt(sessionId) })
+            });
+            const d = await r.json();
+            const el = document.getElementById('checkinResult');
+            el.innerHTML = `<div class="alert ${d.success ? 'alert-success' : 'alert-error'}">${d.message}</div>`;
+            if (d.success) document.getElementById('qrInput').value = '';
+            setTimeout(() => el.innerHTML = '', 4000);
+        }
+        document.getElementById('qrInput').addEventListener('keypress', e => { if (e.key === 'Enter') checkIn(); });
+    </script>
+}

@@ -1,0 +1,26 @@
+@model ChurchMinistry.Models.Giving
+@{ ViewData["Title"] = "Payment Pending"; Layout = "~/Views/Shared/_Layout.cshtml"; }
+<div class="auth-page">
+  <div class="auth-card">
+    <div style="font-size:3rem;margin-bottom:1rem">📱</div>
+    <h2>Payment Pending</h2>
+    <p>A payment prompt has been sent to your phone.</p>
+    <div class="pending-details">
+      <div class="summary-row"><span>Amount:</span><strong>@Model.Currency @Model.Amount.ToString("N0")</strong></div>
+      <div class="summary-row"><span>Type:</span><strong>@Model.GivingType</strong></div>
+      <div class="summary-row"><span>Method:</span><strong>@Model.PaymentMethod</strong></div>
+      <div class="summary-row"><span>Reference:</span><strong>@Model.TransactionId</strong></div>
+    </div>
+    <p style="margin:1.5rem 0;color:#6b7280">Please approve the prompt on your phone to complete your gift. This page will update automatically.</p>
+    <div class="pending-steps">
+      <p><strong>Steps:</strong></p>
+      <ol style="text-align:left;padding-left:1.5rem">
+        <li>Check your phone for a payment prompt</li>
+        <li>Enter your Mobile Money PIN</li>
+        <li>Confirm the transaction</li>
+      </ol>
+    </div>
+    <a asp-controller="Giving" asp-action="History" class="btn btn-outline btn-full" style="margin-top:1rem">View My Giving History</a>
+    <a asp-controller="Home" asp-action="Index" class="btn btn-outline btn-full" style="margin-top:.5rem">Back to Home</a>
+  </div>
+</div>

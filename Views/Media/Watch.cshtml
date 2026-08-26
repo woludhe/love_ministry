@@ -1,0 +1,752 @@
+@model ChurchMinistry.Models.Sermon
+@{
+    ViewData["Title"] = Model.Title;
+    Layout = "~/Views/Shared/_Layout.cshtml";
+}
+
+@* Pass recommended sermons from controller via ViewBag *@
+@{
+    var recommended = ViewBag.Recommended as List<ChurchMinistry.Models.Sermon>
+                      ?? new List<ChurchMinistry.Models.Sermon>();
+}
+
+<div class="watch-page">
+    <div class="watch-layout">
+
+        @* {{-- ── Video column ── --}} *@
+        <div class="video-col">
+
+            @* {{-- Player wrapper --}} *@
+            <div class="video-player-wrap" id="playerWrap">
+
+                @if (!string.IsNullOrWhiteSpace(Model.VideoUrl))
+                {
+                    if (Model.VideoUrl.Contains("youtube.com") || Model.VideoUrl.Contains("youtu.be"))
+                    {
+                        var ytId = Model.VideoUrl.Contains("v=")
+                        ? Model.VideoUrl.Split("v=")[1].Split("&")[0]
+                        : Model.VideoUrl.Split("/").Last();
+
+                        <iframe id="ytPlayer"
+                                src="https://www.youtube.com/embed/@(ytId)?enablejsapi=1&rel=0&modestbranding=1"
+                                width="100%"
+                                height="100%"
+                                frameborder="0"
+                                allowfullscreen
+                                allow="autoplay; encrypted-media"
+                                data-video-type="youtube">
+                        </iframe>
+                    }
+                    else
+                    {
+                        <video id="htmlPlayer"
+                               controls
+                               src="@Model.VideoUrl"
+                               poster="@Model.ThumbnailUrl"
+                               data-video-type="html5"
+                               style="width:100%;height:100%;object-fit:cover">
+                        </video>
+                    }
+                }
+                else if (!string.IsNullOrEmpty(Model.AudioUrl))
+                {
+                    <div class="audio-only-wrap">
+                        @if (!string.IsNullOrEmpty(Model.ThumbnailUrl))
+                        {
+                            <img src="@Model.ThumbnailUrl" alt="@Model.Title" class="audio-thumb" />
+                        }
+                        <audio id="htmlPlayer"
+                               controls
+                               src="@Model.AudioUrl"
+                               data-video-type="html5"
+                               class="audio-player-bar"></audio>
+                    </div>
+                }
+
+                @* {{-- ── Recommendations panel (hidden until 5 min before end) ── --}} *@
+                <div class="reco-panel" id="recoPanel" aria-hidden="true">
+                    <div class="reco-panel-header">
+                        <div class="reco-panel-title">
+                            <i class="fas fa-list-ul"></i>
+                            Up Next
+                        </div>
+                        <div class="reco-countdown">
+                            Continuing in <span id="recoCountdown">5:00</span>
+                        </div>
+                        <button class="reco-dismiss" onclick="dismissPanel()" title="Keep watching">
+                            <i class="fas fa-times"></i> Keep watching
+                        </button>
+                    </div>
+
+                    <div class="reco-cards" id="recoCards">
+                        @foreach (var s in recommended)
+                        {
+                            <a class="reco-card" href="/Media/Watch/@s.Id">
+                                <div class="reco-thumb-wrap">
+                                    @if (!string.IsNullOrEmpty(s.ThumbnailUrl))
+                                    {
+                                        <img src="@s.ThumbnailUrl" alt="@s.Title" class="reco-thumb" />
+                                    }
+                                    else
+                                    {
+                                        <div class="reco-thumb-placeholder">
+                                            <i class="fas fa-play-circle"></i>
+                                        </div>
+                                    }
+                                </div>
+                                <div class="reco-card-info">
+                                    @if (!string.IsNullOrEmpty(s.SeriesName))
+                                    {
+                                        <span class="tag" style="font-size:.68rem">@s.SeriesName</span>
+                                    }
+                                    <p class="reco-card-title">@s.Title</p>
+                                    <p class="reco-card-meta">
+                                        <i class="fas fa-user"></i> @s.Speaker
+                                        &nbsp;·&nbsp;
+                                        <i class="fas fa-calendar"></i> @s.SermonDate.ToString("dd MMM yyyy")
+                                    </p>
+                                </div>
+                            </a>
+                        }
+                    </div>
+
+                    @* {{-- Auto-advance progress bar --}} *@
+                    <div class="reco-autoplay-bar">
+                        <div class="reco-autoplay-fill" id="recoAutoFill"></div>
+                    </div>
+                </div>
+
+            </div>@* {{-- /playerWrap --}} *@
+
+            @* {{-- Sermon details --}} *@
+            <div class="sermon-details">
+                <div class="sermon-details-header">
+                    <div>
+                        <h1>@Model.Title</h1>
+                        @if (!string.IsNullOrEmpty(Model.SeriesName))
+                        {
+                            <span class="tag">@Model.SeriesName</span>
+                        }
+                        <p class="meta" style="margin-top:.5rem">
+                            <i class="fas fa-user"></i> @Model.Speaker &nbsp;
+                            <i class="fas fa-calendar"></i> @Model.SermonDate.ToString("dd MMMM yyyy") &nbsp;
+                            <i class="fas fa-eye"></i> @Model.ViewCount views
+                        </p>
+                        @if (!string.IsNullOrEmpty(Model.ScriptureReference))
+                        {
+                            <p class="scripture">
+                                <i class="fas fa-book-open"></i> @Model.ScriptureReference
+                            </p>
+                        }
+                    </div>
+                    <div class="share-row">
+                        <span style="font-size:.82rem;color:var(--text-s)">Share:</span>
+                        <a href="https://www.facebook.com/sharer/sharer.php?u=@Uri.EscapeDataString("https://apostleenockmakoko.com" + Context.Request.Path)"
+                           target="_blank" class="share-btn fb"><i class="fab fa-facebook"></i></a>
+                        <a href="https://wa.me/?text=@Uri.EscapeDataString(Model.Title + " https://apostleenockmakoko.com" + Context.Request.Path)"
+                           target="_blank" class="share-btn wa"><i class="fab fa-whatsapp"></i></a>
+                    </div>
+                </div>
+                @if (!string.IsNullOrEmpty(Model.Description))
+                {
+                    <p class="sermon-description">@Model.Description</p>
+                }
+                @if (!string.IsNullOrEmpty(Model.Tags))
+                {
+                    <div class="sermon-tags">
+                        @foreach (var tag in Model.Tags.Split(','))
+                        {
+                            <span class="tag">@tag.Trim()</span>
+                        }
+                    </div>
+                }
+                @if (!string.IsNullOrEmpty(Model.AudioUrl))
+                {
+                    <div class="audio-download-row">
+                        <a href="@Model.AudioUrl" class="btn btn-outline btn-sm">
+                            <i class="fas fa-headphones"></i> Listen / Download Audio
+                        </a>
+                    </div>
+                }
+            </div>
+        </div>
+
+        @* {{-- ── Sidebar: static recommendations (always visible) ── --}} *@
+        <aside class="watch-sidebar">
+            <h3 class="sidebar-heading">More Sermons</h3>
+            @foreach (var s in recommended)
+            {
+                <a class="sidebar-reco-card" href="/Media/Watch/@s.Id">
+                    <div class="sidebar-reco-thumb">
+                        @if (!string.IsNullOrEmpty(s.ThumbnailUrl))
+                        {
+                            <img src="@s.ThumbnailUrl" alt="@s.Title" />
+                        }
+                        else
+                        {
+                            <div class="sidebar-reco-placeholder">
+                                <i class="fas fa-play-circle"></i>
+                            </div>
+                        }
+                    </div>
+                    <div class="sidebar-reco-info">
+                        <p class="sidebar-reco-title">@s.Title</p>
+                        <p class="sidebar-reco-meta">@s.Speaker · @s.SermonDate.ToString("dd MMM yyyy")</p>
+                    </div>
+                </a>
+            }
+            <a asp-controller="Media" asp-action="Index" class="btn btn-outline btn-sm btn-full"
+               style="margin-top:1rem">
+                <i class="fas fa-th-large"></i> All Sermons
+            </a>
+        </aside>
+
+    </div>
+</div>
+
+@section Scripts {
+    <script>
+        // ═══════════════════════════════════════════════════════════
+        //  Sermon Recommendation Engine
+        //  Works for both YouTube embeds and HTML5 <video>/<audio>
+        // ═══════════════════════════════════════════════════════════
+
+        const TRIGGER_SECONDS = 300; // show panel 5 minutes (300s) before end
+        const AUTO_NAV_DELAY = 15;  // seconds to wait before auto-navigating
+        const FIRST_RECO_URL = document.querySelector('.reco-card')?.href;
+
+        let panelVisible = false;
+        let dismissed = false;
+        let countdownSecs = TRIGGER_SECONDS;
+        let autoNavTimer = null;
+        let autoFillTimer = null;
+        let pollTimer = null;
+
+        // ── Panel controls ────────────────────────────────────────
+        function showPanel() {
+            if (panelVisible || dismissed) return;
+            panelVisible = true;
+            const panel = document.getElementById('recoPanel');
+            panel.classList.add('reco-panel-visible');
+            panel.setAttribute('aria-hidden', 'false');
+            startAutoNav();
+        }
+
+        function dismissPanel() {
+            dismissed = true;
+            panelVisible = false;
+            document.getElementById('recoPanel').classList.remove('reco-panel-visible');
+            clearAutoNav();
+        }
+
+        // ── Countdown inside panel ────────────────────────────────
+        function startCountdown(remaining) {
+            let secs = Math.round(remaining);
+            const el = document.getElementById('recoCountdown');
+            const tick = () => {
+                if (secs <= 0) { showPanel(); return; }
+                const m = Math.floor(secs / 60);
+                const s = secs % 60;
+                if (el) el.textContent = `${m}:${String(s).padStart(2, '0')}`;
+                secs--;
+            };
+            tick();
+            return setInterval(tick, 1000);
+        }
+
+        // ── Auto-navigate to first recommendation ─────────────────
+        function startAutoNav() {
+            if (!FIRST_RECO_URL) return;
+            let secs = AUTO_NAV_DELAY;
+            const fill = document.getElementById('recoAutoFill');
+
+            autoFillTimer = setInterval(() => {
+                secs--;
+                if (fill) fill.style.width = ((AUTO_NAV_DELAY - secs) / AUTO_NAV_DELAY * 100) + '%';
+                if (secs <= 0) {
+                    clearInterval(autoFillTimer);
+                    window.location.href = FIRST_RECO_URL;
+                }
+            }, 1000);
+        }
+
+        function clearAutoNav() {
+            clearInterval(autoFillTimer);
+            clearInterval(autoNavTimer);
+            const fill = document.getElementById('recoAutoFill');
+            if (fill) fill.style.width = '0%';
+        }
+
+        // ── HTML5 video / audio ───────────────────────────────────
+        const html5Player = document.getElementById('htmlPlayer');
+        let countdownInterval = null;
+
+        if (html5Player) {
+            html5Player.addEventListener('timeupdate', () => {
+                if (dismissed || panelVisible) return;
+
+                const duration = html5Player.duration;
+                const current = html5Player.currentTime;
+                if (!duration || isNaN(duration)) return;
+
+                const remaining = duration - current;
+
+                if (remaining <= TRIGGER_SECONDS && !panelVisible && !dismissed) {
+                    if (!countdownInterval) {
+                        countdownInterval = startCountdown(remaining);
+                    }
+                }
+
+                if (remaining <= 0) showPanel();
+            });
+
+            // Also trigger on ended
+            html5Player.addEventListener('ended', showPanel);
+        }
+
+        // ── YouTube IFrame API ────────────────────────────────────
+        const ytFrame = document.getElementById('ytPlayer');
+
+        if (ytFrame) {
+            // Load YouTube IFrame API
+            const tag = document.createElement('script');
+            tag.src = 'https://www.youtube.com/iframe_api';
+            document.head.appendChild(tag);
+
+            let ytPlayer;
+            let ytCountdownStarted = false;
+
+            window.onYouTubeIframeAPIReady = function () {
+                ytPlayer = new YT.Player('ytPlayer', {
+                    events: {
+                        onReady: () => {
+                            // Poll every second once playing
+                            pollTimer = setInterval(() => {
+                                if (!ytPlayer) return;
+                                const state = ytPlayer.getPlayerState();
+                                const playing = state === YT.PlayerState.PLAYING;
+                                if (!playing) return;
+
+                                const duration = ytPlayer.getDuration();
+                                const current = ytPlayer.getCurrentTime();
+                                if (!duration) return;
+
+                                const remaining = duration - current;
+
+                                if (remaining <= TRIGGER_SECONDS && !dismissed) {
+                                    if (!ytCountdownStarted) {
+                                        ytCountdownStarted = true;
+                                        startCountdown(remaining);
+                                    }
+                                    if (remaining <= 1) showPanel();
+                                }
+                            }, 1000);
+                        },
+                        onStateChange: (e) => {
+                            if (e.data === YT.PlayerState.ENDED) showPanel();
+                        }
+                    }
+                });
+            };
+        }
+
+        // ── Cleanup on page unload ────────────────────────────────
+        window.addEventListener('beforeunload', () => {
+            clearInterval(pollTimer);
+            clearInterval(countdownInterval);
+            clearAutoNav();
+        });
+    </script>
+
+    <style>
+        /* ── Layout ─────────────────────────────────── */
+        .watch-page {
+            max-width: 1280px;
+            margin: 0 auto;
+            padding: 1.5rem;
+        }
+
+        .watch-layout {
+            display: grid;
+            grid-template-columns: 1fr 320px;
+            gap: 2rem;
+        }
+
+        .video-col {
+            display: flex;
+            flex-direction: column;
+            gap: 1.25rem;
+            min-width: 0;
+        }
+
+        /* ── Player ─────────────────────────────────── */
+        .video-player-wrap {
+            position: relative;
+            background: #000;
+            border-radius: var(--radius);
+            overflow: hidden;
+            aspect-ratio: 16/9;
+        }
+
+            .video-player-wrap iframe {
+                position: absolute;
+                inset: 0;
+                width: 100%;
+                height: 100%;
+            }
+
+        /* ── Audio-only ─────────────────────────────── */
+        .audio-only-wrap {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 2rem;
+            gap: 1.25rem;
+        }
+
+        .audio-thumb {
+            width: 100%;
+            max-height: 240px;
+            object-fit: cover;
+            border-radius: 8px;
+        }
+
+        .audio-player-bar {
+            width: 100%;
+        }
+
+        /* ── Recommendation panel (overlay on video) ─ */
+        .reco-panel {
+            position: absolute;
+            inset: 0;
+            background: rgba(10,8,35,.93);
+            backdrop-filter: blur(4px);
+            display: flex;
+            flex-direction: column;
+            padding: 1.25rem;
+            transform: translateY(100%);
+            transition: transform .45s cubic-bezier(.4,0,.2,1);
+            z-index: 20;
+        }
+
+        .reco-panel-visible {
+            transform: translateY(0);
+        }
+
+        .reco-panel-header {
+            display: flex;
+            align-items: center;
+            gap: .75rem;
+            margin-bottom: 1rem;
+            flex-wrap: wrap;
+        }
+
+        .reco-panel-title {
+            display: flex;
+            align-items: center;
+            gap: .45rem;
+            font-size: .95rem;
+            font-weight: 700;
+            color: white;
+            flex: 1;
+        }
+
+        .reco-countdown {
+            font-size: .82rem;
+            color: rgba(255,255,255,.55);
+            background: rgba(255,255,255,.08);
+            padding: .25rem .65rem;
+            border-radius: 100px;
+        }
+
+        .reco-dismiss {
+            display: flex;
+            align-items: center;
+            gap: .35rem;
+            background: rgba(255,255,255,.08);
+            border: 1px solid rgba(255,255,255,.15);
+            color: rgba(255,255,255,.7);
+            border-radius: 8px;
+            padding: .35rem .75rem;
+            font-size: .78rem;
+            cursor: pointer;
+            transition: all .15s;
+        }
+
+            .reco-dismiss:hover {
+                background: rgba(255,255,255,.15);
+                color: white;
+            }
+
+        /* ── Reco cards (inside overlay) ────────────── */
+        .reco-cards {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: .75rem;
+            flex: 1;
+        }
+
+        .reco-card {
+            display: flex;
+            flex-direction: column;
+            gap: .5rem;
+            background: rgba(255,255,255,.06);
+            border: 1px solid rgba(255,255,255,.1);
+            border-radius: 10px;
+            overflow: hidden;
+            text-decoration: none;
+            transition: all .2s;
+        }
+
+            .reco-card:hover {
+                background: rgba(255,255,255,.12);
+                border-color: rgba(99,102,241,.5);
+                transform: translateY(-2px);
+            }
+
+        .reco-thumb-wrap {
+            aspect-ratio: 16/9;
+            overflow: hidden;
+        }
+
+        .reco-thumb {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        .reco-thumb-placeholder {
+            width: 100%;
+            height: 100%;
+            background: #1e1b4b;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: rgba(255,255,255,.3);
+            font-size: 1.5rem;
+        }
+
+        .reco-card-info {
+            padding: .5rem .65rem .65rem;
+        }
+
+        .reco-card-title {
+            font-size: .82rem;
+            font-weight: 600;
+            color: rgba(255,255,255,.9);
+            line-height: 1.4;
+            margin: .25rem 0;
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+        }
+
+        .reco-card-meta {
+            font-size: .7rem;
+            color: rgba(255,255,255,.45);
+        }
+
+        /* ── Auto-play progress bar ─────────────────── */
+        .reco-autoplay-bar {
+            height: 3px;
+            background: rgba(255,255,255,.1);
+            border-radius: 100px;
+            margin-top: .85rem;
+            overflow: hidden;
+        }
+
+        .reco-autoplay-fill {
+            height: 100%;
+            width: 0%;
+            background: #6366f1;
+            border-radius: 100px;
+            transition: width 1s linear;
+        }
+
+        /* ── Sermon details ─────────────────────────── */
+        .sermon-details {
+            background: var(--white);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 1.5rem;
+            box-shadow: var(--shadow);
+        }
+
+        .sermon-details-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            gap: 1rem;
+            flex-wrap: wrap;
+            margin-bottom: 1rem;
+        }
+
+        .sermon-details h1 {
+            font-size: 1.25rem;
+            font-weight: 800;
+            margin-bottom: .4rem;
+        }
+
+        .sermon-description {
+            font-size: .92rem;
+            line-height: 1.75;
+            color: var(--text-s);
+            margin-top: .75rem;
+        }
+
+        .sermon-tags {
+            display: flex;
+            flex-wrap: wrap;
+            gap: .4rem;
+            margin-top: .75rem;
+        }
+
+        .audio-download-row {
+            margin-top: 1rem;
+        }
+
+        /* ── Sidebar ─────────────────────────────────── */
+        .watch-sidebar {
+            display: flex;
+            flex-direction: column;
+            gap: .6rem;
+        }
+
+        .sidebar-heading {
+            font-size: .88rem;
+            font-weight: 700;
+            color: var(--text-s);
+            text-transform: uppercase;
+            letter-spacing: .06em;
+            margin-bottom: .4rem;
+        }
+
+        .sidebar-reco-card {
+            display: flex;
+            gap: .75rem;
+            padding: .75rem;
+            background: var(--white);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            text-decoration: none;
+            color: var(--text);
+            transition: all .15s;
+            box-shadow: var(--shadow);
+        }
+
+            .sidebar-reco-card:hover {
+                box-shadow: var(--shadow-m);
+                border-color: var(--purple);
+                color: var(--text);
+                transform: translateX(2px);
+            }
+
+        .sidebar-reco-thumb {
+            width: 88px;
+            height: 55px;
+            border-radius: 6px;
+            overflow: hidden;
+            flex-shrink: 0;
+        }
+
+            .sidebar-reco-thumb img {
+                width: 100%;
+                height: 100%;
+                object-fit: cover;
+            }
+
+        .sidebar-reco-placeholder {
+            width: 100%;
+            height: 100%;
+            background: var(--purple-l);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--purple);
+            font-size: 1.1rem;
+        }
+
+        .sidebar-reco-title {
+            font-size: .85rem;
+            font-weight: 700;
+            line-height: 1.4;
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+        }
+
+        .sidebar-reco-meta {
+            font-size: .73rem;
+            color: var(--text-s);
+            margin-top: .2rem;
+        }
+
+        .share-row {
+            display: flex;
+            align-items: center;
+            gap: .5rem;
+            flex-shrink: 0;
+        }
+
+        .share-btn {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: .85rem;
+            transition: opacity .15s;
+        }
+
+            .share-btn:hover {
+                opacity: .8;
+                color: white;
+            }
+
+            .share-btn.fb {
+                background: #1877f2;
+            }
+
+            .share-btn.wa {
+                background: #25d366;
+            }
+
+        /* ── Responsive ─────────────────────────────── */
+        @@media (max-width: 1024px) {
+            .watch-layout {
+                grid-template-columns: 1fr;
+            }
+
+            .watch-sidebar {
+                display: grid;
+                grid-template-columns: repeat(auto-fill, minmax(240px,1fr));
+            }
+
+            .reco-cards {
+                grid-template-columns: repeat(2, 1fr);
+            }
+        }
+
+        @@media (max-width: 600px) {
+            .watch-page {
+                padding: 0;
+            }
+
+            .reco-cards {
+                grid-template-columns: 1fr;
+            }
+
+            .video-player-wrap {
+                border-radius: 0;
+            }
+
+            .reco-panel {
+                padding: .75rem;
+            }
+        }
+    </style>
+}

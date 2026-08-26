@@ -1,0 +1,45 @@
+@model ChurchMinistry.ViewModels.PrayerRequestViewModel
+@{
+    ViewData["Title"] = "Submit Prayer Request";
+    @if (User.Identity?.IsAuthenticated == true)
+    {
+        Layout = "~/Views/Shared/_MemberDashboard_Layout.cshtml";
+    }
+    else
+    {
+        Layout = "~/Views/Shared/_Layout.cshtml";
+    }
+}
+<section class="page-header">
+    <h1><i class="fas fa-hands-praying"></i> Submit a Prayer Request</h1>
+    <p>We believe in the power of prayer. Our church family will intercede for you.</p>
+</section>
+<div class="form-page">
+    <form asp-action="Submit" method="post">
+        <div asp-validation-summary="All" class="validation-summary"></div>
+        <div class="form-group">
+            <label asp-for="Category">Prayer Category</label>
+            <select asp-for="Category" class="form-control" asp-items="Html.GetEnumSelectList<ChurchMinistry.Models.PrayerCategory>()"></select>
+        </div>
+        <div class="form-group">
+            <label asp-for="Request">Your Prayer Request</label>
+            <textarea asp-for="Request" class="form-control" rows="6" placeholder="Share what you would like the church to pray about..."></textarea>
+            <span asp-validation-for="Request" class="field-error"></span>
+        </div>
+        <div class="form-group checkbox-group">
+            <label><input asp-for="IsAnonymous" type="checkbox" id="anonCheck" onchange="toggleAnon(this)" /> Submit Anonymously</label>
+        </div>
+        <div class="form-group" id="anonNameGroup" style="display:none">
+            <label asp-for="AnonymousName">Display Name (optional)</label>
+            <input asp-for="AnonymousName" class="form-control" placeholder="How should we refer to you?" />
+        </div>
+        <div class="form-group checkbox-group">
+            <label><input asp-for="IsPublic" type="checkbox" checked /> Share on Public Prayer Wall (others can pray with you)</label>
+        </div>
+        <button type="submit" class="btn btn-primary btn-full"><i class="fas fa-hands-praying"></i> Submit Prayer Request</button>
+        <a asp-action="Index" class="btn btn-outline" style="margin-top:.5rem;display:block;text-align:center">View Prayer Wall</a>
+    </form>
+</div>
+@section Scripts {
+    <script>function toggleAnon(cb) { document.getElementById('anonNameGroup').style.display = cb.checked ? 'block' : 'none'; }</script>
+}

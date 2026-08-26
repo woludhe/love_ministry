@@ -1,0 +1,22 @@
+@model List<ChurchMinistry.Models.AttendanceRecord>
+@{
+    ViewData["Title"] = "My Attendance"; Layout = "~/Views/Shared/_MemberDashboard_Layout.cshtml";
+}
+<section class="page-header"><h1>My Attendance History</h1></section>
+<div class="table-card" style="max-width:800px;margin:2rem auto">
+  <table class="data-table">
+    <thead><tr><th>Service</th><th>Type</th><th>Date</th><th>Check-in Time</th><th>Method</th></tr></thead>
+    <tbody>
+    @foreach (var a in Model) {
+      <tr>
+        <td>@a.ServiceSession.Title</td>
+        <td>@a.ServiceSession.ServiceType</td>
+        <td>@a.ServiceSession.ServiceDate.ToString("dd MMM yyyy")</td>
+        <td>@a.CheckInTime.ToString("h:mm tt")</td>
+        <td><span class="tag">@a.CheckInMethod</span></td>
+      </tr>
+    }
+    @if (!Model.Any()) { <tr><td colspan="5" style="text-align:center;padding:2rem">No attendance records found.</td></tr> }
+    </tbody>
+  </table>
+</div>

@@ -1,0 +1,636 @@
+@model List<ChurchMinistry.Models.Sermon>
+@{
+    ViewData["Title"] = "Manage Sermons"; 
+    Layout = "~/Views/Shared/_AdminDashboard_Layout.cshtml";
+}
+@{
+    var liveSermon = Model.FirstOrDefault(s => s.IsLive);
+    int page = ViewBag.Page ?? 1;
+    int totalPages = ViewBag.TotalPages ?? 1;
+    int total = ViewBag.Total ?? 0;
+    string? search = ViewBag.Search;
+    string? speaker = ViewBag.Speaker;
+    string? series = ViewBag.Series;
+    bool? published = ViewBag.Published;
+}
+
+@* <div class="admin-layout"> *@
+<div class="admin-main">
+
+    @* {{-- Top bar: title + search + add button --}} *@
+    <div class="sermons-topbar">
+        <div class="sermons-topbar-left">
+            <h1>Sermons <span class="total-badge">@total</span></h1>
+        </div>
+
+        @* {{-- Inline search form --}} *@
+        <form method="get" class="sermon-search-form" id="searchForm">
+            <div class="sermon-search-input-wrap">
+                <i class="fas fa-search sermon-search-icon"></i>
+                <input type="text" name="search" value="@search"
+                       class="sermon-search-input" placeholder="Search title, speaker, scripture, tags…"
+                       autocomplete="off" />
+                @if (!string.IsNullOrEmpty(search))
+                {
+                    <a href="@Url.Action("Sermons")" class="sermon-search-clear" title="Clear search">
+                        <i class="fas fa-times"></i>
+                    </a>
+                }
+            </div>
+
+            @* {{-- Filter dropdowns --}} *@
+            <select name="speaker" class="form-control sermon-filter-select"
+                    onchange="document.getElementById('searchForm').submit()">
+                <option value="">All Speakers</option>
+                @foreach (var s in (ViewBag.Speakers as List<string> ?? new()))
+                {
+                    @* <option value="@s" @(speaker == s ? "selected" : "")>@s</option> *@
+                    <option value="@s" selected="@(speaker == s)">@s</option>
+                }
+            </select>
+
+            <select name="series" class="form-control sermon-filter-select"
+                    onchange="document.getElementById('searchForm').submit()">
+                <option value="">All Series</option>
+                @foreach (var sr in (ViewBag.SeriesList as List<string> ?? new()))
+                {
+                    @* <option value="@sr" @@(series= =sr ? "selected" : "" )>@sr</option> *@
+                    <option value="@sr" selected="@(series == sr ? "selected" : null)">@sr</option>
+                }
+            </select>
+
+            <select name="published" class="form-control sermon-filter-select"
+                    onchange="document.getElementById('searchForm').submit()">
+                <option value="">All</option>
+                <option value="true" selected="@@(published == true ? " selected" : null)">Published</option>
+                <option value="true" selected="@@(published == false ? " selected" : null)">Drafts</option>
+                @* <option value="true"  @@(published == true  ? "selected" : "")>Published</option>
+                <option value="false" @@(published == false ? "selected" : "")>Drafts</option> *@
+            </select>
+
+            <button type="submit" class="btn btn-primary btn-sm">
+                <i class="fas fa-search"></i>
+            </button>
+        </form>
+
+        <a asp-action="AddSermon" class="btn btn-primary btn-sm">
+            <i class="fas fa-plus"></i> Add Sermon
+        </a>
+    </div>
+
+    @* {{-- Live banner --}} *@ 
+    @if (liveSermon != null)
+    {
+        <div class="live-now-banner">
+            <div class="live-now-left">
+                <span class="live-pulse-dot"></span>
+                <div>
+                    <strong>LIVE NOW</strong>
+                    <p>@liveSermon.Title @(liveSermon.Speaker != null ? "· " + liveSermon.Speaker : "")</p>
+                </div>
+            </div>
+            <div class="live-now-actions">
+                <a asp-controller="Media" asp-action="Live" target="_blank"
+                   class="btn btn-sm" style="color:white;border:1.5px solid rgba(255,255,255,.4);background:transparent">
+                    <i class="fas fa-eye"></i> Preview Stream
+                </a>
+                <a asp-controller="LiveSettings" asp-action="Index"
+                   asp-route-sermonId="@liveSermon.Id"
+                   class="btn btn-outline btn-xs" title="Live Settings"
+                   style="color:white;border:1.5px solid rgba(255,255,255,.4);background:transparent">
+                    <i class="fas fa-sliders"></i>
+                </a>
+                <button onclick="stopLive(@liveSermon.Id)" class="btn-stop-live">
+                    <i class="fas fa-stop-circle"></i> Stop Live Stream
+                </button>
+            </div>
+        </div>
+    }
+    else
+    {
+        <div class="no-live-banner">
+            <i class="fas fa-circle-dot"></i>
+            No sermon is currently live. Click <strong>Go Live</strong> on any sermon below to start streaming.
+        </div>
+    }
+
+    @* {{-- Active filters summary --}} *@
+    @if (!string.IsNullOrEmpty(search) || !string.IsNullOrEmpty(speaker)
+    || !string.IsNullOrEmpty(series) || published.HasValue)
+    {
+        <div class="active-filters">
+            <span class="active-filters-label">Filters:</span>
+            @if (!string.IsNullOrEmpty(search))
+            {
+                <span class="filter-chip">
+                    <i class="fas fa-search"></i> "@search"
+                    <a href="@Url.Action("Sermons", new { speaker, series, published })">×</a>
+                </span>
+            }
+            @if (!string.IsNullOrEmpty(speaker))
+            {
+                <span class="filter-chip">
+                    <i class="fas fa-user"></i> @speaker
+                    <a href="@Url.Action("Sermons", new { search, series, published })">×</a>
+                </span>
+            }
+            @if (!string.IsNullOrEmpty(series))
+            {
+                <span class="filter-chip">
+                    <i class="fas fa-layer-group"></i> @series
+                    <a href="@Url.Action("Sermons", new { search, speaker, published })">×</a>
+                </span>
+            }
+            @if (published.HasValue)
+            {
+                <span class="filter-chip">
+                    <i class="fas fa-circle"></i> @(published.Value ? "Published" : "Drafts")
+                    <a href="@Url.Action("Sermons", new { search, speaker, series })">×</a>
+                </span>
+            }
+            <a href="@Url.Action("Sermons")" class="clear-all-filters">Clear all</a>
+        </div>
+    }
+
+    @* {{-- Table --}} *@
+    <div class="table-card" style="margin-top:1.25rem">
+        @if (!Model.Any())
+        {
+            <div style="text-align:center;padding:3rem;color:var(--text-s)">
+                <i class="fas fa-video-slash fa-2x" style="margin-bottom:1rem;display:block;color:var(--border)"></i>
+                <p>No sermons found@(!string.IsNullOrEmpty(search) ? $" for \"{search}\"" : "").</p>
+                <a asp-action="AddSermon" class="btn btn-primary" style="margin-top:1rem">
+                    <i class="fas fa-plus"></i> Add First Sermon
+                </a>
+            </div>
+        }
+        else
+        {
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Title</th>
+                        <th>Speaker</th>
+                        <th>Date</th>
+                        <th>Series</th>
+                        <th>Views</th>
+                        <th>Status</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var s in Model)
+                    {
+                        <tr id="row-@s.Id" class="@(s.IsLive ? "row-live" : "")">
+                            <td>
+                                @s.Title
+                                @if (s.IsLive)
+                                {
+                                    <span class="live-row-badge"><span class="live-dot"></span> LIVE</span>
+                                }
+                                @if (!string.IsNullOrEmpty(s.ScriptureReference))
+                                {
+                                    <br />
+
+                                    <small class="meta">@s.ScriptureReference</small>
+                                }
+                            </td>
+                            <td>@s.Speaker</td>
+                            <td style="white-space:nowrap">@s.SermonDate.ToString("dd MMM yyyy")</td>
+                            <td>@s.SeriesName</td>
+                            <td>@s.ViewCount</td>
+                            <td>
+                                @if (s.IsLive)
+                                {
+                                    <span class="status-badge" style="background:#fee2e2;color:#991b1b">🔴 Live</span>
+                                }
+                                else if (s.IsPublished)
+                                {
+                                    <span class="status-badge status-active">Published</span>
+                                }
+                                else
+                                {
+                                    <span class="status-badge status-inactive">Draft</span>
+                                }
+                            </td>
+                            <td>
+                                <div style="display:flex;gap:.35rem;flex-wrap:wrap">
+                                    @if (s.IsLive)
+                                    {
+                                        <button onclick="stopLive(@s.Id)" class="btn btn-sm btn-stop-row">
+                                            <i class="fas fa-stop-circle"></i> Stop
+                                        </button>
+                                    }
+                                    else
+                                    {
+                                        <button onclick="goLive(@s.Id)" class="btn btn-outline btn-sm"
+                                                title="Go Live">
+                                            <i class="fas fa-circle-dot"></i>
+                                        </button>
+                                    }
+                                    <a asp-action="EditSermon" asp-route-id="@s.Id"
+                                       class="btn btn-outline btn-xs" title="Edit">
+                                        <i class="fas fa-pen"></i>
+                                    </a>
+                                    <a asp-controller="Media" asp-action="Watch" asp-route-id="@s.Id"
+                                       class="btn btn-outline btn-xs" target="_blank" title="Preview">
+                                        <i class="fas fa-eye"></i>
+                                    </a>
+                                </div>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+
+            @* {{-- Pagination --}} *@
+            @if (totalPages > 1)
+            {
+                <div class="admin-pagination">
+                    <span class="pagination-info">
+                        Showing @((page - 1) * 15 + 1)–@(Math.Min(page * 15, total)) of @total sermons
+                    </span>
+                    <div class="pagination-controls">
+                        @if (page > 1)
+                        {
+                            <a href="@Url.Action("Sermons", new { search, speaker, series, published, page = page - 1 })"
+                               class="page-btn"><i class="fas fa-chevron-left"></i></a>
+                        }
+
+                        @{
+                            int start = Math.Max(1, page - 2);
+                            int end = Math.Min(totalPages, page + 2);
+                        }
+
+                        @if (start > 1)
+                        {
+                            <a href="@Url.Action("Sermons", new { search, speaker, series, published, page = 1 })"
+                               class="page-btn">1</a>
+                            @if (start > 2)
+                            {
+                                <span class="page-ellipsis">…</span>
+                            }
+                        }
+
+                        @for (int i = start; i <= end; i++)
+                        {
+                            <a href="@Url.Action("Sermons", new { search, speaker, series, published, page = i })"
+                               class="page-btn @(i == page ? "active" : "")">@i</a>
+                        }
+
+                        @if (end < totalPages)
+                        {
+                            @if (end < totalPages - 1)
+                            {
+                                <span class="page-ellipsis">…</span>
+                            }
+                            <a href="@Url.Action("Sermons", new { search, speaker, series, published, page = totalPages })"
+                               class="page-btn">@totalPages</a>
+                        }
+
+                        @if (page < totalPages)
+                        {
+                            <a href="@Url.Action("Sermons", new { search, speaker, series, published, page = page + 1 })"
+                               class="page-btn"><i class="fas fa-chevron-right"></i></a>
+                        }
+                    </div>
+                </div>
+            }
+        }
+    </div>
+
+</div>
+@* </div> *@
+
+@section Scripts {
+    <style>
+        /* Top bar */
+        .sermons-topbar {
+            display: flex;
+            align-items: center;
+            gap: .75rem;
+            flex-wrap: wrap;
+            margin-bottom: 1.25rem;
+        }
+
+        .sermons-topbar-left {
+            flex-shrink: 0;
+        }
+
+        .sermons-topbar h1 {
+            font-size: 1.4rem;
+            font-weight: 800;
+            display: flex;
+            align-items: center;
+            gap: .5rem;
+            margin: 0;
+        }
+
+        .total-badge {
+            background: var(--purple-l);
+            color: var(--purple);
+            font-size: .78rem;
+            font-weight: 700;
+            padding: .15rem .55rem;
+            border-radius: 100px;
+        }
+
+        /* Search form */
+        .sermon-search-form {
+            display: flex;
+            align-items: center;
+            gap: .5rem;
+            flex: 1;
+            flex-wrap: wrap;
+            min-width: 0;
+        }
+
+        .sermon-search-input-wrap {
+            position: relative;
+            flex: 1;
+            min-width: 200px;
+        }
+
+        .sermon-search-icon {
+            position: absolute;
+            left: .75rem;
+            top: 50%;
+            transform: translateY(-50%);
+            color: var(--text-s);
+            font-size: .85rem;
+        }
+
+        .sermon-search-input {
+            width: 100%;
+            padding: .55rem .75rem .55rem 2.2rem;
+            border: 1.5px solid var(--border);
+            border-radius: 8px;
+            font-size: .88rem;
+            font-family: inherit;
+            background: var(--white);
+            transition: border-color .15s;
+        }
+
+            .sermon-search-input:focus {
+                outline: none;
+                border-color: var(--purple);
+                box-shadow: 0 0 0 3px rgba(99,102,241,.12);
+            }
+
+        .sermon-search-clear {
+            position: absolute;
+            right: .6rem;
+            top: 50%;
+            transform: translateY(-50%);
+            color: var(--text-s);
+            font-size: .78rem;
+            padding: .2rem;
+        }
+
+            .sermon-search-clear:hover {
+                color: var(--coral);
+            }
+
+        .sermon-filter-select {
+            width: auto;
+            min-width: 120px;
+            padding: .5rem .65rem;
+            font-size: .82rem;
+        }
+
+        /* Active filters */
+        .active-filters {
+            display: flex;
+            align-items: center;
+            gap: .5rem;
+            flex-wrap: wrap;
+            margin-bottom: .75rem;
+            font-size: .82rem;
+        }
+
+        .active-filters-label {
+            color: var(--text-s);
+            font-weight: 600;
+        }
+
+        .filter-chip {
+            display: inline-flex;
+            align-items: center;
+            gap: .35rem;
+            background: var(--purple-l);
+            color: var(--purple);
+            padding: .25rem .65rem;
+            border-radius: 100px;
+            font-weight: 600;
+        }
+
+            .filter-chip a {
+                color: var(--purple);
+                font-weight: 800;
+                margin-left: .1rem;
+            }
+
+                .filter-chip a:hover {
+                    color: var(--coral);
+                }
+
+        .clear-all-filters {
+            color: var(--coral);
+            font-weight: 600;
+            margin-left: .25rem;
+        }
+
+        /* Live controls */
+        .live-now-banner {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            flex-wrap: wrap;
+            gap: 1rem;
+            background: linear-gradient(135deg,#dc2626,#b91c1c);
+            color: white;
+            border-radius: var(--radius);
+            padding: 1.25rem 1.5rem;
+            margin-bottom: 1rem;
+            box-shadow: 0 4px 12px rgba(220,38,38,.35);
+        }
+
+        .live-now-left {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+
+            .live-now-left strong {
+                display: block;
+                font-size: .72rem;
+                letter-spacing: .1em;
+                opacity: .75;
+            }
+
+            .live-now-left p {
+                margin: 0;
+                font-size: 1rem;
+                font-weight: 700;
+            }
+
+        .live-now-actions {
+            display: flex;
+            gap: .6rem;
+            flex-wrap: wrap;
+        }
+
+        .live-pulse-dot {
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            background: white;
+            flex-shrink: 0;
+            animation: livePulse 1.4s ease infinite;
+        }
+
+        @@keyframes livePulse {
+            0% {
+                box-shadow: 0 0 0 0 rgba(255,255,255,.7);
+            }
+
+            70% {
+                box-shadow: 0 0 0 10px rgba(255,255,255,0);
+            }
+
+            100% {
+                box-shadow: 0 0 0 0 rgba(255,255,255,0);
+            }
+        }
+
+        .btn-stop-live {
+            display: inline-flex;
+            align-items: center;
+            gap: .4rem;
+            background: white;
+            color: #dc2626;
+            border: none;
+            border-radius: 8px;
+            padding: .5rem 1.1rem;
+            font-weight: 700;
+            font-size: .88rem;
+            cursor: pointer;
+            transition: all .15s;
+        }
+
+            .btn-stop-live:hover {
+                background: #fee2e2;
+            }
+
+        .no-live-banner {
+            background: #f9fafb;
+            border: 1.5px dashed var(--border);
+            border-radius: var(--radius);
+            padding: 1rem 1.5rem;
+            font-size: .9rem;
+            color: var(--text-s);
+            display: flex;
+            align-items: center;
+            gap: .6rem;
+            margin-bottom: 1rem;
+        }
+
+            .no-live-banner i {
+                color: var(--border);
+            }
+
+        .row-live td {
+            background: #fff5f5 !important;
+        }
+
+        .live-row-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: .3rem;
+            background: #fee2e2;
+            color: #dc2626;
+            font-size: .7rem;
+            font-weight: 700;
+            padding: .15rem .5rem;
+            border-radius: 100px;
+            margin-left: .4rem;
+            vertical-align: middle;
+        }
+
+        .btn-stop-row {
+            background: #fee2e2 !important;
+            color: #dc2626 !important;
+            border-color: #fecaca !important;
+            font-weight: 700;
+        }
+
+        /* Pagination */
+        .admin-pagination {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 1rem 0 .5rem;
+            flex-wrap: wrap;
+            gap: .75rem;
+        }
+
+        .pagination-info {
+            font-size: .82rem;
+            color: var(--text-s);
+        }
+
+        .pagination-controls {
+            display: flex;
+            align-items: center;
+            gap: .3rem;
+        }
+
+        .page-btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 34px;
+            height: 34px;
+            padding: 0 .5rem;
+            border: 1.5px solid var(--border);
+            border-radius: 8px;
+            font-size: .85rem;
+            font-weight: 600;
+            color: var(--text);
+            background: var(--white);
+            transition: all .15s;
+        }
+
+            .page-btn:hover {
+                border-color: var(--purple);
+                color: var(--purple);
+            }
+
+            .page-btn.active {
+                background: var(--purple);
+                color: white;
+                border-color: var(--purple);
+            }
+
+        .page-ellipsis {
+            color: var(--text-s);
+            padding: 0 .25rem;
+            font-size: .9rem;
+        }
+    </style>
+
+    <script>
+        async function goLive(id) {
+            if (!confirm('Start live streaming this sermon? Any currently live sermon will be stopped first.')) return;
+            await callToggle(id);
+        }
+        async function stopLive(id) {
+            if (!confirm('Stop the live stream? Viewers will no longer see it as live.')) return;
+            await callToggle(id);
+        }
+        async function callToggle(id) {
+            await fetch('/Admin/ToggleLive/' + id, { method: 'POST' });
+            location.reload();
+        }
+    </script>
+}

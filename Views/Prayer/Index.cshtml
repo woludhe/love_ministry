@@ -1,0 +1,202 @@
+@{
+    ViewData["Title"] = "Prayer Wall";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+}
+@using ChurchMinistry.Models
+
+<section class="page-header">
+    <h1><i class="fas fa-hands-praying"></i> Prayer Wall</h1>
+    <p>Agree in prayer with your church family</p>
+</section>
+
+<div class="container" style="max-width:1100px;margin:0 auto;padding:1.25rem 1.5rem;background-color:var(--white);">
+
+    @* {{-- Action row --}} *@
+    <div class="prayer-wall-topbar">
+        <div class="prayer-wall-tabs">
+            @{
+                bool? answered = ViewBag.Answered;
+            }
+            <a href="@Url.Action("Index", new { category = ViewBag.Category })"
+               class="prayer-wall-tab @(answered == null ? "active" : "")">
+                <i class="fas fa-circle-dot"></i> Active
+                <span class="tab-count">@ViewBag.ActiveCount</span>
+            </a>
+            <a href="@Url.Action("Index", new { category = ViewBag.Category, answered = true })"
+               class="prayer-wall-tab @(answered == true ? "active" : "")">
+                <i class="fas fa-check-circle"></i> Answered
+                <span class="tab-count">@ViewBag.AnsweredCount</span>
+            </a>
+        </div>
+
+        <div style="display:flex;gap:.6rem">
+            @if (User.Identity?.IsAuthenticated == true)
+            {
+                <a asp-action="MyRequests" class="btn btn-outline btn-sm">
+                    <i class="fas fa-list"></i> My Requests
+                </a>
+            }
+            <a asp-action="Submit" class="btn btn-primary btn-sm">
+                <i class="fas fa-plus"></i> Submit Request
+            </a>
+        </div>
+    </div>
+
+    @* {{-- Category filter --}} *@
+    <div class="category-filter" style="margin-bottom:1.5rem">
+        <a href="@Url.Action("Index", new { answered })" class="pill @(ViewBag.Category == null ? "active" : "")">All</a>
+        @foreach (var cat in Enum.GetValues<PrayerCategory>())
+        {
+            <a href="@Url.Action("Index", new { category = cat, answered })"
+               class="pill @(ViewBag.Category?.ToString() == cat.ToString() ? "active" : "")">
+                @cat
+            </a>
+        }
+    </div>
+
+    @* {{-- Prayer cards --}} *@
+    @{
+        var prayedIds       = ViewBag.PrayedIds as HashSet<int> ?? new HashSet<int>();
+        int? currentMemberId = ViewBag.CurrentMemberId as int?;
+        bool isLoggedIn     = User.Identity?.IsAuthenticated == true;
+    }
+    <div class="prayer-grid">
+        @foreach (PrayerRequest pr in (ViewBag.Requests ?? new List<PrayerRequest>()))
+        {
+            bool alreadyPrayed = isLoggedIn && prayedIds.Contains(pr.Id);
+            bool isOwnRequest  = isLoggedIn && pr.MemberId == currentMemberId;
+
+            <div class="prayer-card @(pr.IsAnswered ? "answered" : "")">
+                @if (pr.IsAnswered)
+                {
+                    <div class="answered-banner">
+                        <i class="fas fa-check-circle"></i> Prayer Answered!
+                    </div>
+                }
+                <div class="prayer-header">
+                    <span class="prayer-tag">@pr.Category</span>
+                    <span class="prayer-date">@pr.CreatedAt.ToString("dd MMM")</span>
+                </div>
+                <p class="prayer-name">
+                    <i class="fas fa-user"></i>
+                    @(pr.IsAnonymous ? "Anonymous" : pr.AnonymousName)
+                </p>
+                <p class="prayer-text">@pr.Request</p>
+                @if (pr.IsAnswered && !string.IsNullOrEmpty(pr.AnswerTestimony))
+                {
+                    <div class="testimony-box">
+                        <i class="fas fa-star"></i> @pr.AnswerTestimony
+                    </div>
+                }
+                <div class="prayer-footer">
+                    <span class="prayer-count-wrap">
+                        <i class="fas fa-hands-praying"></i>
+                        <span id="pcount-@pr.Id">@pr.PrayerCount</span> praying
+                    </span>
+
+                    @if (!pr.IsAnswered)
+                    {
+                        @if (!isLoggedIn)
+                        {
+                            // {{-- Guest: show button that prompts login --}}
+                            <a asp-controller="Account" asp-action="Login"
+                               asp-route-returnUrl="/Prayer/Index"
+                               class="btn-pray">🙏 Pray</a>
+                        }
+                        else if (isOwnRequest)
+                        {
+                            // {{-- Own request: can't pray for yourself --}}
+                            <span class="prayed-badge prayed-own">
+                                <i class="fas fa-user"></i> My request
+                            </span>
+                        }
+                        else if (alreadyPrayed)
+                        {
+                            // {{-- Already prayed: show a done state, no button --}}
+                            <span class="prayed-badge prayed-done">
+                                <i class="fas fa-check"></i> Prayed
+                            </span>
+                        }
+                        else
+                        {
+                            // {{-- Not yet prayed: show active button --}}
+                            <button class="btn-pray" id="pray-btn-@pr.Id"
+                                    onclick="prayFor(@pr.Id, this)">
+                                🙏 Pray
+                            </button>
+                        }
+                    }
+                </div>
+            </div>
+        }
+    </div>
+
+    @{
+        var requests = ViewBag.Requests as List<PrayerRequest> ?? new List<PrayerRequest>();
+    }
+    @if (!requests.Any())
+    {
+        <div style="text-align:center;padding:4rem;color:var(--text-s)">
+            <i class="fas fa-hands-praying fa-3x" style="color:var(--border);display:block;margin-bottom:1rem"></i>
+            <p>@(answered == true ? "No answered prayers in this category yet." : "No active prayer requests.")</p>
+            <a asp-action="Submit" class="btn btn-primary" style="margin-top:1rem">
+                Submit a Prayer Request
+            </a>
+        </div>
+    }
+</div>
+
+@section Scripts {
+<script>
+async function prayFor(id, btn) {
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+    try {
+        const r = await fetch('/Prayer/Pray', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(id)
+        });
+        const d = await r.json();
+
+        // Update count
+        document.getElementById('pcount-' + id).textContent = d.count;
+
+        // Replace button with "You prayed" badge - no way to undo
+        const badge = document.createElement('span');
+        badge.className = 'prayed-badge prayed-done';
+        badge.innerHTML = '<i class="fas fa-check"></i> Prayed';
+        btn.replaceWith(badge);
+    } catch {
+        btn.disabled = false;
+        btn.textContent = '🙏 Pray';
+    }
+}
+</script>
+<style>
+.prayer-wall-topbar  { display:flex; justify-content:space-between; align-items:center;
+                       flex-wrap:wrap; gap:1rem; margin-bottom:1.25rem; }
+.prayer-wall-tabs    { display:flex; background:var(--white); border:1px solid var(--border);
+                       border-radius:10px; padding:.25rem; gap:.25rem; }
+.prayer-wall-tab     { display:inline-flex; align-items:center; gap:.4rem; padding:.4rem .9rem;
+                       border-radius:8px; font-size:.85rem; font-weight:600; color:var(--text-s);
+                       transition:all .15s; }
+.prayer-wall-tab:hover  { background:var(--purple-l); color:var(--purple); }
+.prayer-wall-tab.active { background:var(--purple); color:white; }
+.tab-count           { background:rgba(255,255,255,.25); border-radius:100px;
+                       padding:.05rem .4rem; font-size:.72rem; font-weight:700; }
+.prayer-wall-tab:not(.active) .tab-count { background:var(--border); color:var(--text-s); }
+
+/* Prayed state badges */
+.prayed-badge        { display:inline-flex; align-items:center; gap:.3rem; padding:.28rem .7rem;
+                       border-radius:100px; font-size:.75rem; font-weight:600; }
+.prayed-done         { background:#d1fae5; color:#065f46; }
+.prayed-own          { background:#f3f4f6; color:var(--text-s); }
+
+        .gloria-hallelujah-regular {
+            font-family: "Gloria Hallelujah", cursive;
+            font-weight: 400;
+            font-style: normal;
+        }
+    </style>
+}

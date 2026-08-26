@@ -1,0 +1,44 @@
+@{
+    ViewData["Title"] = "Givings"; Layout = "~/Views/Shared/_AdminDashboard_Layout.cshtml";
+}
+@using ChurchMinistry.Models
+
+<div class="admin-main">
+    <div class="admin-topbar"><h1>Givings (@ViewBag.Total)</h1></div>
+    <form method="get" class="filter-bar">
+        <select name="type" class="form-control">
+            <option value="">All Types</option>
+            @foreach (var t in Enum.GetValues<GivingType>())
+            {
+                <option>@t</option>
+            }
+        </select>
+        <select name="method" class="form-control">
+            <option value="">All Methods</option>
+            @foreach (var m in Enum.GetValues<PaymentMethod>())
+            {
+                <option>@m</option>
+            }
+        </select>
+        <button class="btn btn-primary">Filter</button>
+    </form>
+    <div class="table-card">
+        <table class="data-table">
+            <thead><tr><th>Date</th><th>Member</th><th>Type</th><th>Amount</th><th>Method</th><th>Status</th><th>Reference</th></tr></thead>
+            <tbody>
+                @foreach (Giving g in (ViewBag.Givings ?? new List<Giving>()))
+                {
+                    <tr>
+                        <td>@g.GivingDate.ToString("dd MMM yyyy")</td>
+                        <td>@(g.Member?.FullName ?? "Anonymous")</td>
+                        <td>@g.GivingType</td>
+                        <td><strong>@g.Currency @g.Amount.ToString("N0")</strong></td>
+                        <td><span class="method-badge">@g.PaymentMethod</span></td>
+                        <td><span class="status-badge status-@g.PaymentStatus.ToString().ToLower()">@g.PaymentStatus</span></td>
+                        <td class="meta">@g.TransactionId</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+</div>

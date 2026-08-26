@@ -1,0 +1,376 @@
+@model ChurchMinistry.ViewModels.MeetingLobbyViewModel
+@{
+    ViewData["Title"] = "Online Meetings"; Layout = "~/Views/Shared/_Layout.cshtml";
+}
+@using ChurchMinistry.Models
+
+<div class="meet-lobby">
+    <div class="lobby-hero">
+        <div class="lobby-hero-text">
+            <h1>Online Prayer &amp; Bible Study</h1>
+            <p>Gather together from anywhere. Pray, worship and study the Word in real time.</p>
+            <div class="lobby-actions">
+                @if (User.IsInRole("Admin") || User.IsInRole("Pastor"))
+                {
+                    <form asp-action="StartInstant" method="post">
+                        <button type="submit" class="btn-meet btn-meet-primary">
+                            <i class="fas fa-video"></i> Start Instant Meeting
+                        </button>
+                    </form>
+                }
+                <a asp-action="Join" class="btn-meet btn-meet-outline">
+                    <i class="fas fa-sign-in-alt"></i> Join with Code
+                </a>
+                <a asp-action="Create" class="btn-meet btn-meet-ghost">
+                    <i class="fas fa-calendar-plus"></i> Schedule Meeting
+                </a>
+                @if (User.IsInRole("Admin") || User.IsInRole("Pastor"))
+                {
+                    @if ((int?)ViewBag.PendingApprovalCount > 0)
+                    {
+                        <a asp-controller="MeetingApprovals" asp-action="Index"
+                           class="btn-meet btn-meet-ghost" style="border-color:rgba(245,158,11,.6);color:#f59e0b">
+                            <i class="fas fa-clock"></i> @ViewBag.PendingApprovalCount Pending
+                        </a>
+                    }
+                }
+            </div>
+        </div>
+        <div class="lobby-hero-art">
+            <div class="hero-globe">
+                <div class="globe-ring r1"></div><div class="globe-ring r2"></div>
+                <div class="globe-ring r3"></div><div class="globe-center">✝</div>
+                <div class="globe-dot d1"></div><div class="globe-dot d2"></div>
+                <div class="globe-dot d3"></div><div class="globe-dot d4"></div>
+                <div class="globe-dot d5"></div>
+            </div>
+        </div>
+    </div>
+
+    @{
+        var myPending = ViewBag.MyPendingMeetings as List<MeetingRoom> ?? new();
+        var myMeetings = ViewBag.MyMeetings as List<MeetingRoom> ?? new();
+        var invitedMeetings = ViewBag.InvitedMeetings as List<MeetingRoom> ?? new();
+        var adminPrivate = ViewBag.AdminPrivateMeetings as List<MeetingRoom> ?? new();
+        bool isPrivileged = User.IsInRole("Admin") || User.IsInRole("Pastor");
+    }
+
+    @* ── Live now ── *@
+    @if (Model.LiveMeetings.Any())
+    {
+        <section class="lobby-section">
+            <div class="section-label live-label"><span class="live-dot"></span> Happening Now</div>
+            <div class="meet-cards">
+                @foreach (var room in Model.LiveMeetings)
+                {
+                    <div class="meet-card meet-card-live">
+                        <div class="meet-card-type @room.MeetingType.ToString().ToLower()">@room.MeetingType</div>
+                        <h3>@room.Title</h3>
+                        <p class="meet-host"><i class="fas fa-user"></i> @(room.HostMember?.FullName ?? "Host")</p>
+                        <div class="meet-card-meta">
+                            <span><i class="fas fa-users"></i> @room.Participants.Count(p => p.LeftAt == null) joined</span>
+                            <span><i class="fas fa-clock"></i> @(room.StartedAt.HasValue ? GetAgo(room.StartedAt.Value) : "Live")</span>
+                        </div>
+                        <div class="meet-card-actions">
+                            <a asp-action="Room" asp-route-code="@room.RoomCode" class="btn-meet btn-meet-primary btn-sm">
+                                <i class="fas fa-video"></i> Join Now
+                            </a>
+                            <span class="room-code-badge">@room.RoomCode</span>
+                        </div>
+                    </div>
+                }
+            </div>
+        </section>
+    }
+
+    @* ── My meetings (host's own approved meetings) ── *@
+    @if (myMeetings.Any())
+    {
+        <section class="lobby-section">
+            <div class="section-label" style="color:var(--purple)">
+                <i class="fas fa-user-circle"></i> My Meetings
+            </div>
+            <div class="meet-cards">
+                @foreach (var room in myMeetings)
+                {
+                    <div class="meet-card" style="border-left:3px solid var(--purple)">
+                        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:.5rem">
+                            <div class="meet-card-type @room.MeetingType.ToString().ToLower()">@room.MeetingType</div>
+                            <div style="display:flex;gap:.35rem">
+                                @if (!room.IsPublic)
+                                {
+                                    <span class="meet-private-badge"><i class="fas fa-lock"></i> Private</span>
+                                }
+                                <a asp-action="Edit" asp-route-id="@room.Id"
+                                   class="meet-icon-btn" title="Edit meeting">
+                                    <i class="fas fa-pencil-alt"></i>
+                                </a>
+                                @if (!room.IsPublic)
+                                {
+                                    <a asp-action="Invite" asp-route-id="@room.Id"
+                                       class="meet-icon-btn meet-icon-btn-invite" title="Invite people">
+                                        <i class="fas fa-user-plus"></i>
+                                    </a>
+                                }
+                            </div>
+                        </div>
+                        <h3>@room.Title</h3>
+                        @if (room.ScheduledAt.HasValue)
+                        {
+                            <p class="meet-time">
+                                <i class="fas fa-calendar"></i>
+                                @room.ScheduledAt.Value.ToLocalTime().ToString("ddd, dd MMM · h:mm tt")
+                            </p>
+                        }
+                        @if (room.IsRecurring)
+                        {
+                            <span class="recurring-badge"><i class="fas fa-rotate"></i> Recurring</span>
+                        }
+                        <div class="meet-card-actions">
+                            <a asp-action="Room" asp-route-code="@room.RoomCode" class="btn-meet btn-meet-primary btn-sm">
+                                <i class="fas fa-video"></i> @(room.Status == RoomStatus.Live ? "Join Now" : "Open Room")
+                            </a>
+                            <span class="room-code-badge">@room.RoomCode</span>
+                        </div>
+                    </div>
+                }
+            </div>
+        </section>
+    }
+
+    @* ── Meetings I've been invited to ── *@
+    @if (invitedMeetings.Any())
+    {
+        <section class="lobby-section">
+            <div class="section-label" style="color:var(--teal,#14b8a6)">
+                <i class="fas fa-envelope-open-text"></i> Invited Meetings
+            </div>
+            <div class="meet-cards">
+                @foreach (var room in invitedMeetings)
+                {
+                    <div class="meet-card" style="border-left:3px solid #14b8a6">
+                        <div class="meet-card-type @room.MeetingType.ToString().ToLower()">@room.MeetingType</div>
+                        <span class="meet-private-badge"><i class="fas fa-lock"></i> Private</span>
+                        <h3>@room.Title</h3>
+                        <p class="meet-host"><i class="fas fa-user"></i> @(room.HostMember?.FullName ?? "Host")</p>
+                        @if (room.ScheduledAt.HasValue)
+                        {
+                            <p class="meet-time">
+                                <i class="fas fa-calendar"></i>
+                                @room.ScheduledAt.Value.ToLocalTime().ToString("ddd, dd MMM · h:mm tt")
+                            </p>
+                        }
+                        <div class="meet-card-actions">
+                            <a asp-action="Room" asp-route-code="@room.RoomCode" class="btn-meet btn-meet-outline btn-sm">
+                                <i class="fas fa-sign-in-alt"></i> Join
+                            </a>
+                            <span class="room-code-badge">@room.RoomCode</span>
+                        </div>
+                    </div>
+                }
+            </div>
+        </section>
+    }
+
+    @* ── Admin: all private approved meetings ── *@
+    @if (isPrivileged && adminPrivate.Any())
+    {
+        <section class="lobby-section">
+            <div class="section-label" style="color:#f59e0b">
+                <i class="fas fa-lock"></i> Private Meetings (Admin View)
+            </div>
+            <div class="meet-cards">
+                @foreach (var room in adminPrivate)
+                {
+                    <div class="meet-card" style="border-left:3px solid #f59e0b">
+                        <div style="display:flex;justify-content:space-between;align-items:flex-start">
+                            <div class="meet-card-type @room.MeetingType.ToString().ToLower()">@room.MeetingType</div>
+                            <div style="display:flex;gap:.35rem">
+                                <a asp-action="Edit" asp-route-id="@room.Id" class="meet-icon-btn meet-icon-btn-invite" title="Edit">
+                                    <i class="fas fa-pencil-alt"></i>
+                                </a>
+                                <a asp-action="Invite" asp-route-id="@room.Id" class="meet-icon-btn meet-icon-btn-invite" title="Invite">
+                                    <i class="fas fa-user-plus"></i>
+                                </a>
+                            </div>
+                        </div>
+                        <h3>@room.Title</h3>
+                        <p class="meet-host"><i class="fas fa-user"></i> @(room.HostMember?.FullName ?? "Host")</p>
+                        @if (room.ScheduledAt.HasValue)
+                        {
+                            <p class="meet-time">
+                                <i class="fas fa-calendar"></i>
+                                @room.ScheduledAt.Value.ToLocalTime().ToString("ddd, dd MMM · h:mm tt")
+                            </p>
+                        }
+                        <div class="meet-card-actions">
+                            <a asp-action="Room" asp-route-code="@room.RoomCode" class="btn-meet btn-meet-secondary btn-sm">
+                                <i class="fas fa-video"></i> Open
+                            </a>
+                            <span class="room-code-badge">@room.RoomCode</span>
+                        </div>
+                    </div>
+                }
+            </div>
+        </section>
+    }
+
+    @* ── Awaiting approval ── *@
+    @if (myPending.Any())
+    {
+        <section class="lobby-section">
+            <div class="section-label" style="color:var(--amber)">
+                <i class="fas fa-clock"></i> Your Meetings Awaiting Approval
+            </div>
+            <div class="meet-cards">
+                @foreach (var room in myPending)
+                {
+                    <div class="meet-card" style="border-left:3px solid var(--amber);opacity:.9">
+                        <div class="meet-card-type @room.MeetingType.ToString().ToLower()">@room.MeetingType</div>
+                        <h3>@room.Title</h3>
+                        @if (room.ScheduledAt.HasValue)
+                        {
+                            <p class="meet-time">
+                                <i class="fas fa-calendar"></i>
+                                @room.ScheduledAt.Value.ToLocalTime().ToString("ddd, dd MMM yyyy · h:mm tt")
+                            </p>
+                        }
+                        <div class="meet-card-meta">
+                            <span style="background:#fef3c7;color:#92400e;padding:.2rem .6rem;border-radius:100px;font-size:.75rem;font-weight:700">
+                                <i class="fas fa-clock"></i> Awaiting approval
+                            </span>
+                        </div>
+                        <p style="font-size:.8rem;color:var(--text-s);margin-top:.4rem">
+                            You'll be notified when an admin approves your meeting.
+                        </p>
+                    </div>
+                }
+            </div>
+        </section>
+    }
+
+    @* ── Upcoming public meetings ── *@
+    @if (Model.ScheduledMeetings.Any())
+    {
+        <section class="lobby-section">
+            <div class="section-label">Upcoming Meetings</div>
+            <div class="meet-cards">
+                @foreach (var room in Model.ScheduledMeetings)
+                {
+                    <div class="meet-card">
+                        <div class="meet-card-type @room.MeetingType.ToString().ToLower()">@room.MeetingType</div>
+                        <h3>@room.Title</h3>
+                        <p class="meet-host"><i class="fas fa-user"></i> @(room.HostMember?.FullName ?? "Host")</p>
+                        @if (room.ScheduledAt.HasValue)
+                        {
+                            <p class="meet-time">
+                                <i class="fas fa-calendar"></i>
+                                @room.ScheduledAt.Value.ToLocalTime().ToString("ddd, dd MMM · h:mm tt")
+                            </p>
+                        }
+                        @if (room.IsRecurring)
+                        {
+                            <span class="recurring-badge"><i class="fas fa-rotate"></i> Recurring</span>
+                        }
+                        <div class="meet-card-actions">
+                            <a asp-action="Room" asp-route-code="@room.RoomCode" class="btn-meet btn-meet-outline btn-sm">
+                                <i class="fas fa-sign-in-alt"></i> Join
+                            </a>
+                            <span class="room-code-badge">@room.RoomCode</span>
+                        </div>
+                    </div>
+                }
+            </div>
+        </section>
+    }
+
+    @* ── Past meetings ── *@
+    @if (Model.PastMeetings.Any())
+    {
+        <section class="lobby-section">
+            <div class="section-label">Recent Meetings</div>
+            <div class="meet-cards">
+                @foreach (var room in Model.PastMeetings)
+                {
+                    <div class="meet-card meet-card-past">
+                        <div class="meet-card-type @room.MeetingType.ToString().ToLower()">@room.MeetingType</div>
+                        <h3>@room.Title</h3>
+                        <div class="meet-card-meta">
+                            <span><i class="fas fa-users"></i> @room.Participants.Count participants</span>
+                            @if (room.EndedAt.HasValue)
+                            {
+                                <span><i class="fas fa-calendar"></i> @room.EndedAt.Value.ToLocalTime().ToString("dd MMM yyyy")</span>
+                            }
+                        </div>
+                    </div>
+                }
+            </div>
+        </section>
+    }
+
+    @if (!Model.LiveMeetings.Any() && !Model.ScheduledMeetings.Any()
+    && !myPending.Any() && !myMeetings.Any() && !invitedMeetings.Any())
+    {
+        <div class="lobby-empty">
+            <i class="fas fa-video-slash"></i>
+            <h3>No meetings right now</h3>
+            <p>Schedule one for later, or ask an admin to start an instant meeting.</p>
+        </div>
+    }
+</div>
+
+<style>
+    .meet-private-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: .3rem;
+        font-size: .68rem;
+        font-weight: 700;
+        color: #9ca3af;
+        background: rgba(255,255,255,.06);
+        border: 1px solid rgba(255,255,255,.1);
+        padding: .15rem .5rem;
+        border-radius: 100px;
+        margin-bottom: .35rem;
+    }
+
+    .meet-icon-btn {
+        width: 28px;
+        height: 28px;
+        border-radius: 7px;
+        border: 1px solid rgba(255,255,255,.12);
+        background: rgba(255,255,255,.06);
+        color: rgba(255,255,255,.5);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: .75rem;
+        cursor: pointer;
+        text-decoration: none;
+        transition: all .15s;
+    }
+
+        .meet-icon-btn:hover {
+            background: rgba(255,255,255,.12);
+            color: white;
+        }
+
+    .meet-icon-btn-invite {
+        border-color: rgba(99,102,241,.3);
+        color: #a5b4fc;
+    }
+
+        .meet-icon-btn-invite:hover {
+            background: rgba(99,102,241,.2);
+            color: #c7d2fe;
+        }
+</style>
+
+@functions {
+    string GetAgo(DateTime dt)
+    {
+        var diff = DateTime.UtcNow - dt;
+        if (diff.TotalMinutes < 60) return $"{(int)diff.TotalMinutes}m ago";
+        return $"{(int)diff.TotalHours}h ago";
+    }
+}

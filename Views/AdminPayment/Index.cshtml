@@ -1,0 +1,196 @@
+@model List<ChurchMinistry.Models.PaymentMethodConfig>
+@{
+    ViewData["Title"] = "Payment Methods";
+    Layout = "~/Views/Shared/_AdminDashboard_Layout.cshtml";
+}
+
+<div class="admin-main">
+
+    <div class="admin-topbar">
+        <div>
+            <h1><i class="fas fa-credit-card"></i> Payment Methods</h1>
+            <p>Configure how members and guests can give. Drag to reorder.</p>
+        </div>
+        <a asp-action="Create" class="pm-btn pm-btn-primary">
+            <i class="fas fa-plus"></i> Add Method
+        </a>
+    </div>
+
+    @if (TempData["Success"] != null)
+    {
+        <div class="pm-alert pm-alert-success">
+            <i class="fas fa-check-circle"></i> @TempData["Success"]
+        </div>
+    }
+
+    @if (!Model.Any())
+    {
+        <div class="pm-empty">
+            <i class="fas fa-credit-card fa-3x"></i>
+            <h3>No payment methods yet</h3>
+            <p>Add your first payment method to get started.</p>
+            <a asp-action="Create" class="pm-btn pm-btn-primary" style="margin-top:1rem">
+                <i class="fas fa-plus"></i> Add Method
+            </a>
+        </div>
+    }
+    else
+    {
+        <div class="pm-grid" id="methodGrid">
+            @foreach (var m in Model)
+            {
+                <div class="pm-card @(m.IsActive ? "" : "pm-card-inactive")"
+                     data-id="@m.Id" draggable="true">
+
+                    <div class="pm-card-drag"><i class="fas fa-grip-vertical"></i></div>
+
+                    <div class="pm-card-body">
+                        <div class="pm-card-top">
+                            <span class="pm-badge" style="background:@m.BadgeColor">
+                                @m.BadgeLabel
+                            </span>
+                            <div class="pm-card-info">
+                                <h3 class="pm-card-name">@m.Name</h3>
+                                <div class="pm-card-meta">
+                                    <span class="pm-tag">@m.Currency (@m.CurrencySymbol)</span>
+                                    <span class="pm-tag @(m.IntegrationType == ChurchMinistry.Models.PaymentIntegrationType.Flutterwave ? "pm-tag-blue" : "pm-tag-gray")">
+                                        <i class="fas fa-@(m.IntegrationType == ChurchMinistry.Models.PaymentIntegrationType.Flutterwave ? "bolt" : "file-alt")"></i>
+                                        @m.IntegrationType
+                                    </span>
+                                </div>
+                            </div>
+                        </div>
+
+                        @if (!string.IsNullOrEmpty(m.InstructionsText))
+                        {
+                            <p class="pm-card-instructions">@m.InstructionsText</p>
+                        }
+
+                        @if (m.ParsedAmounts.Any())
+                        {
+                            <div class="pm-amounts">
+                                @foreach (var amt in m.ParsedAmounts)
+                                {
+                                    <span class="pm-amount-chip">
+                                        @m.CurrencySymbol @amt.ToString("N0")
+                                    </span>
+                                }
+                            </div>
+                        }
+
+                        @if (!string.IsNullOrEmpty(m.InstructionsImagePath))
+                        {
+                            <img src="@m.InstructionsImagePath" class="pm-qr-thumb"
+                                 alt="Payment instructions" />
+                        }
+                    </div>
+
+                    <div class="pm-card-actions">
+                        <label class="pm-toggle" title="@(m.IsActive ? "Deactivate" : "Activate")">
+                            <input type="checkbox" @(m.IsActive ? "checked" : "")
+                                   onchange="toggleMethod(@m.Id, this)" />
+                            <span class="pm-toggle-track"></span>
+                        </label>
+                        <span class="pm-status-label @(m.IsActive ? "pm-status-active" : "pm-status-inactive")">
+                            @(m.IsActive ? "Active" : "Inactive")
+                        </span>
+                        <div class="pm-card-btns">
+                            <a asp-action="Edit" asp-route-id="@m.Id" class="pm-icon-btn" title="Edit">
+                                <i class="fas fa-pencil-alt"></i>
+                            </a>
+                            <button type="button" class="pm-icon-btn pm-icon-btn-danger"
+                                    onclick="deleteMethod(@m.Id, '@m.Name')" title="Delete">
+                                <i class="fas fa-trash"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            }
+        </div>
+    }
+
+    @* Delete confirmation *@
+    <div class="pm-modal-overlay" id="deleteModal" style="display:none">
+        <div class="pm-modal">
+            <i class="fas fa-exclamation-triangle pm-modal-icon"></i>
+            <h3>Delete Payment Method?</h3>
+            <p id="deleteModalMsg"></p>
+            <div class="pm-modal-btns">
+                <button class="pm-btn pm-btn-ghost" onclick="closeDeleteModal()">Cancel</button>
+                <form method="post" id="deleteForm">
+                    @Html.AntiForgeryToken()
+                    <button type="submit" class="pm-btn pm-btn-danger">Delete</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+<script>
+// ── Toggle active ─────────────────────────────────────────
+async function toggleMethod(id, checkbox) {
+    const card  = checkbox.closest('.pm-card');
+    const label = card.querySelector('.pm-status-label');
+    const res   = await fetch(`/Admin/Payments/Toggle/${id}`, {method:'POST',
+        headers:{'RequestVerificationToken': document.querySelector('[name=__RequestVerificationToken]')?.value ?? ''}});
+    const data  = await res.json();
+    if (data.success) {
+        card.classList.toggle('pm-card-inactive', !data.isActive);
+        label.textContent   = data.isActive ? 'Active' : 'Inactive';
+        label.className     = `pm-status-label ${data.isActive?'pm-status-active':'pm-status-inactive'}`;
+    } else {
+        checkbox.checked = !checkbox.checked; // revert
+    }
+}
+
+// ── Delete ────────────────────────────────────────────────
+function deleteMethod(id, name) {
+    document.getElementById('deleteModalMsg').textContent =
+        `"${name}" will be permanently removed. This cannot be undone.`;
+    document.getElementById('deleteForm').action = `/Admin/Payments/Delete/${id}`;
+    document.getElementById('deleteModal').style.display = 'flex';
+}
+function closeDeleteModal() {
+    document.getElementById('deleteModal').style.display = 'none';
+}
+
+// ── Drag to reorder ───────────────────────────────────────
+const grid = document.getElementById('methodGrid');
+let dragged = null;
+
+grid?.querySelectorAll('.pm-card').forEach(card => {
+    card.addEventListener('dragstart', () => {
+        dragged = card;
+        setTimeout(() => card.style.opacity = '.4', 0);
+    });
+    card.addEventListener('dragend', () => {
+        card.style.opacity = '1';
+        grid.querySelectorAll('.pm-card').forEach(c => c.classList.remove('drag-over'));
+        saveOrder();
+    });
+    card.addEventListener('dragover', e => {
+        e.preventDefault();
+        grid.querySelectorAll('.pm-card').forEach(c => c.classList.remove('drag-over'));
+        if (card !== dragged) {
+            card.classList.add('drag-over');
+            const rect = card.getBoundingClientRect();
+            const mid  = rect.top + rect.height / 2;
+            if (e.clientY < mid) grid.insertBefore(dragged, card);
+            else card.after(dragged);
+        }
+    });
+});
+
+async function saveOrder() {
+    const ids = Array.from(grid.querySelectorAll('.pm-card')).map(c => parseInt(c.dataset.id));
+    await fetch('/Admin/Payments/Reorder', {
+        method:'POST',
+        headers:{'Content-Type':'application/json',
+                 'RequestVerificationToken': document.querySelector('[name=__RequestVerificationToken]')?.value ?? ''},
+        body: JSON.stringify(ids)
+    });
+}
+</script>
+@Html.AntiForgeryToken()
+}

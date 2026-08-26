@@ -1,0 +1,27 @@
+@{ ViewData["Title"] = "Newsletter"; Layout = "~/Views/Shared/_Layout.cshtml"; }
+<section class="page-header"><h1><i class="fas fa-envelope"></i> Newsletter</h1></section>
+<div class="container">
+  <div class="newsletter-subscribe-card">
+    <h2>Stay Connected</h2>
+    <p>Subscribe to receive our weekly newsletter with sermons, events and community news delivered to your inbox.</p>
+    <form asp-controller="Home" asp-action="Subscribe" method="post" class="subscribe-form">
+      <input type="text" name="Name" placeholder="Your Name" class="form-control" />
+      <input type="email" name="Email" placeholder="your@email.com" class="form-control" required />
+      <button type="submit" class="btn btn-primary">Subscribe</button>
+    </form>
+  </div>
+  @if ((ViewBag.Newsletters as List<ChurchMinistry.Models.Newsletter>)?.Any() == true) {
+    <div style="margin-top:3rem">
+      <h2>Past Newsletters</h2>
+      <div class="newsletter-list">
+        @foreach (ChurchMinistry.Models.Newsletter nl in ViewBag.Newsletters) {
+          <div class="newsletter-item">
+            <h3>@nl.Subject</h3>
+            @if (nl.SentAt.HasValue) { <p class="meta"><i class="fas fa-calendar"></i> @nl.SentAt.Value.ToString("dd MMMM yyyy") &nbsp;·&nbsp; @nl.RecipientsCount recipients</p> }
+            @if (!string.IsNullOrEmpty(nl.PreviewText)) { <p>@nl.PreviewText</p> }
+          </div>
+        }
+      </div>
+    </div>
+  }
+</div>

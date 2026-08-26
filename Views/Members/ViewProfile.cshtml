@@ -1,0 +1,176 @@
+@model ChurchMinistry.Models.Member
+@{
+    ViewData["Title"] = Model.FullName;
+    Layout = "~/Views/Shared/_MemberDashboard_Layout.cshtml";
+}
+
+<section class="page-header">
+    <h1>Member Profile</h1>
+</section>
+
+<div class="view-profile-page">
+
+    <div class="vp-card vp-header-card">
+        <img src="@(Model.ProfilePhoto ?? "/images/avatar-default.png")"
+             class="vp-photo" alt="@Model.FullName" />
+        <div class="vp-identity">
+            <h2>@Model.FullName</h2>
+            <span class="tag">@Model.MembershipType</span>
+            <span class="status-badge status-@Model.Status.ToString().ToLower()" style="margin-left:.4rem">
+                @Model.Status
+            </span>
+            @if (!string.IsNullOrEmpty(Model.Occupation))
+            {
+                <p class="meta" style="margin-top:.4rem"><i class="fas fa-briefcase"></i> @Model.Occupation</p>
+            }
+            @if (Model.MinistryGroup != null)
+            {
+                <p class="meta"><i class="fas fa-users"></i> @Model.MinistryGroup.Name</p>
+            }
+            <p class="meta"><i class="fas fa-calendar"></i> Member since @Model.JoinDate.ToString("MMMM yyyy")</p>
+        </div>
+        @if (User.IsInRole("Admin") || User.IsInRole("Pastor"))
+        {
+            <a asp-action="Profile" asp-route-id="@Model.Id"
+               class="btn btn-primary btn-sm vp-edit-btn">
+                <i class="fas fa-pen"></i> Edit Profile
+            </a>
+        }
+    </div>
+
+    <div class="vp-grid">
+
+        <div class="vp-card">
+            <h3><i class="fas fa-user"></i> Personal Details</h3>
+            <div class="vp-fields">
+                <div class="vp-field">
+                    <span class="vp-label">Full Name</span>
+                    <span class="vp-value">@Model.FullName</span>
+                </div>
+                <div class="vp-field">
+                    <span class="vp-label">Gender</span>
+                    <span class="vp-value">@Model.Gender</span>
+                </div>
+                <div class="vp-field">
+                    <span class="vp-label">Marital Status</span>
+                    <span class="vp-value">@Model.MaritalStatus</span>
+                </div>
+                @if (Model.DateOfBirth.HasValue)
+                {
+                    <div class="vp-field">
+                        <span class="vp-label">Date of Birth</span>
+                        <span class="vp-value">@Model.DateOfBirth.Value.ToString("dd MMMM yyyy")</span>
+                    </div>
+                }
+                @if (Model.BaptismDate.HasValue)
+                {
+                    <div class="vp-field">
+                        <span class="vp-label">Baptism Date</span>
+                        <span class="vp-value">@Model.BaptismDate.Value.ToString("dd MMMM yyyy")</span>
+                    </div>
+                }
+            </div>
+        </div>
+
+        <div class="vp-card">
+            <h3><i class="fas fa-address-book"></i> Contact</h3>
+            <div class="vp-fields">
+                <div class="vp-field">
+                    <span class="vp-label">Email</span>
+                    <span class="vp-value">
+                        <a href="mailto:@Model.Email">@Model.Email</a>
+                    </span>
+                </div>
+                @if (!string.IsNullOrEmpty(Model.Phone))
+                {
+                    <div class="vp-field">
+                        <span class="vp-label">Phone</span>
+                        <span class="vp-value"><a href="tel:@Model.Phone">@Model.Phone</a></span>
+                    </div>
+                }
+                @if (!string.IsNullOrEmpty(Model.AlternatePhone))
+                {
+                    <div class="vp-field">
+                        <span class="vp-label">Alt. Phone</span>
+                        <span class="vp-value">@Model.AlternatePhone</span>
+                    </div>
+                }
+                @if (!string.IsNullOrEmpty(Model.Address))
+                {
+                    <div class="vp-field">
+                        <span class="vp-label">Address</span>
+                        <span class="vp-value">@Model.Address, @Model.City, @Model.Country</span>
+                    </div>
+                }
+            </div>
+        </div>
+
+        @if (User.IsInRole("Admin") || User.IsInRole("Pastor"))
+        {
+            <div class="vp-card">
+                <h3><i class="fas fa-shield-alt"></i> Emergency Contact</h3>
+                <div class="vp-fields">
+                    <div class="vp-field">
+                        <span class="vp-label">Name</span>
+                        <span class="vp-value">@(Model.EmergencyContact ?? "-")</span>
+                    </div>
+                    <div class="vp-field">
+                        <span class="vp-label">Phone</span>
+                        <span class="vp-value">@(Model.EmergencyPhone ?? "-")</span>
+                    </div>
+                </div>
+            </div>
+        }
+
+        @if (!string.IsNullOrEmpty(Model.Notes) &&
+             (User.IsInRole("Admin") || User.IsInRole("Pastor")))
+        {
+            <div class="vp-card">
+                <h3><i class="fas fa-sticky-note"></i> Notes</h3>
+                <p style="font-size:.9rem;line-height:1.7">@Model.Notes</p>
+            </div>
+        }
+
+    </div>
+
+    <div style="margin-top:1.5rem;display:flex;gap:.75rem">
+        <a asp-action="Directory" class="btn btn-outline">
+            <i class="fas fa-arrow-left"></i> Back to Directory
+        </a>
+        @if (User.IsInRole("Admin") || User.IsInRole("Pastor"))
+        {
+            <a asp-controller="Admin" asp-action="Members" class="btn btn-outline">
+                <i class="fas fa-users"></i> All Members
+            </a>
+        }
+    </div>
+
+</div>
+
+@section Scripts {
+<style>
+.view-profile-page  { max-width: 960px; margin: 2rem auto; padding: 0 1.5rem; }
+.vp-card            { background: var(--white); border: 1px solid var(--border);
+                      border-radius: var(--radius); padding: 1.5rem;
+                      box-shadow: var(--shadow); margin-bottom: 1.25rem; }
+.vp-header-card     { display: flex; align-items: center; gap: 1.5rem; flex-wrap: wrap; }
+.vp-photo           { width: 96px; height: 96px; border-radius: 50%; object-fit: cover;
+                      border: 3px solid var(--purple); flex-shrink: 0; }
+.vp-identity        { flex: 1; }
+.vp-identity h2     { font-size: 1.4rem; font-weight: 800; margin-bottom: .35rem; }
+.vp-edit-btn        { margin-left: auto; align-self: flex-start; }
+
+.vp-grid            { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px,1fr));
+                      gap: 1.25rem; }
+.vp-card h3         { font-size: .9rem; font-weight: 700; color: var(--text-s);
+                      text-transform: uppercase; letter-spacing: .05em;
+                      margin-bottom: 1rem; display: flex; align-items: center; gap: .45rem; }
+.vp-fields          { display: flex; flex-direction: column; gap: .6rem; }
+.vp-field           { display: flex; justify-content: space-between; align-items: baseline;
+                      gap: 1rem; padding: .4rem 0; border-bottom: 1px solid var(--border); }
+.vp-field:last-child{ border-bottom: none; }
+.vp-label           { font-size: .8rem; color: var(--text-s); font-weight: 600;
+                      white-space: nowrap; flex-shrink: 0; }
+.vp-value           { font-size: .9rem; text-align: right; }
+</style>
+}

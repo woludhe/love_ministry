@@ -1,0 +1,35 @@
+@model ChurchMinistry.ViewModels.JoinMeetingViewModel
+@{ ViewData["Title"] = "Join Meeting"; Layout = "~/Views/Shared/_Layout.cshtml"; }
+
+<div class="auth-page">
+  <div class="auth-card">
+    <div class="auth-logo" style="color:#6366f1"><i class="fas fa-video"></i></div>
+    <h2>Join a Meeting</h2>
+    <p>Enter the room code shared by your host</p>
+    <form asp-action="Join" method="post">
+      <div asp-validation-summary="All" class="validation-summary"></div>
+      <div class="form-group">
+        <label asp-for="RoomCode">Room Code</label>
+        <input asp-for="RoomCode" class="form-control" placeholder="e.g. PRAY-4821" autocomplete="off"
+               style="text-transform:uppercase;letter-spacing:.1em;font-size:1.1rem;font-weight:700;text-align:center" />
+        <span asp-validation-for="RoomCode" class="field-error"></span>
+      </div>
+      <div class="form-group">
+        <label asp-for="PassCode">Passcode (if required)</label>
+        <input asp-for="PassCode" class="form-control" type="password" autocomplete="off" placeholder="Leave blank if not required" />
+      </div>
+      <button type="submit" class="btn-meet btn-meet-primary btn-full" style="margin-top:.5rem">
+        <i class="fas fa-sign-in-alt"></i> Join Meeting
+      </button>
+    </form>
+    @* <div style="text-align:center;margin-top:1.5rem">
+      <p style="color:var(--text-s);font-size:.88rem;margin-bottom:.75rem">or</p>
+      <form asp-action="StartInstant" method="post">
+        <button type="submit" class="btn-meet btn-meet-outline btn-full">
+          <i class="fas fa-bolt"></i> Start Instant Meeting
+        </button>
+      </form>
+    </div> *@
+    <p class="auth-switch"><a asp-action="Index">View all meetings</a></p>
+  </div>
+</div>

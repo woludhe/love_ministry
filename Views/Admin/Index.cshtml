@@ -1,0 +1,142 @@
+@model ChurchMinistry.ViewModels.AdminDashboardViewModel
+@{
+    ViewData["Title"] = "Admin Dashboard";
+    Layout = "~/Views/Shared/_AdminDashboard_Layout.cshtml";
+}
+
+<!-- Main content -->
+<div class="admin-main">
+    <div class="admin-topbar">
+        <h1>Dashboard Overview</h1>
+        <span class="date-badge">@DateTime.Now.ToString("dddd, dd MMMM yyyy")</span>
+    </div>
+
+    <!-- KPI Cards -->
+    <div class="kpi-grid">
+        <div class="kpi-card kpi-purple">
+            <div class="kpi-icon"><i class="fas fa-users"></i></div>
+            <div class="kpi-info">
+                <span class="kpi-label">Total Members</span>
+                <span class="kpi-value">@Model.TotalMembers</span>
+                <span class="kpi-sub">@Model.ActiveMembers active · @Model.NewMembersThisMonth new this month</span>
+            </div>
+        </div>
+        <div class="kpi-card kpi-green">
+            <div class="kpi-icon"><i class="fas fa-hand-holding-heart"></i></div>
+            <div class="kpi-info">
+                <span class="kpi-label">Giving This Month</span>
+                <span class="kpi-value">UGX @Model.TotalGivingThisMonth.ToString("N0")</span>
+                <span class="kpi-sub">Year total: UGX @Model.TotalGivingThisYear.ToString("N0")</span>
+            </div>
+        </div>
+        <div class="kpi-card kpi-blue">
+            <div class="kpi-icon"><i class="fas fa-calendar-check"></i></div>
+            <div class="kpi-info">
+                <span class="kpi-label">Last Service Attendance</span>
+                <span class="kpi-value">@Model.AttendanceLastService</span>
+                <span class="kpi-sub @(Model.AttendanceGrowthPercent >= 0 ? "positive" : "negative")">
+                    @(Model.AttendanceGrowthPercent >= 0 ? "▲" : "▼") @Math.Abs(Model.AttendanceGrowthPercent)% vs last service
+                </span>
+            </div>
+        </div>
+        <div class="kpi-card kpi-amber">
+            <div class="kpi-icon"><i class="fas fa-hands-praying"></i></div>
+            <div class="kpi-info">
+                <span class="kpi-label">Prayer Requests</span>
+                <span class="kpi-value">@Model.PrayerRequestsPending</span>
+                <span class="kpi-sub">Awaiting response</span>
+            </div>
+        </div>
+        <div class="kpi-card kpi-coral">
+            <div class="kpi-icon"><i class="fas fa-calendar"></i></div>
+            <div class="kpi-info">
+                <span class="kpi-label">Upcoming Events</span>
+                <span class="kpi-value">@Model.UpcomingEvents</span>
+                <span class="kpi-sub">Scheduled</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Charts row -->
+    <div class="charts-row">
+        <div class="chart-card">
+            <h3>Giving by Type (This Year)</h3>
+            <canvas id="givingChart" height="200"></canvas>
+        </div>
+        <div class="chart-card">
+            <h3>Members by Ministry Group</h3>
+            <canvas id="groupChart" height="200"></canvas>
+        </div>
+    </div>
+
+    <!-- Tables row -->
+    <div class="tables-row">
+        <div class="table-card">
+            <div class="table-header">
+                <h3>Recent Members</h3>
+                <a asp-controller="Admin" asp-action="Members" class="btn btn-outline btn-sm">View All</a>
+            </div>
+            <table class="data-table">
+                <thead><tr><th>Name</th><th>Email</th><th>Joined</th><th>Status</th></tr></thead>
+                <tbody>
+                    @foreach (var m in Model.RecentMembers)
+                    {
+                        <tr>
+                            <td>@m.FullName</td>
+                            <td>@m.Email</td>
+                            <td>@m.JoinDate.ToString("dd MMM yyyy")</td>
+                            <td><span class="status-badge status-@m.Status.ToString().ToLower()">@m.Status</span></td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+
+        <div class="table-card">
+            <div class="table-header">
+                <h3>Recent Givings</h3>
+                <a asp-controller="Admin" asp-action="Givings" class="btn btn-outline btn-sm">View All</a>
+            </div>
+            <table class="data-table">
+                <thead><tr><th>Member</th><th>Amount</th><th>Method</th><th>Status</th></tr></thead>
+                <tbody>
+                    @foreach (var g in Model.RecentGivings)
+                    {
+                        <tr>
+                            <td>@(g.Member?.FullName ?? "Anonymous")</td>
+                            <td>@g.Currency @g.Amount.ToString("N0")</td>
+                            <td><span class="method-badge">@g.PaymentMethod</span></td>
+                            <td><span class="status-badge status-@g.PaymentStatus.ToString().ToLower()">@g.PaymentStatus</span></td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <script>
+        const givingData = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Model.GivingByType));
+        const groupData = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Model.MembersByGroup));
+
+        new Chart(document.getElementById('givingChart'), {
+            type: 'doughnut',
+            data: {
+                labels: Object.keys(givingData),
+                datasets: [{ data: Object.values(givingData), backgroundColor: ['#6366f1', '#8b5cf6', '#a78bfa', '#c4b5fd', '#10b981', '#f59e0b'] }]
+            },
+            options: { responsive: true, plugins: { legend: { position: 'bottom' } } }
+        });
+
+        new Chart(document.getElementById('groupChart'), {
+            type: 'bar',
+            data: {
+                labels: Object.keys(groupData),
+                datasets: [{ label: 'Members', data: Object.values(groupData), backgroundColor: '#6366f1' }]
+            },
+            options: { responsive: true, scales: { y: { beginAtZero: true } } }
+        });
+    </script>
+}

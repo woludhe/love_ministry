@@ -1,0 +1,1099 @@
+@model ChurchMinistry.Models.LiveSession
+@{
+    ViewData["Title"] = "Live Settings";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+    var sermon = ViewBag.Sermon as ChurchMinistry.Models.Sermon;
+    var sermonId = sermon?.Id ?? 0;
+}
+
+<section class="page-header" style="background:linear-gradient(135deg,#7f1d1d,#dc2626)">
+    <div style="display:flex;align-items:center;justify-content:space-between;max-width:1200px;margin:0 auto;flex-wrap:wrap;gap:1rem">
+        <div>
+            <div style="display:flex;align-items:center;gap:.6rem;margin-bottom:.4rem">
+                <span class="live-dot"></span>
+                <span style="font-size:.78rem;font-weight:700;letter-spacing:.08em;opacity:.8">ON AIR</span>
+            </div>
+            <h1 style="font-size:1.5rem;margin-bottom:.25rem">Live Settings</h1>
+            <p>@sermon?.Title &nbsp;·&nbsp; @sermon?.Speaker</p>
+        </div>
+        <div style="display:flex;gap:.75rem;flex-wrap:wrap">
+            <a asp-controller="Media" asp-action="Live" target="_blank"
+               class="btn btn-outline" style="color:white;border-color:rgba(255,255,255,.4)">
+                <i class="fas fa-eye"></i> Preview Live Page
+            </a>
+            <a asp-controller="Admin" asp-action="Sermons" class="btn btn-outline"
+               style="color:white;border-color:rgba(255,255,255,.4)">
+                <i class="fas fa-arrow-left"></i> Back to Sermons
+            </a>
+        </div>
+    </div>
+</section>
+
+<div class="live-settings-page">
+
+    <form asp-action="Save" asp-route-sermonId="@sermonId" method="post" id="settingsForm">
+        <input type="hidden" asp-for="Id" />
+        <input type="hidden" asp-for="SermonId" />
+
+        <div class="ls-grid">
+
+            @* {{-- ═══ LEFT COLUMN ═══ --}} *@
+            <div class="ls-col">
+
+                @* {{-- Bible Verses --}} *@
+                <div class="ls-card">
+                    <div class="ls-card-header">
+                        <div class="ls-card-title">
+                            <i class="fas fa-book-open" style="color:#6366f1"></i>
+                            Bible Verses
+                        </div>
+                        <div style="display:flex;align-items:center;gap:.6rem">
+                            <span class="ls-badge ls-badge-purple">Overlay</span>
+                            <label class="ls-toggle-wrap">
+                                <input type="checkbox" asp-for="ShowVerseOverlay" class="ls-toggle-input"
+                                       onchange="pushOverlay('verse', this.checked)" />
+                                <span class="ls-toggle"></span>
+                            </label>
+                        </div>
+                    </div>
+
+                    @* {{-- Search / add verse --}} *@
+                    <div class="ls-card-body" style="border-bottom:1px solid var(--border)">
+                        <div id="verseSearchWrap" style="display:flex;gap:.5rem">
+                            <div style="flex:1;position:relative">
+                                <i class="fas fa-search" style="position:absolute;left:.7rem;top:50%;transform:translateY(-50%);color:var(--text-s);font-size:.8rem"></i>
+                                <input type="text" id="verseRef" placeholder="e.g. John 3:16"
+                                       class="form-control" style="padding-left:2.2rem"
+                                       onkeypress="if(event.key==='Enter'){lookupVerse();return false;}" />
+                            </div>
+                            <button type="button" class="btn btn-primary btn-sm" onclick="lookupVerse()">
+                                <i class="fas fa-search"></i> Lookup
+                            </button>
+                        </div>
+                        @* {{-- Lookup result --}} *@
+                        <div id="verseResult" style="display:none;margin-top:.75rem">
+                            <div class="verse-result-card">
+                                <div style="display:flex;justify-content:space-between;margin-bottom:.35rem">
+                                    <strong id="verseResultRef" class="tag"></strong>
+                                    <select id="verseTranslation" class="form-control" style="width:auto;padding:.2rem .5rem;font-size:.78rem">
+                                        <option>KJV</option>
+                                        <option>NIV</option>
+                                        <option>ESV</option>
+                                        <option>NLT</option>
+                                        <option>NKJV</option>
+                                        <option>AMP</option>
+                                    </select>
+                                </div>
+                                <p id="verseResultText" style="font-size:.88rem;line-height:1.7;font-style:italic"></p>
+                                <div style="display:flex;gap:.5rem;margin-top:.6rem">
+                                    <button type="button" class="btn btn-primary btn-sm" onclick="saveVerse()">
+                                        <i class="fas fa-save"></i> Save to list
+                                    </button>
+                                    <button type="button" class="btn btn-outline btn-sm" onclick="saveAndActivateVerse()">
+                                        <i class="fas fa-play"></i> Save &amp; Go Live
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    @* {{-- Verse list --}} *@
+                    <div id="verseList">
+                        @foreach (var verse in Model.BibleVerses.OrderBy(v => v.SortOrder))
+                        {
+                            <div class="ls-list-item @(verse.IsActive ? "ls-item-active" : "")"
+                                 id="verse-item-@verse.Id">
+                                <div style="display:flex;align-items:center;gap:.6rem;flex:1;min-width:0">
+                                    <div class="ls-radio @(verse.IsActive ? "ls-radio-on" : "")"></div>
+                                    <div style="flex:1;min-width:0">
+                                        <div class="ls-item-title">
+                                            @verse.Reference
+                                            <span class="tag" style="font-size:.7rem;margin-left:.3rem">@verse.Translation</span>
+                                            @if (verse.IsActive)
+                                            {
+                                                <span class="ls-badge ls-badge-green" style="margin-left:.3rem">Active</span>
+                                            }
+                                        </div>
+                                        <div class="ls-item-sub">@verse.VerseText.Substring(0, Math.Min(verse.VerseText.Length, 80))…</div>
+                                    </div>
+                                </div>
+                                <div style="display:flex;gap:.3rem;flex-shrink:0">
+                                    @if (!verse.IsActive)
+                                    {
+                                        <button type="button" class="ls-icon-btn" title="Activate on live page"
+                                                onclick="activateVerse(@verse.Id)">
+                                            <i class="fas fa-play"></i>
+                                        </button>
+                                    }
+                                    else
+                                    {
+                                        <button type="button" class="ls-icon-btn ls-icon-btn-red" title="Clear verse"
+                                                onclick="clearVerse()">
+                                            <i class="fas fa-stop"></i>
+                                        </button>
+                                    }
+                                    <button type="button" class="ls-icon-btn ls-icon-btn-red" title="Delete"
+                                            onclick="deleteVerse(@verse.Id)">
+                                        <i class="fas fa-trash"></i>
+                                    </button>
+                                </div>
+                            </div>
+                        }
+                        @if (!Model.BibleVerses.Any())
+                        {
+                            <div class="ls-empty" id="verseEmpty">
+                                <i class="fas fa-book-open"></i>
+                                <p>No verses added yet. Search above to add one.</p>
+                            </div>
+                        }
+                    </div>
+
+                    @* {{-- Auto-rotate --}} *@
+                    <div class="ls-card-footer">
+                        <label class="ls-toggle-wrap">
+                            <input type="checkbox" class="ls-toggle-input" asp-for="AutoRotateVerses" id="autoRotate"
+                                   onchange="document.getElementById('rotateSpeed').style.display=this.checked?'flex':'none'" />
+                            <span class="ls-toggle"></span>
+                            <span style="font-size:.85rem">&nbsp;Auto-rotate verses</span>
+                        </label>
+                        <div id="rotateSpeed" style="display:@(Model.AutoRotateVerses ? "flex" : "none");align-items:center;gap:.5rem;margin-top:.5rem">
+                            <span style="font-size:.82rem;color:var(--text-s)">Every</span>
+                            <select asp-for="VerseRotateSeconds" class="form-control" style="width:auto">
+                                <option value="30">30s</option>
+                                <option value="60">60s</option>
+                                <option value="90">90s</option>
+                                <option value="120">2 min</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                @* {{-- Announcements --}} *@
+                <div class="ls-card">
+                    <div class="ls-card-header">
+                        <div class="ls-card-title">
+                            <i class="fas fa-bullhorn" style="color:#f59e0b"></i>
+                            Announcements
+                        </div>
+                        <div style="display:flex;align-items:center;gap:.6rem">
+                            <span class="ls-badge ls-badge-amber">Marquee</span>
+                            <label class="ls-toggle-wrap">
+                                <input type="checkbox" asp-for="ShowMarquee" class="ls-toggle-input"
+                                       onchange="pushOverlay('marquee', this.checked)" />
+                                <span class="ls-toggle"></span>
+                            </label>
+                        </div>
+                    </div>
+
+                    @* {{-- Add new --}} *@
+                    <div class="ls-card-body" style="border-bottom:1px solid var(--border)">
+                        <textarea id="newAnnText" class="form-control" rows="2"
+                                  placeholder="Type announcement text…"></textarea>
+                        <div style="display:flex;align-items:center;justify-content:space-between;margin-top:.6rem">
+                            <div style="display:flex;align-items:center;gap:.5rem">
+                                <span style="font-size:.82rem;color:var(--text-s)">Speed:</span>
+                                <select asp-for="MarqueeSpeed" class="form-control"
+                                        style="width:auto" onchange="pushMarqueeSpeed(this.value)">
+                                    <option value="Slow">Slow</option>
+                                    <option value="Normal">Normal</option>
+                                    <option value="Fast">Fast</option>
+                                </select>
+                            </div>
+                            <button type="button" class="btn btn-primary btn-sm" onclick="addAnnouncement()">
+                                <i class="fas fa-plus"></i> Add
+                            </button>
+                        </div>
+                    </div>
+
+                    @* {{-- List --}} *@
+                    <div id="annList">
+                        @foreach (var ann in Model.Announcements.OrderBy(a => a.SortOrder))
+                        {
+                            <div class="ls-list-item @(ann.IsActive ? "ls-item-active" : "")"
+                                 id="ann-item-@ann.Id">
+                                <div style="display:flex;align-items:center;gap:.6rem;flex:1;min-width:0">
+                                    <div class="ls-radio @(ann.IsActive ? "ls-radio-on" : "")"></div>
+                                    <div class="ls-item-title" style="flex:1;min-width:0">
+
+                                        @(ann.Text.Length > 80 ? ann.Text.Substring(0, 80) + "…" : ann.Text)
+
+                                    @if (ann.IsActive)
+                                    {
+                                        <span class="ls-badge ls-badge-green" style="margin-left:.3rem">Active</span>
+                                    }
+                                    </div>
+                                </div>
+                                <div style="display:flex;gap:.3rem;flex-shrink:0">
+                                    @if (!ann.IsActive)
+                                    {
+                                        <button type="button" class="ls-icon-btn" title="Activate"
+                                                onclick="activateAnnouncement(@ann.Id)">
+                                            <i class="fas fa-play"></i>
+                                        </button>
+                                    }
+                                    <button type="button" class="ls-icon-btn ls-icon-btn-red" title="Delete"
+                                            onclick="deleteAnnouncement(@ann.Id)">
+                                        <i class="fas fa-trash"></i>
+                                    </button>
+                                </div>
+                            </div>
+                        }
+                        @if (!Model.Announcements.Any())
+                        {
+                            <div class="ls-empty" id="annEmpty">
+                                <i class="fas fa-bullhorn"></i>
+                                <p>No announcements added yet.</p>
+                            </div>
+                        }
+                    </div>
+
+                    @* {{-- Marquee preview --}} *@
+                    <div class="ls-card-footer">
+                        <div style="font-size:.75rem;font-weight:600;color:var(--text-s);margin-bottom:.4rem;text-transform:uppercase;letter-spacing:.05em">Live preview</div>
+                        <div class="marquee-preview-box">
+                            <span class="marquee-preview-inner" id="marqueePreviewText">
+                                @(Model.Announcements.FirstOrDefault(a => a.IsActive)?.Text ?? "No active announcement")
+                            </span>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+
+            @* {{-- ═══ RIGHT COLUMN ═══ --}} *@
+            <div class="ls-col">
+
+                @* {{-- Giving panel --}} *@
+                <div class="ls-card">
+                    <div class="ls-card-header">
+                        <div class="ls-card-title">
+                            <i class="fas fa-hand-holding-heart" style="color:#10b981"></i>
+                            Giving Panel
+                        </div>
+                        <div style="display:flex;align-items:center;gap:.6rem">
+                            <span class="ls-badge ls-badge-green">Live page</span>
+                            <label class="ls-toggle-wrap">
+                                <input type="checkbox" asp-for="ShowGivingPanel" class="ls-toggle-input"
+                                       onchange="pushOverlay('giving', this.checked)" />
+                                <span class="ls-toggle"></span>
+                            </label>
+                        </div>
+                    </div>
+
+                    <div class="ls-card-body">
+                        <div class="form-group">
+                            <label class="ls-field-label">Call-to-action message</label>
+                            <input asp-for="GivingCta" class="form-control"
+                                   placeholder="Support this ministry - give today!"
+                                   oninput="pushGivingCta(this.value)" />
+                        </div>
+
+                        <div class="form-group">
+                            <label class="ls-field-label">Panel position</label>
+                            <div class="ls-position-group">
+                                @foreach (var pos in Enum.GetValues<ChurchMinistry.Models.GivingPanelPosition>())
+                                {
+                                    <label class="ls-position-option">
+                                        <input type="radio" asp-for="GivingPanelPosition" value="@pos" />
+                                        <span>@pos</span>
+                                    </label>
+                                }
+                            </div>
+                        </div>
+
+                        <div class="ls-field-label" style="margin-bottom:.6rem">Payment methods</div>
+                        <div class="ls-methods-list">
+                            <label class="ls-method-row">
+                                <input type="checkbox" asp-for="ShowMtn" />
+                                <span class="ls-method-icon ls-mtn">MTN</span>
+                                <div>
+                                    <div style="font-size:.88rem;font-weight:600">MTN Mobile Money</div>
+                                    <div style="font-size:.75rem;color:var(--text-s)">Uganda +256</div>
+                                </div>
+                            </label>
+                            <label class="ls-method-row">
+                                <input type="checkbox" asp-for="ShowAirtel" />
+                                <span class="ls-method-icon ls-airtel">AIR</span>
+                                <div>
+                                    <div style="font-size:.88rem;font-weight:600">Airtel Money</div>
+                                    <div style="font-size:.75rem;color:var(--text-s)">Uganda +256</div>
+                                </div>
+                            </label>
+                            <label class="ls-method-row">
+                                <input type="checkbox" asp-for="ShowMpesa" />
+                                <span class="ls-method-icon ls-mpesa">M-P</span>
+                                <div>
+                                    <div style="font-size:.88rem;font-weight:600">M-Pesa</div>
+                                    <div style="font-size:.75rem;color:var(--text-s)">Kenya +254</div>
+                                </div>
+                            </label>
+                            <label class="ls-method-row">
+                                <input type="checkbox" asp-for="ShowVisa" />
+                                <span class="ls-method-icon ls-visa">VISA</span>
+                                <div>
+                                    <div style="font-size:.88rem;font-weight:600">VISA / Mastercard</div>
+                                    <div style="font-size:.75rem;color:var(--text-s)">International</div>
+                                </div>
+                            </label>
+                        </div>
+                    </div>
+                </div>
+
+                @* {{-- Visibility toggles --}} *@
+                <div class="ls-card">
+                    <div class="ls-card-header">
+                        <div class="ls-card-title">
+                            <i class="fas fa-eye" style="color:#6366f1"></i>
+                            Visibility
+                        </div>
+                    </div>
+                    <div class="ls-toggle-list">
+                        @* <div class="ls-toggle-row">
+                            <div>
+                                <div style="font-size:.88rem;font-weight:600">Bible verse overlay</div>
+                                <div style="font-size:.75rem;color:var(--text-s)">Bottom of video player</div>
+                            </div>
+                            <label class="ls-toggle-wrap">
+                                <input type="checkbox" asp-for="ShowVerseOverlay" class="ls-toggle-input" />
+                                <span class="ls-toggle"></span>
+                            </label>
+                        </div> *@
+                        @* <div class="ls-toggle-row">
+                            <div>
+                                <div style="font-size:.88rem;font-weight:600">Announcement marquee</div>
+                                <div style="font-size:.75rem;color:var(--text-s)">Top ticker bar</div>
+                            </div>
+                            <label class="ls-toggle-wrap">
+                                <input type="checkbox" asp-for="ShowMarquee" class="ls-toggle-input" />
+                                <span class="ls-toggle"></span>
+                            </label>
+                        </div> *@
+                       @*  <div class="ls-toggle-row">
+                            <div>
+                                <div style="font-size:.88rem;font-weight:600">Giving panel</div>
+                                <div style="font-size:.75rem;color:var(--text-s)">Alongside the player</div>
+                            </div>
+                            <label class="ls-toggle-wrap">
+                                <input type="checkbox" asp-for="ShowGivingPanel" class="ls-toggle-input" />
+                                <span class="ls-toggle"></span>
+                            </label>
+                        </div> *@
+                        <div class="ls-toggle-row">
+                            <div>
+                                <div style="font-size:.88rem;font-weight:600">Prayer request button</div>
+                                <div style="font-size:.75rem;color:var(--text-s)">Floating action button</div>
+                            </div>
+                            <label class="ls-toggle-wrap">
+                                <input type="checkbox" asp-for="ShowPrayerButton" class="ls-toggle-input" />
+                                <span class="ls-toggle"></span>
+                            </label>
+                        </div>
+                    </div>
+                </div>
+
+                @* {{-- Save button --}} *@
+                <button type="submit" class="btn btn-primary btn-full" style="padding:.85rem">
+                    <i class="fas fa-save"></i> Save &amp; Push to Viewers
+                </button>
+                <p style="font-size:.78rem;color:var(--text-s);text-align:center;margin-top:.5rem">
+                    Changes are pushed live instantly via SignalR. No page refresh needed for viewers.
+                </p>
+
+            </div>
+        </div>
+    </form>
+</div>
+
+@section Scripts {
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/microsoft-signalr/8.0.0/signalr.min.js"></script>
+    <script>
+        const SERMON_ID = @sermonId;
+        const BASE = `/Admin/LiveSettings/${SERMON_ID}`;
+
+        // ── SignalR admin connection ──────────────────────────────
+        const conn = new signalR.HubConnectionBuilder()
+            .withUrl('/liveSessionHub')
+            .withAutomaticReconnect()
+            .build();
+        conn.start().catch(console.error);
+
+        // ── Verse lookup (Bible API) ──────────────────────────────
+        let lookupData = null;
+
+        async function lookupVerse() {
+            const ref = document.getElementById('verseRef').value.trim();
+            if (!ref) return;
+            const trans = document.getElementById('verseTranslation')?.value || 'kjv';
+
+            // Use Bible-api.com (free, no key needed)
+            try {
+                const encoded = encodeURIComponent(ref);
+                const res = await fetch(`https://bible-api.com/${encoded}?translation=${trans.toLowerCase()}`);
+                const data = await res.json();
+
+                if (data.error) { alert('Verse not found. Try: John 3:16 or Psalm 23:1'); return; }
+
+                lookupData = {
+                    reference: data.reference,
+                    verseText: data.text.replace(/\n/g, ' ').trim(),
+                    translation: trans
+                };
+
+                document.getElementById('verseResultRef').textContent = data.reference;
+                document.getElementById('verseResultText').textContent = lookupData.verseText;
+                document.getElementById('verseResult').style.display = 'block';
+            } catch {
+                alert('Could not reach Bible API. Check your connection.');
+            }
+        }
+
+        async function saveVerse() {
+            if (!lookupData) return;
+            const btn = event.currentTarget;
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving…';
+            const fd = new FormData();
+            fd.append('reference', lookupData.reference);
+            fd.append('verseText', lookupData.verseText);
+            fd.append('translation', lookupData.translation);
+            const res = await fetch(`${BASE}/AddVerse`, { method: 'POST', body: fd });
+            const data = await res.json();
+            if (data.success) {
+                addVerseToList(data.id, lookupData.reference, lookupData.translation, lookupData.verseText, false);
+                document.getElementById('verseResult').style.display = 'none';
+                document.getElementById('verseRef').value = '';
+                lookupData = null;
+                showToast('✝ Verse saved to list');
+            }
+            btn.disabled = false;
+            btn.innerHTML = '<i class="fas fa-save"></i> Save to list';
+        }
+
+        async function saveAndActivateVerse() {
+            if (!lookupData) return;
+            const btn = event.currentTarget;
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Activating…';
+
+            try {
+                // Step 1: save to DB
+                const fd = new FormData();
+                fd.append('reference', lookupData.reference);
+                fd.append('verseText', lookupData.verseText);
+                fd.append('translation', lookupData.translation);
+                const saveRes = await fetch(`${BASE}/AddVerse`, { method: 'POST', body: fd });
+
+                // Check we got JSON back, not a redirect/error page
+                const contentType = saveRes.headers.get('content-type') ?? '';
+                if (!contentType.includes('application/json')) {
+                    const raw = await saveRes.text();
+                    console.error('AddVerse returned non-JSON:', saveRes.status, raw.substring(0, 200));
+                    showToast('❌ Server error — check console for details');
+                    return;
+                }
+
+                const saveData = await saveRes.json();
+                if (!saveData.success) {
+                    showToast('❌ Could not save verse: ' + (saveData.message ?? 'unknown error'));
+                    return;
+                }
+
+                const newId = saveData.id;
+
+                // Step 2: activate in DB
+                await fetch(`${BASE}/ActivateVerse/${newId}`, { method: 'POST' });
+
+                // Step 3: push to live page via SignalR
+                await conn.invoke('PushVerse', SERMON_ID,
+                    lookupData.reference, lookupData.verseText, lookupData.translation
+                ).catch(e => console.warn('SignalR PushVerse failed:', e));
+
+                // Step 4: update UI without reload
+                document.querySelectorAll('.ls-list-item').forEach(el => {
+                    if (!el.id.startsWith('verse-item-')) return;
+                    el.classList.remove('ls-item-active');
+                    el.querySelector('.ls-radio')?.classList.remove('ls-radio-on');
+                    el.querySelector('.ls-badge-green')?.remove();
+                    const stopBtn = el.querySelector('.ls-icon-btn-red[onclick^="clearVerse"]');
+                    if (stopBtn) {
+                        const vid = el.id.replace('verse-item-', '');
+                        stopBtn.outerHTML = `<button type="button" class="ls-icon-btn"
+                            title="Activate on live page" onclick="activateVerse(${vid})">
+                            <i class="fas fa-play"></i></button>`;
+                    }
+                });
+
+                addVerseToList(newId, lookupData.reference, lookupData.translation, lookupData.verseText, true);
+                document.getElementById('verseResult').style.display = 'none';
+                document.getElementById('verseRef').value = '';
+                document.getElementById('verseEmpty')?.remove();
+                lookupData = null;
+
+                showToast(`✝ ${saveData.reference} is now live on the screen`);
+
+            } catch (err) {
+                console.error('saveAndActivateVerse error:', err);
+                showToast('❌ Error: ' + err.message);
+            } finally {
+                // Always reset the button — even if something threw
+                btn.disabled = false;
+                btn.innerHTML = '<i class="fas fa-play"></i> Save &amp; Go Live';
+            }
+        }
+
+        function addVerseToList(id, reference, translation, verseText, isActive) {
+            // Remove empty state placeholder if present
+            document.getElementById('verseEmpty')?.remove();
+
+            const list = document.getElementById('verseList');
+            const preview = verseText.length > 80
+                ? verseText.substring(0, 80) + '…' : verseText;
+
+            const div = document.createElement('div');
+            div.className = `ls-list-item ${isActive ? 'ls-item-active' : ''}`;
+            div.id = `verse-item-${id}`;
+            div.innerHTML = `
+                <div style="display:flex;align-items:center;gap:.6rem;flex:1;min-width:0">
+                    <div class="ls-radio ${isActive ? 'ls-radio-on' : ''}"></div>
+                    <div style="flex:1;min-width:0">
+                        <div class="ls-item-title">
+                            ${escHtml(reference)}
+                            <span class="tag" style="font-size:.7rem;margin-left:.3rem">${escHtml(translation)}</span>
+                            ${isActive ? '<span class="ls-badge ls-badge-green" style="margin-left:.3rem">Active</span>' : ''}
+                        </div>
+                        <div class="ls-item-sub">${escHtml(preview)}</div>
+                    </div>
+                </div>
+                <div style="display:flex;gap:.3rem;flex-shrink:0">
+                    ${isActive
+                        ? `<button type="button" class="ls-icon-btn ls-icon-btn-red" title="Clear verse"
+                              onclick="clearVerse()"><i class="fas fa-stop"></i></button>`
+                        : `<button type="button" class="ls-icon-btn" title="Activate on live page"
+                              onclick="activateVerse(${id})"><i class="fas fa-play"></i></button>`}
+                    <button type="button" class="ls-icon-btn ls-icon-btn-red" title="Delete"
+                            onclick="deleteVerse(${id})"><i class="fas fa-trash"></i></button>
+                </div>`;
+            list.appendChild(div);
+        }
+
+        function escHtml(s) {
+            const d = document.createElement('div');
+            d.textContent = s ?? '';
+            return d.innerHTML;
+        }
+
+        async function activateVerse(id) {
+            const res = await fetch(`${BASE}/ActivateVerse/${id}`, { method: 'POST' });
+            const data = await res.json();
+            if (data.success) {
+                document.querySelectorAll('.ls-list-item').forEach(el => {
+                    if (el.id.startsWith('verse-item-')) {
+                        el.classList.remove('ls-item-active');
+                        el.querySelector('.ls-radio')?.classList.remove('ls-radio-on');
+                    }
+                });
+                const item = document.getElementById(`verse-item-${id}`);
+                item?.classList.add('ls-item-active');
+                item?.querySelector('.ls-radio')?.classList.add('ls-radio-on');
+                showToast(`✝ ${data.reference} is now live on the screen`);
+            }
+        }
+
+        async function clearVerse() {
+            await fetch(`${BASE}/ClearVerse`, { method: 'POST' });
+            document.querySelectorAll('[id^="verse-item-"]').forEach(el => {
+                el.classList.remove('ls-item-active');
+                el.querySelector('.ls-radio')?.classList.remove('ls-radio-on');
+            });
+            showToast('Verse overlay cleared');
+        }
+
+        async function deleteVerse(id) {
+            if (!confirm('Remove this verse?')) return;
+            await fetch(`${BASE}/DeleteVerse/${id}`, { method: 'POST' });
+            document.getElementById(`verse-item-${id}`)?.remove();
+        }
+
+        // ── Announcements ─────────────────────────────────────────
+        async function addAnnouncement() {
+            const text = document.getElementById('newAnnText').value.trim();
+            if (!text) return;
+            const fd = new FormData();
+            fd.append('text', text);
+            await fetch(`${BASE}/AddAnnouncement`, { method: 'POST', body: fd });
+            location.reload();
+        }
+
+        async function activateAnnouncement(id) {
+            const res = await fetch(`${BASE}/ActivateAnnouncement/${id}`, { method: 'POST' });
+            const data = await res.json();
+            if (data.success) {
+                document.getElementById('marqueePreviewText').textContent = data.text;
+                document.querySelectorAll('[id^="ann-item-"]').forEach(el => {
+                    el.classList.remove('ls-item-active');
+                    el.querySelector('.ls-radio')?.classList.remove('ls-radio-on');
+                });
+                const item = document.getElementById(`ann-item-${id}`);
+                item?.classList.add('ls-item-active');
+                item?.querySelector('.ls-radio')?.classList.add('ls-radio-on');
+                showToast('📢 Announcement is now scrolling on the live page');
+            }
+        }
+
+        async function deleteAnnouncement(id) {
+            if (!confirm('Delete this announcement?')) return;
+            await fetch(`${BASE}/DeleteAnnouncement/${id}`, { method: 'POST' });
+            document.getElementById(`ann-item-${id}`)?.remove();
+        }
+
+        // ── Real-time push helpers ────────────────────────────────
+        function pushOverlay(name, visible) {
+            conn.invoke('ToggleOverlay', SERMON_ID, name, visible).catch(console.error);
+            showToast(`${visible ? '✅' : '🚫'} ${name} overlay ${visible ? 'shown' : 'hidden'} for viewers`);
+        }
+
+        function pushMarqueeSpeed(speed) {
+            conn.invoke('SetMarqueeSpeed', SERMON_ID, speed.toLowerCase()).catch(console.error);
+        }
+
+        let ctaTimer;
+        function pushGivingCta(text) {
+            clearTimeout(ctaTimer);
+            ctaTimer = setTimeout(() => {
+                conn.invoke('PushGivingCta', SERMON_ID, text).catch(console.error);
+            }, 800);
+        }
+
+        // ── Toast ─────────────────────────────────────────────────
+        function showToast(msg) {
+            const t = document.createElement('div');
+            t.className = 'ls-toast';
+            t.textContent = msg;
+            document.body.appendChild(t);
+            setTimeout(() => t.classList.add('ls-toast-show'), 10);
+            setTimeout(() => { t.classList.remove('ls-toast-show'); setTimeout(() => t.remove(), 400); }, 3000);
+        }
+    </script>
+
+    <style>
+        /* ── Page layout ───────────────────────────── */
+        .live-settings-page {
+            max-width: 1100px;
+            margin: 2rem auto;
+            padding: 0 1.5rem;
+        }
+
+        .ls-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1.25rem;
+        }
+
+        .ls-col {
+            display: flex;
+            flex-direction: column;
+            gap: 1.25rem;
+        }
+
+        /* ── Card ──────────────────────────────────── */
+        .ls-card {
+            background: var(--white);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            box-shadow: var(--shadow);
+            overflow: hidden;
+        }
+
+        .ls-card-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: .85rem 1rem;
+            border-bottom: 1px solid var(--border);
+            background: #fafafa;
+        }
+
+        .ls-card-title {
+            display: flex;
+            align-items: center;
+            gap: .5rem;
+            font-size: .9rem;
+            font-weight: 700;
+        }
+
+        .ls-card-body {
+            padding: 1rem;
+        }
+
+        .ls-card-footer {
+            padding: .85rem 1rem;
+            border-top: 1px solid var(--border);
+            background: #fafafa;
+        }
+
+        /* ── Badges ────────────────────────────────── */
+        .ls-badge {
+            display: inline-flex;
+            align-items: center;
+            padding: .2rem .6rem;
+            border-radius: 100px;
+            font-size: .72rem;
+            font-weight: 700;
+        }
+
+        .ls-badge-purple {
+            background: #ede9fe;
+            color: #5b21b6;
+        }
+
+        .ls-badge-amber {
+            background: #fef3c7;
+            color: #92400e;
+        }
+
+        .ls-badge-green {
+            background: #d1fae5;
+            color: #065f46;
+        }
+
+        /* ── Toggle ────────────────────────────────── */
+        .ls-toggle-wrap {
+            display: inline-flex;
+            align-items: center;
+            cursor: pointer;
+        }
+
+        .ls-toggle-input {
+            display: none;
+        }
+
+        .ls-toggle {
+            width: 36px;
+            height: 20px;
+            background: var(--border);
+            border-radius: 100px;
+            position: relative;
+            transition: background .2s;
+        }
+
+            .ls-toggle::after {
+                content: '';
+                position: absolute;
+                width: 16px;
+                height: 16px;
+                background: white;
+                border-radius: 50%;
+                top: 2px;
+                left: 2px;
+                transition: transform .2s;
+                box-shadow: 0 1px 3px rgba(0,0,0,.2);
+            }
+
+        .ls-toggle-input:checked ~ .ls-toggle {
+            background: var(--purple);
+        }
+
+            .ls-toggle-input:checked ~ .ls-toggle::after {
+                transform: translateX(16px);
+            }
+
+        /* ── List items ────────────────────────────── */
+        .ls-list-item {
+            display: flex;
+            align-items: center;
+            gap: .75rem;
+            padding: .75rem 1rem;
+            border-bottom: 1px solid var(--border);
+            transition: background .15s;
+        }
+
+            .ls-list-item:last-child {
+                border-bottom: none;
+            }
+
+            .ls-list-item:hover {
+                background: #fafafa;
+            }
+
+        .ls-item-active {
+            background: #f5f3ff !important;
+            border-left: 3px solid var(--purple);
+        }
+
+        .ls-item-title {
+            font-size: .88rem;
+            font-weight: 600;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .ls-item-sub {
+            font-size: .78rem;
+            color: var(--text-s);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            margin-top: .1rem;
+        }
+
+        /* ── Radio dot ─────────────────────────────── */
+        .ls-radio {
+            width: 14px;
+            height: 14px;
+            border-radius: 50%;
+            border: 1.5px solid var(--border);
+            flex-shrink: 0;
+        }
+
+        .ls-radio-on {
+            border-color: var(--purple);
+            background: var(--purple);
+        }
+
+            .ls-radio-on::after {
+                content: '';
+                display: block;
+                width: 5px;
+                height: 5px;
+                background: white;
+                border-radius: 50%;
+                margin: 2.5px;
+            }
+
+        /* ── Icon buttons ──────────────────────────── */
+        .ls-icon-btn {
+            width: 28px;
+            height: 28px;
+            border-radius: 7px;
+            border: 1px solid var(--border);
+            background: var(--white);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: .8rem;
+            color: var(--text);
+            transition: all .15s;
+        }
+
+            .ls-icon-btn:hover {
+                background: var(--purple-l);
+                border-color: var(--purple);
+                color: var(--purple);
+            }
+
+        .ls-icon-btn-red:hover {
+            background: #fee2e2 !important;
+            border-color: #fca5a5 !important;
+            color: #dc2626 !important;
+        }
+
+        /* ── Verse result card ─────────────────────── */
+        .verse-result-card {
+            background: #f5f3ff;
+            border: 1px solid #ddd6fe;
+            border-radius: 10px;
+            padding: .85rem;
+        }
+
+        /* ── Empty state ───────────────────────────── */
+        .ls-empty {
+            text-align: center;
+            padding: 2rem 1rem;
+            color: var(--text-s);
+        }
+
+            .ls-empty i {
+                font-size: 1.5rem;
+                color: var(--border);
+                display: block;
+                margin-bottom: .5rem;
+            }
+
+            .ls-empty p {
+                font-size: .85rem;
+            }
+
+        /* ── Marquee preview ───────────────────────── */
+        .marquee-preview-box {
+            background: #1a1a2e;
+            border-radius: 6px;
+            padding: .5rem .75rem;
+            overflow: hidden;
+            white-space: nowrap;
+        }
+
+        .marquee-preview-inner {
+            display: inline-block;
+            color: #f0a500;
+            font-size: .82rem;
+            animation: marqueeAnim 14s linear infinite;
+        }
+
+        @@keyframes marqueeAnim {
+            0% {
+                transform: translateX(100%)
+            }
+
+            100% {
+                transform: translateX(-120%)
+            }
+        }
+
+        /* ── Toggle list (visibility card) ────────── */
+        .ls-toggle-list {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .ls-toggle-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: .85rem 1rem;
+            border-bottom: 1px solid var(--border);
+        }
+
+            .ls-toggle-row:last-child {
+                border-bottom: none;
+            }
+
+        .ls-inline-toggle {
+            display: flex;
+            align-items: center;
+            gap: .6rem;
+            cursor: pointer;
+        }
+
+        /* ── Giving methods ────────────────────────── */
+        .ls-methods-list {
+            display: flex;
+            flex-direction: column;
+            gap: .5rem;
+        }
+
+        .ls-method-row {
+            display: flex;
+            align-items: center;
+            gap: .75rem;
+            padding: .6rem .75rem;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            cursor: pointer;
+            transition: border-color .15s;
+        }
+
+            .ls-method-row:has(input:checked) {
+                border-color: var(--purple);
+                background: var(--purple-l);
+            }
+
+            .ls-method-row input {
+                width: 15px;
+                height: 15px;
+                flex-shrink: 0;
+            }
+
+        .ls-method-icon {
+            width: 36px;
+            height: 22px;
+            border-radius: 4px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: .72rem;
+            font-weight: 800;
+            flex-shrink: 0;
+        }
+
+        .ls-mtn {
+            background: #fbbf24;
+            color: #000;
+        }
+
+        .ls-airtel {
+            background: #ef4444;
+            color: white;
+        }
+
+        .ls-mpesa {
+            background: #10b981;
+            color: white;
+        }
+
+        .ls-visa {
+            background: #1e40af;
+            color: white;
+        }
+
+        /* ── Position group ────────────────────────── */
+        .ls-position-group {
+            display: flex;
+            gap: .4rem;
+        }
+
+        .ls-position-option {
+            display: flex;
+            align-items: center;
+            gap: .35rem;
+            padding: .4rem .75rem;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: .82rem;
+            font-weight: 500;
+            transition: all .15s;
+        }
+
+            .ls-position-option:has(input:checked) {
+                border-color: var(--purple);
+                background: var(--purple-l);
+                color: var(--purple);
+            }
+
+            .ls-position-option input {
+                display: none;
+            }
+
+        /* ── Field label ───────────────────────────── */
+        .ls-field-label {
+            font-size: .8rem;
+            font-weight: 600;
+            color: var(--text-s);
+            text-transform: uppercase;
+            letter-spacing: .04em;
+            margin-bottom: .5rem;
+            display: block;
+        }
+
+        /* ── Toast ─────────────────────────────────── */
+        .ls-toast {
+            position: fixed;
+            bottom: 1.5rem;
+            right: 1.5rem;
+            z-index: 9999;
+            background: #1e1b4b;
+            color: white;
+            padding: .75rem 1.25rem;
+            border-radius: 10px;
+            font-size: .88rem;
+            box-shadow: var(--shadow-l);
+            opacity: 0;
+            transform: translateY(8px);
+            transition: all .3s;
+            max-width: 320px;
+        }
+
+        .ls-toast-show {
+            opacity: 1;
+            transform: translateY(0);
+        }
+
+        @@media (max-width: 900px) {
+            .ls-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+}

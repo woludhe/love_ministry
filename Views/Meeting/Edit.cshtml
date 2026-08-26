@@ -1,0 +1,129 @@
+@model ChurchMinistry.ViewModels.CreateMeetingViewModel
+@{
+    ViewData["Title"] = "Edit Meeting";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+    var roomId   = ViewBag.RoomId as int? ?? 0;
+    var roomCode = ViewBag.RoomCode as string ?? "";
+}
+
+<div style="max-width:640px;margin:2rem auto;padding:0 1rem">
+
+    <div style="margin-bottom:1.5rem">
+        <a asp-action="Index" style="color:rgba(255,255,255,.45);font-size:.85rem;
+           text-decoration:none;display:inline-flex;align-items:center;gap:.4rem">
+            <i class="fas fa-arrow-left"></i> Meetings
+        </a>
+        <h1 style="font-size:1.4rem;font-weight:800;margin:.5rem 0 .25rem">Edit Meeting</h1>
+        <p style="font-size:.85rem;color:rgba(255,255,255,.4)">
+            Room code: <span style="font-family:monospace;color:#a5b4fc">@roomCode</span>
+        </p>
+    </div>
+
+    <form asp-action="Edit" asp-route-id="@roomId" method="post"
+          style="background:#18181f;border:1px solid rgba(255,255,255,.08);
+                 border-radius:16px;padding:1.75rem;display:flex;flex-direction:column;gap:1.1rem">
+        @Html.AntiForgeryToken()
+
+        <div class="mf">
+            <label class="ml">Title <span style="color:#ef4444">*</span></label>
+            <input asp-for="Title" class="mi" required placeholder="e.g. Sunday Prayer Meeting" />
+            <span asp-validation-for="Title" class="me"></span>
+        </div>
+
+        <div class="mf">
+            <label class="ml">Description</label>
+            <textarea asp-for="Description" class="mi" rows="3"
+                      placeholder="What will this meeting cover?"></textarea>
+        </div>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:.85rem">
+            <div class="mf">
+                <label class="ml">Meeting Type</label>
+                <select asp-for="MeetingType" class="mi">
+                    @foreach (var t in Enum.GetValues<ChurchMinistry.Models.MeetingType>())
+                    {
+                        <option value="@t">@t</option>
+                    }
+                </select>
+            </div>
+            <div class="mf">
+                <label class="ml">Scheduled Date &amp; Time</label>
+                <input asp-for="ScheduledAt" type="datetime-local" class="mi" />
+                <span asp-validation-for="ScheduledAt" class="me"></span>
+            </div>
+        </div>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:.85rem">
+            <div class="mf">
+                <label class="ml">Max Participants</label>
+                <input asp-for="MaxParticipants" type="number" class="mi" min="2" max="500" />
+            </div>
+            <div class="mf">
+                <label class="ml">Passcode <span style="font-size:.75rem;color:rgba(255,255,255,.35)">(optional)</span></label>
+                <input asp-for="PassCode" class="mi" placeholder="Leave blank for no passcode" />
+            </div>
+        </div>
+
+        <div style="display:flex;gap:1.5rem;flex-wrap:wrap;color:whitesmoke;">
+            <label style="display:flex;align-items:center;gap:.5rem;cursor:pointer;font-size:.88rem">
+                <input asp-for="IsPublic" type="checkbox"
+                       style="width:16px;height:16px;accent-color:#6366f1" />
+                Public meeting (visible to all members)
+            </label>
+            <label style="display:flex;align-items:center;gap:.5rem;cursor:pointer;font-size:.88rem">
+                <input asp-for="WaitingRoomEnabled" type="checkbox"
+                       style="width:16px;height:16px;accent-color:#6366f1" />
+                Enable waiting room
+            </label>
+            <label style="display:flex;align-items:center;gap:.5rem;cursor:pointer;font-size:.88rem">
+                <input asp-for="ChatEnabled" type="checkbox"
+                       style="width:16px;height:16px;accent-color:#6366f1" />
+                Enable chat
+            </label>
+            <label style="display:flex;align-items:center;gap:.5rem;cursor:pointer;font-size:.88rem">
+                <input asp-for="IsRecurring" type="checkbox"
+                       style="width:16px;height:16px;accent-color:#6366f1" />
+                Recurring meeting
+            </label>
+        </div>
+
+        <div style="display:flex;gap:.75rem;justify-content:flex-end;padding-top:.5rem;
+                    border-top:1px solid rgba(255,255,255,.07)">
+            <a asp-action="Index"
+               style="display:inline-flex;align-items:center;gap:.45rem;padding:.6rem 1.2rem;
+                      border-radius:9px;background:rgba(255,255,255,.07);color:rgba(255,255,255,.7);
+                      border:1px solid rgba(255,255,255,.1);font-size:.88rem;font-weight:600;
+                      text-decoration:none">
+                Cancel
+            </a>
+            @if (!Model.IsPublic)
+            {
+                <a asp-action="Invite" asp-route-id="@roomId"
+                   style="display:inline-flex;align-items:center;gap:.45rem;padding:.6rem 1.2rem;
+                          border-radius:9px;background:rgba(99,102,241,.15);color:#a5b4fc;
+                          border:1px solid rgba(99,102,241,.3);font-size:.88rem;font-weight:600;
+                          text-decoration:none">
+                    <i class="fas fa-user-plus"></i> Invite People
+                </a>
+            }
+            <button type="submit"
+                    style="display:inline-flex;align-items:center;gap:.45rem;padding:.6rem 1.25rem;
+                           border-radius:9px;background:#6366f1;color:white;border:none;
+                           font-size:.88rem;font-weight:700;cursor:pointer">
+                <i class="fas fa-save"></i> Save Changes
+            </button>
+        </div>
+    </form>
+</div>
+
+<style>
+.mf { display:flex;flex-direction:column;gap:.35rem; }
+.ml { font-size:.82rem;font-weight:600;color:rgba(255,255,255,.45); }
+.mi { background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);
+      border-radius:9px;padding:.55rem .85rem;color:rgba(255,255,255,.88);
+      font-size:.88rem;width:100%;transition:border .15s; }
+.mi:focus { outline:none;border-color:rgba(99,102,241,.5);
+            box-shadow:0 0 0 3px rgba(99,102,241,.1); }
+.me { font-size:.75rem;color:#fca5a5; }
+select.mi option { background:#18181f; }
+</style>

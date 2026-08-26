@@ -1,0 +1,21 @@
+@model ChurchMinistry.ViewComponents.CurrentMemberViewModel
+
+@* 
+  This view is rendered wherever @await Component.InvokeAsync("CurrentMember") is called.
+  Typically used inside _Layout.cshtml for the navbar avatar + member info strip.
+  The model is always non-null - check IsAuthenticated before rendering member-specific UI.
+*@
+
+@if (Model.IsAuthenticated)
+{
+    <div class="nav-member-chip">
+        <img src="@Model.ProfilePhoto"
+             alt="@Model.FullName"
+             class="nav-member-photo"
+             onerror="this.src='/images/avatar-default.png'" />
+        <div class="nav-member-info">
+            <span class="nav-member-name">@Model.FullName</span>
+            <span class="nav-member-type">@Model.MembershipType</span>
+        </div>
+    </div>
+}

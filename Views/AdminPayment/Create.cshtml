@@ -1,0 +1,431 @@
+@model ChurchMinistry.Models.PaymentMethodConfig
+@{
+    var isEdit = Model.Id > 0;
+    ViewData["Title"] = isEdit ? "Edit Payment Method" : "Add Payment Method";
+    Layout = "~/Views/Shared/_AdminDashboard_Layout.cshtml";
+}
+
+<div class="member-main">
+    <div class="page-header">
+        <div>
+            <a asp-action="Index" class="pm-back">
+                <i class="fas fa-arrow-left"></i> Payment Methods
+            </a>
+            <h1 class="pm-title" style="margin-top:.5rem">
+                @(isEdit ? "Edit Payment Method" : "Add Payment Method")
+            </h1>
+        </div>
+    </div>
+
+    <div class="form-page">
+        <form method="post" enctype="multipart/form-data" class="pm-form" id="pmForm">
+        @Html.AntiForgeryToken()
+
+        <div class="pm-form-grid">
+
+            @* ── Left column ── *@
+            <div class="pm-form-col">
+
+                <div class="pm-section">
+                    <h2 class="pm-section-title">
+                        <i class="fas fa-tag"></i> Identity
+                    </h2>
+
+                    <div class="pm-field">
+                        <label>Method Name <span class="pm-req">*</span></label>
+                        <input asp-for="Name" class="pm-input" placeholder="e.g. MTN Mobile Money" required />
+                        <span asp-validation-for="Name" class="pm-error"></span>
+                    </div>
+
+                    <div class="pm-row">
+                        <div class="pm-field">
+                            <label>Code <span class="pm-req">*</span></label>
+                            <input asp-for="Code" class="pm-input" placeholder="e.g. mtn" required />
+                            <span class="pm-hint">Lowercase, no spaces. Used internally.</span>
+                        </div>
+                        <div class="pm-field">
+                            <label>Badge Label</label>
+                            <input asp-for="BadgeLabel" class="pm-input" placeholder="MTN" maxlength="8" />
+                            <span class="pm-hint">Short label on the payment button.</span>
+                        </div>
+                    </div>
+
+                    <div class="pm-field">
+                        <label>Badge Color</label>
+                        <div class="pm-color-row">
+                            <input type="color" asp-for="BadgeColor" class="pm-color-swatch"
+                                   oninput="document.getElementById('colorHex').value=this.value" />
+                            <input type="text" id="colorHex" value="@Model.BadgeColor"
+                                   class="pm-input pm-input-sm"
+                                   oninput="document.querySelector('[name=BadgeColor]').value=this.value"
+                                   placeholder="#d97706" maxlength="7" />
+                            <div class="pm-color-presets">
+                                @foreach (var (hex,label) in new[]{
+                                    ("#d97706","MTN"),("#dc2626","Airtel"),("#059669","MPesa"),
+                                    ("#1d4ed8","Visa"),("#6366f1","Purple"),("#374151","Gray")})
+                                {
+                                    <button type="button" class="pm-color-dot"
+                                            style="background:@hex" title="@label"
+                                            onclick="setColor('@hex')"></button>
+                                }
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="pm-field">
+                        <label>
+                            <input asp-for="IsActive" type="checkbox" class="pm-checkbox" />
+                            Active — show on giving page
+                        </label>
+                    </div>
+                </div>
+
+                <div class="pm-section">
+                    <h2 class="pm-section-title">
+                        <i class="fas fa-money-bill"></i> Currency
+                    </h2>
+
+                    <div class="pm-row">
+                        <div class="pm-field">
+                            <label>Currency Code <span class="pm-req">*</span></label>
+                            <select asp-for="Currency" class="pm-input" required>
+                                @foreach (var c in new[]{("UGX","Uganda Shilling"),("KES","Kenya Shilling"),
+                                    ("TZS","Tanzania Shilling"),("USD","US Dollar"),("GBP","British Pound"),
+                                    ("EUR","Euro"),("ZAR","South African Rand"),("NGN","Nigerian Naira"),
+                                    ("GHS","Ghanaian Cedi")})
+                                {
+                                    <option value="@c.Item1"
+                                        selected="@(Model.Currency == c.Item1 ? "selected" : null)">
+                                        @c.Item1 — @c.Item2
+                                    </option>
+                                }
+                            </select>
+                        </div>
+                        <div class="pm-field">
+                            <label>Display Symbol</label>
+                            <input asp-for="CurrencySymbol" class="pm-input" placeholder="UGX" maxlength="5" />
+                            <span class="pm-hint">e.g. UGX, KSh, $, £</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="pm-section">
+                    <h2 class="pm-section-title">
+                        <i class="fas fa-layer-group"></i> Default Quick Amounts
+                    </h2>
+                    <div class="pm-field">
+                        <label>Amounts (comma separated)</label>
+                        <input asp-for="DefaultAmounts" class="pm-input"
+                               placeholder="5000,10000,20000,50000,100000" />
+                        <span class="pm-hint">These appear as quick-pick buttons on the giving page.</span>
+                    </div>
+                    <div class="pm-amounts-preview" id="amountsPreview"></div>
+                </div>
+
+            </div>
+
+            @* ── Right column ── *@
+            <div class="pm-form-col">
+
+                <div class="pm-section">
+                    <h2 class="pm-section-title">
+                        <i class="fas fa-plug"></i> Integration
+                    </h2>
+
+                    <div class="pm-integration-tabs">
+                        <label class="pm-int-tab @(Model.IntegrationType == ChurchMinistry.Models.PaymentIntegrationType.Flutterwave ? "active" : "")">
+                            <input type="radio" name="IntegrationType" value="0"
+                                   @(Model.IntegrationType == ChurchMinistry.Models.PaymentIntegrationType.Flutterwave ? "checked" : "")
+                                   onchange="switchIntegration('flutterwave')" />
+                            <i class="fas fa-bolt" style="color:#f59e0b"></i>
+                            Flutterwave
+                            <span class="pm-int-desc">Automated checkout</span>
+                        </label>
+                        <label class="pm-int-tab @(Model.IntegrationType == ChurchMinistry.Models.PaymentIntegrationType.Manual ? "active" : "")">
+                            <input type="radio" name="IntegrationType" value="1"
+                                   @(Model.IntegrationType == ChurchMinistry.Models.PaymentIntegrationType.Manual ? "checked" : "")
+                                   onchange="switchIntegration('manual')" />
+                            <i class="fas fa-file-alt" style="color:#6366f1"></i>
+                            Manual
+                            <span class="pm-int-desc">Custom instructions</span>
+                        </label>
+                    </div>
+
+                    @* Flutterwave info *@
+                    <div id="flutterwaveInfo"
+                         style="display:@(Model.IntegrationType == ChurchMinistry.Models.PaymentIntegrationType.Flutterwave ? "block" : "none")">
+                        <div class="pm-info-box">
+                            <i class="fas fa-info-circle"></i>
+                            When a giver selects this method, they will be redirected to the
+                            Flutterwave secure checkout page. Make sure your Flutterwave API keys
+                            are configured in <code>appsettings.json</code>.
+                        </div>
+                    </div>
+
+                    @* Manual instructions *@
+                    <div id="manualInfo"
+                         style="display:@(Model.IntegrationType == ChurchMinistry.Models.PaymentIntegrationType.Manual ? "block" : "none")">
+
+                        <div class="pm-field" style="margin-top:.75rem">
+                            <label>Payment Instructions</label>
+                            <textarea asp-for="InstructionsText" class="pm-input pm-textarea" rows="5"
+                                      placeholder="e.g. Dial *165# → Send Money → Enter 123456 → Enter amount → Confirm with PIN"></textarea>
+                            <span class="pm-hint">Shown to the giver when they select this method.</span>
+                        </div>
+
+                        <div class="pm-field">
+                            <label>QR Code / Paybill Image <span class="pm-hint">(optional)</span></label>
+                            <div class="pm-upload-area" id="uploadArea"
+                                 onclick="document.getElementById('imageInput').click()"
+                                 ondragover="event.preventDefault()"
+                                 ondrop="handleDrop(event)">
+                                @if (!string.IsNullOrEmpty(Model.InstructionsImagePath))
+                                {
+                                    <img id="imagePreview" src="@Model.InstructionsImagePath"
+                                         class="pm-upload-preview" alt="Current image" />
+                                }
+                                else
+                                {
+                                    <img id="imagePreview" style="display:none" class="pm-upload-preview" />
+                                }
+                                <div id="uploadPlaceholder"
+                                     style="@(!string.IsNullOrEmpty(Model.InstructionsImagePath) ? "display:none" : "")">
+                                    <i class="fas fa-image fa-2x"></i>
+                                    <p>Click or drag an image here</p>
+                                    <span>PNG, JPG up to 5MB</span>
+                                </div>
+                            </div>
+                            <input type="file" id="imageInput" name="instructionImage"
+                                   accept="image/*" style="display:none"
+                                   onchange="previewImage(this)" />
+
+                            @if (!string.IsNullOrEmpty(Model.InstructionsImagePath))
+                            {
+                                <label style="margin-top:.5rem;display:flex;align-items:center;gap:.4rem;
+                                              font-size:.8rem;color:rgba(255,255,255,.5);cursor:pointer">
+                                    <input type="checkbox" name="removeImage" value="true" />
+                                    Remove current image
+                                </label>
+                            }
+                        </div>
+                    </div>
+                </div>
+
+                @* Live preview *@
+                <div class="pm-section">
+                    <h2 class="pm-section-title">
+                        <i class="fas fa-eye"></i> Preview
+                    </h2>
+                    <div class="pm-preview-card">
+                        <div class="pm-preview-badge" id="prevBadge"
+                             style="background:@Model.BadgeColor">
+                            @(string.IsNullOrEmpty(Model.BadgeLabel) ? "???" : Model.BadgeLabel)
+                        </div>
+                        <div>
+                            <div class="pm-preview-name" id="prevName">
+                                @(string.IsNullOrEmpty(Model.Name) ? "Method name" : Model.Name)
+                            </div>
+                            <div class="pm-preview-currency" id="prevCurrency">
+                                @Model.Currency · @Model.CurrencySymbol
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+
+        <div class="pm-form-footer">
+            <a asp-action="Index" class="pm-btn pm-btn-ghost">Cancel</a>
+            <button type="submit" class="pm-btn pm-btn-primary">
+                <i class="fas fa-save"></i> @(isEdit ? "Save Changes" : "Add Method")
+            </button>
+        </div>
+    </form>
+    </div>
+</div>
+
+<style>
+:root {
+    --pm-bg:#0f0f13;--pm-card:#18181f;--pm-border:rgba(255,255,255,.08);
+    --pm-text:rgba(255,255,255,.88);--pm-sub:rgba(255,255,255,.45);
+    --pm-purple:#6366f1;--pm-radius:14px;
+}
+.pm-page        { max-width:960px;margin:0 auto;padding:1.5rem 1rem; }
+.pm-back        { color:var(--pm-sub);font-size:.85rem;text-decoration:none;
+                  display:inline-flex;align-items:center;gap:.4rem; }
+.pm-back:hover  { color:var(--pm-text); }
+.pm-title       { font-size:1.4rem;font-weight:800;color:var(--pm-text); }
+.pm-header      { margin-bottom:1.5rem; }
+
+.pm-form-grid   { display:grid;grid-template-columns:1fr 1fr;gap:1.25rem; }
+.pm-form-col    { display:flex;flex-direction:column;gap:1.25rem; }
+.pm-section     { background:var(--pm-card);border:1px solid var(--pm-border);
+                  border-radius:var(--pm-radius);padding:1.25rem; }
+.pm-section-title{ font-size:.88rem;font-weight:700;color:var(--pm-text);
+                   margin-bottom:1rem;display:flex;align-items:center;gap:.5rem; }
+.pm-section-title i { color:var(--pm-purple); }
+
+.pm-field       { display:flex;flex-direction:column;gap:.35rem;margin-bottom:.85rem; }
+.pm-field:last-child { margin-bottom:0; }
+.pm-field label { font-size:.82rem;font-weight:600;color:var(--pm-sub); }
+.pm-input       { background:rgba(255,255,255,.06);border:1px solid var(--pm-border);
+                  border-radius:9px;padding:.55rem .8rem;color:var(--pm-text);
+                  font-size:.88rem;width:100%;transition:border .15s; }
+.pm-input:focus { outline:none;border-color:rgba(99,102,241,.5);
+                  box-shadow:0 0 0 3px rgba(99,102,241,.12); }
+.pm-textarea    { resize:vertical;min-height:100px; }
+.pm-input-sm    { width:90px;flex-shrink:0; }
+.pm-hint        { font-size:.73rem;color:var(--pm-sub); }
+.pm-error       { font-size:.75rem;color:#fca5a5; }
+.pm-req         { color:#ef4444; }
+.pm-row         { display:grid;grid-template-columns:1fr 1fr;gap:.75rem; }
+.pm-checkbox    { width:16px;height:16px;accent-color:var(--pm-purple);cursor:pointer; }
+
+/* Color picker */
+.pm-color-row   { display:flex;align-items:center;gap:.6rem;flex-wrap:wrap; }
+.pm-color-swatch{ width:40px;height:36px;border:none;border-radius:8px;
+                  cursor:pointer;padding:2px;background:none; }
+.pm-color-presets{ display:flex;gap:.3rem;flex-wrap:wrap; }
+.pm-color-dot   { width:22px;height:22px;border-radius:50%;border:2px solid transparent;
+                  cursor:pointer;transition:border .15s; }
+.pm-color-dot:hover{ border-color:white; }
+
+/* Integration tabs */
+.pm-integration-tabs { display:grid;grid-template-columns:1fr 1fr;gap:.6rem;margin-bottom:.85rem; }
+.pm-int-tab     { display:flex;flex-direction:column;align-items:center;gap:.25rem;
+                  padding:.75rem .5rem;border:1.5px solid var(--pm-border);
+                  border-radius:10px;cursor:pointer;text-align:center;
+                  font-size:.82rem;font-weight:600;color:var(--pm-sub);transition:all .15s; }
+.pm-int-tab input{ display:none; }
+.pm-int-tab.active{ border-color:rgba(99,102,241,.5);background:rgba(99,102,241,.1);
+                    color:var(--pm-text); }
+.pm-int-tab:hover { border-color:rgba(255,255,255,.2);color:var(--pm-text); }
+.pm-int-desc    { font-size:.68rem;font-weight:400;color:var(--pm-sub); }
+
+/* Info box */
+.pm-info-box    { background:rgba(99,102,241,.08);border:1px solid rgba(99,102,241,.2);
+                  border-radius:9px;padding:.75rem;font-size:.82rem;color:var(--pm-sub);
+                  display:flex;gap:.6rem;align-items:flex-start;line-height:1.6; }
+.pm-info-box i  { color:var(--pm-purple);margin-top:.1rem;flex-shrink:0; }
+.pm-info-box code{ background:rgba(255,255,255,.08);padding:.1rem .3rem;border-radius:4px;
+                   font-size:.78rem;color:#a5b4fc; }
+
+/* Upload area */
+.pm-upload-area { border:2px dashed var(--pm-border);border-radius:10px;
+                  padding:1.25rem;text-align:center;cursor:pointer;
+                  transition:border .15s;color:var(--pm-sub);min-height:100px;
+                  display:flex;align-items:center;justify-content:center; }
+.pm-upload-area:hover{ border-color:rgba(99,102,241,.4); }
+.pm-upload-area p { font-size:.83rem;margin:.4rem 0 0; }
+.pm-upload-area span{ font-size:.73rem; }
+.pm-upload-preview{ max-width:200px;max-height:160px;border-radius:8px;
+                    border:1px solid var(--pm-border);object-fit:contain; }
+
+/* Amounts preview */
+.pm-amounts-preview{ display:flex;flex-wrap:wrap;gap:.35rem;margin-top:.5rem; }
+.pm-amt-chip    { font-size:.72rem;font-weight:600;padding:.2rem .6rem;border-radius:100px;
+                  background:rgba(99,102,241,.15);color:#a5b4fc;
+                  border:1px solid rgba(99,102,241,.25); }
+
+/* Preview card */
+.pm-preview-card{ background:rgba(255,255,255,.04);border:1px solid var(--pm-border);
+                  border-radius:10px;padding:.85rem 1rem;display:flex;
+                  align-items:center;gap:.85rem; }
+.pm-preview-badge{ width:50px;height:30px;border-radius:6px;display:flex;
+                   align-items:center;justify-content:center;
+                   font-size:.72rem;font-weight:800;color:white;flex-shrink:0; }
+.pm-preview-name{ font-size:.92rem;font-weight:700;color:var(--pm-text); }
+.pm-preview-currency{ font-size:.75rem;color:var(--pm-sub);margin-top:.15rem; }
+
+.pm-form-footer { display:flex;justify-content:flex-end;gap:.75rem;
+                  margin-top:1.5rem;padding-top:1.25rem;
+                  border-top:1px solid var(--pm-border); }
+.pm-btn         { display:inline-flex;align-items:center;gap:.5rem;padding:.55rem 1.1rem;
+                  border-radius:9px;font-size:.88rem;font-weight:600;cursor:pointer;
+                  border:none;text-decoration:none;transition:all .15s; }
+.pm-btn-primary { background:var(--pm-purple);color:white; }
+.pm-btn-primary:hover{ background:#4f46e5;color:white; }
+.pm-btn-ghost   { background:rgba(255,255,255,.07);color:var(--pm-text);
+                  border:1px solid var(--pm-border); }
+.pm-btn-ghost:hover{ background:rgba(255,255,255,.12); }
+
+@@media(max-width:700px){
+    .pm-form-grid{ grid-template-columns:1fr; }
+    .pm-row      { grid-template-columns:1fr; }
+}
+</style>
+
+@section Scripts {
+<script>
+// ── Integration tab switch ────────────────────────────────
+function switchIntegration(type) {
+    document.getElementById('flutterwaveInfo').style.display = type==='flutterwave' ? 'block' : 'none';
+    document.getElementById('manualInfo').style.display      = type==='manual'      ? 'block' : 'none';
+    document.querySelectorAll('.pm-int-tab').forEach(t => t.classList.remove('active'));
+    event.currentTarget.closest('.pm-int-tab').classList.add('active');
+}
+
+// ── Live preview update ───────────────────────────────────
+function setColor(hex) {
+    document.querySelector('[name=BadgeColor]').value = hex;
+    document.getElementById('colorHex').value         = hex;
+    document.getElementById('prevBadge').style.background = hex;
+}
+
+document.querySelector('[name=BadgeColor]')?.addEventListener('input', e => {
+    document.getElementById('prevBadge').style.background = e.target.value;
+    document.getElementById('colorHex').value = e.target.value;
+});
+document.querySelector('[name=Name]')?.addEventListener('input', e =>
+    document.getElementById('prevName').textContent = e.target.value || 'Method name');
+document.querySelector('[name=BadgeLabel]')?.addEventListener('input', e =>
+    document.getElementById('prevBadge').textContent = e.target.value || '???');
+document.querySelector('[name=Currency]')?.addEventListener('change', e =>
+    updateCurrencyPreview());
+document.querySelector('[name=CurrencySymbol]')?.addEventListener('input', e =>
+    updateCurrencyPreview());
+
+function updateCurrencyPreview() {
+    const currency = document.querySelector('[name=Currency]')?.value ?? '';
+    const symbol   = document.querySelector('[name=CurrencySymbol]')?.value ?? '';
+    document.getElementById('prevCurrency').textContent = `${currency} · ${symbol}`;
+}
+
+// ── Amounts preview ───────────────────────────────────────
+document.querySelector('[name=DefaultAmounts]')?.addEventListener('input', renderAmounts);
+renderAmounts();
+
+function renderAmounts() {
+    const val     = document.querySelector('[name=DefaultAmounts]')?.value ?? '';
+    const symbol  = document.querySelector('[name=CurrencySymbol]')?.value ?? '';
+    const preview = document.getElementById('amountsPreview');
+    preview.innerHTML = val.split(',')
+        .map(a => a.trim()).filter(a => a && !isNaN(a))
+        .map(a => `<span class="pm-amt-chip">${symbol} ${parseInt(a).toLocaleString()}</span>`)
+        .join('');
+}
+
+// ── Image preview ─────────────────────────────────────────
+function previewImage(input) {
+    if (!input.files[0]) return;
+    const reader = new FileReader();
+    reader.onload = e => {
+        const img  = document.getElementById('imagePreview');
+        const ph   = document.getElementById('uploadPlaceholder');
+        img.src    = e.target.result;
+        img.style.display = 'block';
+        if (ph) ph.style.display = 'none';
+    };
+    reader.readAsDataURL(input.files[0]);
+}
+function handleDrop(e) {
+    e.preventDefault();
+    const file = e.dataTransfer.files[0];
+    if (!file?.type.startsWith('image/')) return;
+    const input = document.getElementById('imageInput');
+    const dt = new DataTransfer(); dt.items.add(file); input.files = dt.files;
+    previewImage(input);
+}
+</script>
+}

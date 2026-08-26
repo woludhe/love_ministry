@@ -1,0 +1,991 @@
+@model ChurchMinistry.ViewModels.MeetingRoomViewModel
+@{
+    ViewData["Title"] = Model.Room.Title;
+    Layout = null;
+    bool isAdminPastor = User.IsInRole("Admin") || User.IsInRole("Pastor");
+    bool isHost        = Model.IsHost || isAdminPastor;
+}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>@Model.Room.Title - Apostle Enock Makoko</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg:      #0f0f13;
+      --surface: #1a1a24;
+      --card:    #22222e;
+      --border:  #2e2e3e;
+      --purple:  #7c6ff7;
+      --purple-d:#6355e8;
+      --green:   #22c55e;
+      --red:     #ef4444;
+      --amber:   #f59e0b;
+      --text:    #f1f0fb;
+      --text-s:  #8b8aa6;
+      --radius:  12px;
+    }
+    body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--text);
+           height: 100vh; overflow: hidden; display: flex; flex-direction: column; }
+
+    /* ── Top bar ── */
+    .meet-topbar { display: flex; align-items: center; justify-content: space-between;
+                   padding: .75rem 1.25rem; background: var(--surface);
+                   border-bottom: 1px solid var(--border); flex-shrink: 0; z-index: 10; gap:.75rem; }
+    .meet-title  { display: flex; align-items: center; gap: .75rem; flex:1; min-width:0; }
+    .meet-title h1 { font-size: 1rem; font-weight: 600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .meet-badge  { background: var(--purple); color: white; padding: .2rem .6rem;
+                   border-radius: 100px; font-size: .72rem; font-weight: 700; flex-shrink:0; }
+    .meet-code   { background: var(--card); border: 1px solid var(--border); border-radius: 8px;
+                   padding: .3rem .75rem; font-size: .78rem; font-family: monospace;
+                   color: var(--text-s); cursor: pointer; transition: all .15s; }
+    .meet-code:hover { border-color: var(--purple); color: var(--purple); }
+    .timer       { font-size: .85rem; color: var(--text-s); font-variant-numeric: tabular-nums; white-space:nowrap; }
+
+    /* ── LIVE indicator ── */
+    .live-indicator { display:flex; align-items:center; gap:.4rem;
+                      background:rgba(239,68,68,.12); border:1px solid rgba(239,68,68,.3);
+                      border-radius:100px; padding:.22rem .7rem; flex-shrink:0; }
+    .live-dot-pulse { width:8px; height:8px; border-radius:50%; background:var(--red);
+                      animation:livePulse 1.3s ease infinite; }
+    @@keyframes livePulse { 0%,100%{box-shadow:0 0 0 0 rgba(239,68,68,.6)} 70%{box-shadow:0 0 0 6px rgba(239,68,68,0)} }
+    .live-text    { font-size:.7rem; font-weight:800; letter-spacing:.1em; color:var(--red); }
+
+    /* ── Count chips ── */
+    .count-chips  { display:flex; align-items:center; gap:.4rem; flex-shrink:0; }
+    .count-chip   { display:inline-flex; align-items:center; gap:.3rem; font-size:.74rem;
+                    font-weight:600; color:var(--text-s); background:var(--card);
+                    border:1px solid var(--border); border-radius:100px; padding:.2rem .6rem; }
+    .count-chip.viewers i { color:var(--green); font-size:.68rem; }
+    .count-chip.members i { color:var(--purple); font-size:.68rem; }
+
+    /* ── Main layout ── */
+    .meet-body   { display: flex; flex: 1; overflow: hidden; }
+    .meet-main   { flex: 1; display: flex; flex-direction: column; overflow: hidden; position: relative; }
+
+    /* ── Video grid ── */
+    .video-grid  { flex: 1; display: grid; gap: 6px; padding: 10px; overflow: hidden;
+                   grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); align-content: center; }
+    .video-grid.solo   { grid-template-columns: 1fr; }
+    .video-grid.duo    { grid-template-columns: 1fr 1fr; }
+    .video-grid.trio   { grid-template-columns: repeat(3, 1fr); }
+    .video-grid.quad   { grid-template-columns: repeat(2, 1fr); grid-template-rows: repeat(2, 1fr); }
+    .video-grid.many   { grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); }
+    .video-grid.spotlight-mode { grid-template-columns: 1fr; }
+
+    .video-tile  { position: relative; background: var(--card); border-radius: var(--radius);
+                   overflow: hidden; border: 2px solid transparent; aspect-ratio: 16/9;
+                   display: flex; align-items: center; justify-content: center; transition: border-color .2s; }
+    .video-tile.speaking    { border-color: var(--green); }
+    .video-tile.screenshare { border-color: var(--purple); grid-column: 1/-1; }
+    .video-tile.spotlighted { border-color: var(--purple) !important; }
+    .video-tile video { width: 100%; height: 100%; object-fit: cover; }
+    .video-tile.video-off video { display: none; }
+    .tile-avatar { display: flex; flex-direction: column; align-items: center; gap: .5rem; }
+    .tile-avatar img { width: 72px; height: 72px; border-radius: 50%; border: 3px solid var(--purple); object-fit: cover; }
+    .tile-avatar span { font-size: .85rem; font-weight: 600; color: var(--text-s); }
+    .video-off .tile-avatar { display: flex; }
+    .video-on  .tile-avatar { display: none; }
+    .tile-name   { position: absolute; bottom: .5rem; left: .6rem; background: rgba(0,0,0,.6);
+                   backdrop-filter: blur(4px); padding: .2rem .6rem; border-radius: 6px;
+                   font-size: .78rem; font-weight: 600; display: flex; align-items: center; gap: .35rem; }
+    .tile-badges { position: absolute; top: .5rem; right: .5rem; display: flex; gap: .3rem; }
+    .tile-badge  { width: 26px; height: 26px; border-radius: 50%; display: flex; align-items: center;
+                   justify-content: center; font-size: .7rem; backdrop-filter: blur(4px); }
+    .badge-mute  { background: rgba(239,68,68,.8); }
+    .badge-hand  { background: rgba(245,158,11,.8); }
+    .badge-host  { background: rgba(124,111,247,.8); }
+    .local-tile  { border-color: var(--purple-d) !important; }
+    #screenVideo { display: none; }
+
+    /* ── Spotlight label on stage ── */
+    #spotlightLabel { position:absolute; top:.75rem; left:.75rem; z-index:10;
+                      align-items:center; gap:.4rem;
+                      background:rgba(124,111,247,.9); backdrop-filter:blur(6px);
+                      padding:.25rem .8rem; border-radius:100px;
+                      font-size:.75rem; font-weight:700; pointer-events:none; }
+
+    /* ── Verse overlay ── */
+    .meet-main { position: relative; }
+    #verseOverlay { animation: verseIn .5s ease; }
+    @@keyframes verseIn {
+        from { opacity:0; transform:translateY(6px); }
+        to   { opacity:1; transform:translateY(0); }
+    }
+
+    /* ── Controls bar ── */
+    .controls    { display: flex; align-items: center; justify-content: center; gap: .75rem;
+                   padding: .85rem 1.25rem; background: var(--surface);
+                   border-top: 1px solid var(--border); flex-shrink: 0; flex-wrap: wrap; }
+    .ctrl-btn    { width: 50px; height: 50px; border-radius: 14px; border: none; cursor: pointer;
+                   display: flex; align-items: center; justify-content: center; font-size: 1.1rem;
+                   transition: all .15s; position: relative; }
+    .ctrl-btn span { position: absolute; bottom: -18px; font-size: .65rem; white-space: nowrap;
+                     color: var(--text-s); font-weight: 500; left:50%; transform:translateX(-50%); }
+    .ctrl-default { background: var(--card); color: var(--text); }
+    .ctrl-default:hover { background: var(--border); }
+    .ctrl-danger  { background: var(--red) !important; color: white; }
+    .ctrl-active  { background: var(--purple) !important; color: white; }
+    .ctrl-end     { background: var(--red); color: white; border-radius: 14px;
+                    padding: .65rem 1.5rem; font-size: .9rem; font-weight: 700;
+                    display: flex; align-items: center; gap: .4rem; border: none; cursor: pointer; }
+    .ctrl-end:hover { background: #dc2626; }
+    .controls-spacer { flex: 1; }
+
+    /* ── Sidebar ── */
+    .meet-sidebar { width: 320px; background: var(--surface); border-left: 1px solid var(--border);
+                    display: flex; flex-direction: column; flex-shrink: 0; transition: width .2s; }
+    .meet-sidebar.closed { width: 0; overflow: hidden; }
+    .sidebar-tabs { display: flex; border-bottom: 1px solid var(--border); flex-shrink: 0; }
+    .sidebar-tab  { flex: 1; padding: .65rem; text-align: center; font-size: .82rem; font-weight: 600;
+                    cursor: pointer; color: var(--text-s); border-bottom: 2px solid transparent;
+                    transition: all .15s; background: none; border-top: none; border-left: none; border-right: none; }
+    .sidebar-tab.active { color: var(--purple); border-bottom-color: var(--purple); }
+    .sidebar-tab .badge-count { background: var(--red); color: white; border-radius: 100px;
+                                padding: .1rem .4rem; font-size: .65rem; margin-left: .2rem; }
+    .panel       { display: none; flex-direction: column; flex: 1; overflow: hidden; }
+    .panel.active{ display: flex; }
+    .panel-body  { flex: 1; overflow-y: auto; padding: .75rem; }
+    .participant-item { display: flex; align-items: center; gap: .6rem; padding: .5rem .6rem;
+                        border-radius: 8px; transition: background .15s; }
+    .participant-item:hover { background: var(--card); }
+    .participant-item img { width: 34px; height: 34px; border-radius: 50%; object-fit: cover; border: 2px solid var(--border); }
+    .participant-name { flex: 1; font-size: .88rem; font-weight: 500; }
+    .participant-badges { display: flex; align-items:center; gap: .3rem; font-size: .72rem; color: var(--text-s); }
+
+    /* Spotlight button in participant list */
+    .spotlight-person-btn { background:none; border:none; color:var(--text-s); cursor:pointer;
+                             font-size:.8rem; padding:.2rem .3rem; border-radius:5px; transition:all .15s; }
+    .spotlight-person-btn:hover { color:var(--amber); }
+    .spotlight-person-btn.active { color:var(--amber); }
+
+    .waiting-section { padding: .5rem .75rem; background: rgba(245,158,11,.1);
+                       border: 1px solid rgba(245,158,11,.3); border-radius: 8px; margin: .5rem; }
+    .waiting-section h4 { font-size: .8rem; color: var(--amber); margin-bottom: .5rem; }
+    .waiting-item { display: flex; align-items: center; justify-content: space-between; font-size: .82rem; padding: .3rem 0; }
+    .admit-btn { background: var(--green); color: white; border: none; border-radius: 6px;
+                 padding: .25rem .6rem; font-size: .72rem; cursor: pointer; font-weight: 600; }
+    .chat-messages { flex: 1; overflow-y: auto; padding: .75rem; display: flex; flex-direction: column; gap: .6rem; }
+    .chat-msg-meet { display: flex; flex-direction: column; gap: .1rem; }
+    .chat-msg-meet.own { align-items: flex-end; }
+    .msg-sender { font-size: .72rem; color: var(--text-s); margin-bottom: .1rem; }
+    .msg-bubble-meet { background: var(--card); border-radius: 10px; padding: .45rem .7rem;
+                       font-size: .85rem; max-width: 85%; line-height: 1.5; }
+    .chat-msg-meet.own .msg-bubble-meet { background: var(--purple-d); }
+    .msg-prayer { background: rgba(124,111,247,.15) !important; border: 1px solid rgba(124,111,247,.3);
+                  border-radius: 10px; padding: .5rem .7rem; font-size: .82rem; font-style: italic; }
+    .msg-system { text-align: center; font-size: .75rem; color: var(--text-s); }
+    .msg-time   { font-size: .65rem; color: var(--text-s); margin-top: .1rem; }
+    .chat-input-area { padding: .75rem; border-top: 1px solid var(--border); display: flex;
+                       flex-direction: column; gap: .5rem; flex-shrink: 0; }
+    .chat-input-row { display: flex; gap: .4rem; }
+    .chat-input-meet { flex: 1; background: var(--card); border: 1px solid var(--border);
+                       border-radius: 10px; padding: .5rem .75rem; color: var(--text);
+                       font-family: inherit; font-size: .88rem; resize: none; outline: none; transition: border-color .15s; }
+    .chat-input-meet:focus { border-color: var(--purple); }
+    .chat-send-btn { width: 38px; height: 38px; background: var(--purple); border: none;
+                     border-radius: 10px; color: white; cursor: pointer; font-size: .9rem;
+                     display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+    .prayer-btn { background: none; border: 1px solid var(--border); border-radius: 8px;
+                  padding: .35rem .7rem; font-size: .78rem; color: var(--text-s); cursor: pointer;
+                  display: flex; align-items: center; gap: .3rem; transition: all .15s; }
+    .prayer-btn:hover { border-color: var(--purple); color: var(--purple); }
+
+    /* ── Reactions ── */
+    .reactions-bar { position: absolute; bottom: 80px; left: 50%; transform: translateX(-50%);
+                     display: flex; gap: .4rem; background: rgba(26,26,36,.9); backdrop-filter: blur(8px);
+                     border: 1px solid var(--border); border-radius: 100px; padding: .4rem .7rem;
+                     opacity: 0; transition: opacity .2s; pointer-events: none; z-index: 20; }
+    .reactions-bar.visible { opacity: 1; pointer-events: all; }
+    .reaction-emoji { font-size: 1.4rem; cursor: pointer; transition: transform .15s; padding: .1rem .2rem;
+                      border-radius: 6px; border: none; background: none; }
+    .reaction-emoji:hover { transform: scale(1.35); }
+    .floating-reaction { position: fixed; font-size: 2rem; pointer-events: none; z-index: 999;
+                         animation: floatUp 2.5s ease-out forwards; }
+    @@keyframes floatUp { 0%{opacity:1;transform:translateY(0) scale(1)} 100%{opacity:0;transform:translateY(-200px) scale(1.4)} }
+
+    /* ── Spotlight context menu ── */
+    .spotlight-ctx-menu { position: fixed; z-index: 9999; background: var(--surface);
+                          border: 1px solid var(--border); border-radius: 10px;
+                          overflow: hidden; min-width: 185px; box-shadow: 0 8px 24px rgba(0,0,0,.6); display:none; }
+    .spm-header { padding: .4rem .85rem; font-size: .68rem; font-weight: 700; color: var(--text-s);
+                  border-bottom: 1px solid var(--border); text-transform: uppercase; letter-spacing: .05em; }
+    .spotlight-ctx-menu button { display: flex; align-items: center; gap: .55rem; width: 100%;
+                                  padding: .55rem .85rem; background: none; border: none;
+                                  color: var(--text); font-size: .82rem; cursor: pointer; font-family: inherit; text-align: left; }
+    .spotlight-ctx-menu button:hover { background: var(--card); }
+    .spm-divider { height: 1px; background: var(--border); }
+
+    /* ── Waiting / ended overlays ── */
+    .waiting-overlay { position: fixed; inset: 0; background: var(--bg); z-index: 100;
+                       display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1.5rem; }
+    .waiting-overlay h2 { font-size: 1.5rem; font-weight: 700; }
+    .waiting-overlay p { color: var(--text-s); }
+    .waiting-spinner { width: 56px; height: 56px; border: 3px solid var(--border);
+                       border-top-color: var(--purple); border-radius: 50%; animation: spin 1s linear infinite; }
+    @@keyframes spin { to { transform: rotate(360deg); } }
+    .ended-overlay { position: fixed; inset: 0; background: var(--bg); z-index: 200;
+                     display: none; flex-direction: column; align-items: center; justify-content: center;
+                     gap: 1.5rem; text-align: center; padding: 2rem; }
+    .ended-overlay h2 { font-size: 2rem; font-weight: 800; }
+    .ended-overlay p  { color: var(--text-s); max-width: 400px; }
+
+    /* ── Toast ── */
+    .toast-container { position: fixed; top: 80px; right: 1rem; z-index: 500; display: flex; flex-direction: column; gap: .5rem; }
+    .toast { background: var(--card); border: 1px solid var(--border); border-radius: 10px;
+             padding: .65rem 1rem; font-size: .85rem; display: flex; align-items: center; gap: .5rem;
+             animation: slideInRight .3s ease; max-width: 280px; }
+    @@keyframes slideInRight { from{opacity:0;transform:translateX(20px)} to{opacity:1;transform:translateX(0)} }
+
+    ::-webkit-scrollbar { width: 4px; } ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+
+    @@media (max-width: 768px) {
+      .meet-sidebar { position: fixed; right: 0; top: 0; bottom: 0; z-index: 50; box-shadow: -4px 0 24px rgba(0,0,0,.4); }
+      .controls { gap: .4rem; }
+      .ctrl-btn { width: 44px; height: 44px; font-size: 1rem; }
+      .count-chips { display: none; }
+    }
+  </style>
+</head>
+<body>
+
+<div class="waiting-overlay" id="waitingOverlay" style="display:none">
+  <div class="waiting-spinner"></div>
+  <h2>Waiting Room</h2>
+  <p>Please wait — the host will let you in shortly.</p>
+  <p style="font-size:.85rem;color:#5b5a7e">Room: <strong style="color:var(--purple)">@Model.Room.RoomCode</strong></p>
+</div>
+
+<div class="ended-overlay" id="endedOverlay">
+  <div style="font-size:3rem">🙏</div>
+  <h2>Meeting Ended</h2>
+  <p>Thank you for joining <strong>@Model.Room.Title</strong>. God bless you!</p>
+  <a href="/Meeting" style="background:var(--purple);color:white;padding:.75rem 2rem;border-radius:10px;font-weight:700;text-decoration:none;margin-top:.5rem">Back to Meetings</a>
+</div>
+
+<div class="toast-container" id="toastContainer"></div>
+
+<div class="reactions-bar" id="reactionsBar">
+  @foreach (var emoji in new[]{"🙏","❤️","🔥","👏","✝️","🎉","😭","🙌"})
+  { <button class="reaction-emoji" onclick="sendReaction('@emoji')">@emoji</button> }
+</div>
+
+<div class="spotlight-ctx-menu" id="spotlightCtxMenu"></div>
+
+<!-- Top bar -->
+<div class="meet-topbar">
+  <div class="meet-title">
+    <span class="meet-badge">@Model.Room.MeetingType</span>
+    <h1>@Model.Room.Title</h1>
+    @if (Model.Room.Status == ChurchMinistry.Models.RoomStatus.Live)
+    {
+      <div class="live-indicator">
+        <span class="live-dot-pulse"></span>
+        <span class="live-text">LIVE</span>
+      </div>
+    }
+  </div>
+  <div style="display:flex;align-items:center;gap:.75rem;flex-wrap:wrap">
+    <div class="count-chips">
+      <div class="count-chip viewers" title="Total viewers">
+        <i class="fas fa-eye"></i><span id="viewerCount">0</span>
+      </div>
+      <div class="count-chip members" title="Participants">
+        <i class="fas fa-users"></i><span id="memberCount">0</span>
+      </div>
+    </div>
+    <span class="timer" id="meetTimer">00:00</span>
+    <button class="meet-code" onclick="copyCode()"><i class="fas fa-copy"></i> @Model.Room.RoomCode</button>
+    <a href="/Meeting" style="color:var(--text-s);font-size:.85rem"><i class="fas fa-times"></i></a>
+  </div>
+</div>
+
+<!-- Body -->
+<div class="meet-body">
+  <div class="meet-main">
+    <div class="video-grid solo" id="videoGrid"></div>
+
+    <!-- Spotlight label on stage -->
+    <div id="spotlightLabel" style="display:none">
+      <i class="fas fa-star"></i> <span id="spotlightName"></span>
+    </div>
+
+    <!-- Verse overlay — projected from LiveSettings -->
+    <div id="verseOverlay" style="display:none;position:absolute;bottom:80px;left:0;right:0;
+         background:linear-gradient(transparent,rgba(0,0,0,.88));
+         padding:2.5rem 1.5rem 1rem;z-index:15;pointer-events:none">
+      <p id="verseText" style="color:rgba(255,255,255,.95);font-size:1.15rem;line-height:1.65;
+           font-weight:600;text-shadow:0 1px 6px rgba(0,0,0,.6);font-family:Tahoma,Calibri;
+           margin-bottom:.3rem"></p>
+      <span id="verseRef" style="color:gold;font-size:.82rem;font-weight:600"></span>
+    </div>
+
+    <div class="controls">
+      <button class="ctrl-btn ctrl-default" id="btnMic" onclick="toggleMic()"><i class="fas fa-microphone" id="micIcon"></i><span>Mute</span></button>
+      <button class="ctrl-btn ctrl-default" id="btnCam" onclick="toggleCamera()"><i class="fas fa-video" id="camIcon"></i><span>Camera</span></button>
+      <button class="ctrl-btn ctrl-default" id="btnScreen" onclick="toggleScreenShare()"><i class="fas fa-desktop"></i><span>Share</span></button>
+      <button class="ctrl-btn ctrl-default" id="btnHand" onclick="toggleHand()"><i class="fas fa-hand"></i><span>Hand</span></button>
+      <button class="ctrl-btn ctrl-default" onclick="toggleReactions()"><i class="fas fa-face-smile"></i><span>React</span></button>
+      <div class="controls-spacer"></div>
+      @if (Model.Room.ChatEnabled)
+      {
+        <button class="ctrl-btn ctrl-default" onclick="toggleSidebar('chat')"><i class="fas fa-comments"></i><span>Chat</span></button>
+      }
+      <button class="ctrl-btn ctrl-default" onclick="toggleSidebar('people')"><i class="fas fa-users"></i><span>People</span></button>
+      @if (isHost)
+      {
+        <button class="ctrl-btn ctrl-default" id="btnSpotlight" onclick="toggleSpotlightMode()" title="Spotlight a participant">
+          <i class="fas fa-star"></i><span>Spotlight</span>
+        </button>
+        <button class="ctrl-btn ctrl-default" onclick="muteAll()"><i class="fas fa-microphone-slash"></i><span>Mute All</span></button>
+        <button class="ctrl-end" onclick="confirmEnd()"><i class="fas fa-phone-slash"></i> End</button>
+      }
+      else
+      {
+        <button class="ctrl-end" onclick="leaveMeeting()"><i class="fas fa-phone-slash"></i> Leave</button>
+      }
+    </div>
+  </div>
+
+  <div class="meet-sidebar closed" id="meetSidebar">
+    <div class="sidebar-tabs">
+      <button class="sidebar-tab active" onclick="switchTab('people')" id="tabPeople">
+        <i class="fas fa-users"></i> People <span class="badge-count" id="peopleCount">0</span>
+      </button>
+      @if (Model.Room.ChatEnabled)
+      {
+        <button class="sidebar-tab" onclick="switchTab('chat')" id="tabChat">
+          <i class="fas fa-comments"></i> Chat <span class="badge-count" id="chatCount" style="display:none">0</span>
+        </button>
+      }
+    </div>
+    <div class="panel active" id="panelPeople">
+      <div class="panel-body" id="waitingList"></div>
+      <div class="panel-body" id="participantList"></div>
+    </div>
+    <div class="panel" id="panelChat">
+      <div class="chat-messages" id="chatMessages"></div>
+      <div class="chat-input-area">
+        <div class="chat-input-row">
+          <textarea class="chat-input-meet" id="chatInput" rows="1" placeholder="Message everyone..." onkeydown="chatKeyDown(event)"></textarea>
+          <button class="chat-send-btn" onclick="sendChat()"><i class="fas fa-paper-plane"></i></button>
+        </div>
+        <div style="display:flex;gap:.4rem">
+          <button class="prayer-btn" onclick="sendPrayer()"><i class="fas fa-hands-praying"></i> Send as Prayer</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="meetData"
+     data-room-code="@Model.Room.RoomCode"
+     data-display-name="@Model.DisplayName"
+     data-is-host="@isHost.ToString().ToLower()"
+     data-is-admin="@isAdminPastor.ToString().ToLower()"
+     data-member-id="@(Model.CurrentMemberId?.ToString() ?? "")"
+     data-waiting-room="@Model.Room.WaitingRoomEnabled.ToString().ToLower()"
+     data-sermon-id="@(ViewBag.LiveSermonId as int? ?? 0)"
+     style="display:none"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/microsoft-signalr/8.0.0/signalr.min.js"></script>
+<script>
+const data       = document.getElementById('meetData').dataset;
+const ROOM_CODE  = data.roomCode;
+const DISPLAY    = data.displayName;
+const IS_HOST    = data.isHost   === 'true';
+const IS_ADMIN   = data.isAdmin  === 'true';
+const WAITING_ON = data.waitingRoom === 'true';
+const SERMON_ID  = parseInt(data.sermonId) || 0;
+
+let localStream=null, screenStream=null;
+let isMuted=false, isCamOff=false, isHandRaised=false, isScreenSharing=false;
+let sidebarOpen=false, currentTab='people', unreadChat=0;
+let meetingSeconds=0, timerInterval=null;
+let spotlightId=null, spotlightMode=false, myConnId=null;
+const peers={}, peerInfo={};
+
+const iceConfig = { iceServers:[
+  {urls:'stun:stun.l.google.com:19302'},
+  {urls:'stun:stun1.l.google.com:19302'},
+  {urls:'stun:stun2.l.google.com:19302'}
+]};
+
+const conn = new signalR.HubConnectionBuilder()
+  .withUrl('/meetingHub').withAutomaticReconnect().build();
+
+async function initMedia() {
+  const audioConstraints = { echoCancellation:true, noiseSuppression:true, autoGainControl:true, sampleRate:48000 };
+
+  // Check if browser supports getUserMedia at all
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    console.error('getUserMedia not supported — HTTP instead of HTTPS?');
+    showPermissionBanner('error', 'Camera/microphone not available. Make sure you are using HTTPS.');
+    localStream = new MediaStream(); isCamOff=true; isMuted=true;
+    addLocalTile(); updateMediaButtons(); return;
+  }
+
+  // Check permission state before requesting
+  try {
+    const camPerm = await navigator.permissions.query({name:'camera'});
+    const micPerm = await navigator.permissions.query({name:'microphone'});
+    console.log('Camera permission:', camPerm.state, '| Mic permission:', micPerm.state);
+    if (camPerm.state === 'denied' || micPerm.state === 'denied') {
+      showPermissionBanner('blocked',
+        'Camera or microphone access is blocked. Click the lock icon in your browser address bar to allow access, then refresh.');
+    }
+  } catch {}
+
+  try {
+    localStream = await navigator.mediaDevices.getUserMedia({video:true, audio:audioConstraints});
+    console.log('Media acquired — tracks:', localStream.getTracks().map(t=>t.kind+':'+t.label));
+  } catch(err1) {
+    console.warn('Video+audio failed:', err1.name, err1.message);
+    try {
+      localStream = await navigator.mediaDevices.getUserMedia({video:false, audio:audioConstraints});
+      isCamOff = true;
+      console.log('Audio-only acquired:', localStream.getAudioTracks().map(t=>t.label));
+    } catch(err2) {
+      console.error('All media failed:', err2.name, err2.message);
+      showPermissionBanner('blocked',
+        `Could not access camera/microphone: ${err2.message}. Check browser permissions and try again.`);
+      localStream = new MediaStream(); isCamOff=true; isMuted=true;
+    }
+  }
+  addLocalTile(); updateMediaButtons();
+}
+
+function showPermissionBanner(type, message) {
+  const existing = document.getElementById('permissionBanner');
+  if (existing) existing.remove();
+  const banner = document.createElement('div');
+  banner.id = 'permissionBanner';
+  banner.style.cssText = `position:fixed;top:0;left:0;right:0;z-index:9999;
+    background:${type==='blocked'?'#7f1d1d':'#1e1b4b'};color:white;
+    padding:.75rem 1.25rem;font-size:.88rem;display:flex;align-items:center;
+    gap:1rem;box-shadow:0 2px 12px rgba(0,0,0,.5)`;
+  banner.innerHTML = `<i class="fas fa-${type==='blocked'?'microphone-slash':'exclamation-triangle'}"></i>
+    <span>${message}</span>
+    <button onclick="this.parentElement.remove()" style="margin-left:auto;background:none;
+      border:1px solid rgba(255,255,255,.3);color:white;border-radius:6px;
+      padding:.25rem .6rem;cursor:pointer;font-size:.8rem">✕</button>`;
+  document.body.prepend(banner);
+}
+
+function addLocalTile() {
+  const grid=document.getElementById('videoGrid');
+  const tile=document.createElement('div');
+  tile.className=`video-tile local-tile ${isCamOff?'video-off':'video-on'}`; tile.id='tile-local';
+  tile.innerHTML=`<video autoplay muted playsinline id="localVideo"></video>
+    <div class="tile-avatar"><img src="/images/avatar-default.png" alt="${escHtml(DISPLAY)}"/><span>${escHtml(DISPLAY)}</span></div>
+    <div class="tile-name"><i class="fas fa-user"></i> ${escHtml(DISPLAY)} (You)</div>
+    <div class="tile-badges" id="localBadges"></div>`;
+  grid.appendChild(tile);
+  tile.querySelector('video').srcObject=localStream;
+  if(IS_HOST||IS_ADMIN) attachCtxMenu(tile,'local',DISPLAY);
+  reflow();
+}
+
+// ── SignalR handlers ──────────────────────────────────────
+conn.on('RoomJoined', async({participants,isInWaitingRoom}) => {
+  myConnId = conn.connectionId;
+  if(isInWaitingRoom){document.getElementById('waitingOverlay').style.display='flex';return;}
+  startTimer();
+  updateViewerCount(participants.length+1);
+  updateMemberCount(participants.length+1);
+  for(const p of participants){
+    if(p.connectionId!==conn.connectionId){
+      peerInfo[p.connectionId]={name:p.displayName,photo:p.photo};
+      await createOffer(p.connectionId);
+    }
+  }
+  renderParticipants(participants);
+});
+
+conn.on('Admitted',()=>{document.getElementById('waitingOverlay').style.display='none';startTimer();toast('You have been admitted','success');});
+
+conn.on('PeerJoined',async({connectionId,displayName,photo})=>{
+  peerInfo[connectionId]={name:displayName,photo};
+  toast(`${displayName} joined`);
+  addParticipantItem(connectionId,displayName,photo,false);
+  updateMemberCount(document.querySelectorAll('.participant-item').length+1);
+});
+
+conn.on('PeerLeft',(cid)=>{
+  const name=peerInfo[cid]?.name??'Someone';
+  toast(`${name} left`);
+  closePeer(cid);
+  document.getElementById(`tile-${cid}`)?.remove();
+  document.getElementById(`person-${cid}`)?.remove();
+  delete peerInfo[cid];
+  if(spotlightId===cid) clearSpotlight(); else reflow();
+  updatePeopleCount();
+  updateMemberCount(document.querySelectorAll('.participant-item').length+1);
+});
+
+conn.on('ViewerCountUpdated', count => updateViewerCount(count));
+
+conn.on('ReceiveOffer',async(from,offer)=>{
+  const pc=getOrCreatePeer(from);
+  await pc.setRemoteDescription(new RTCSessionDescription(offer));
+  const ans=await pc.createAnswer();
+  await pc.setLocalDescription(ans);
+  await conn.invoke('SendAnswer',from,ans);
+});
+conn.on('ReceiveAnswer',async(from,ans)=>{
+  const pc = peers[from] || viewerPeers[from];
+  if(pc) await pc.setRemoteDescription(new RTCSessionDescription(ans));
+});
+conn.on('ReceiveIceCandidate',async(from,c)=>{
+  const pc = peers[from] || viewerPeers[from];
+  if(pc&&c) try{await pc.addIceCandidate(new RTCIceCandidate(c));}catch{}
+});
+conn.on('ParticipantMuted',(cid,m)=>{ if(m&&!document.getElementById(`badge-mute-${cid}`)) addBadge(cid,'mute','🔇'); else document.getElementById(`badge-mute-${cid}`)?.remove(); });
+conn.on('ParticipantVideoToggled',(cid,off)=>{ const t=document.getElementById(`tile-${cid}`); if(t){t.classList.toggle('video-off',off);t.classList.toggle('video-on',!off);} });
+conn.on('HandRaised',(cid,raised,name)=>{ if(raised){toast(`✋ ${name} raised their hand`);addBadge(cid,'hand','✋');}else document.getElementById(`badge-hand-${cid}`)?.remove(); });
+conn.on('ForceMuted',()=>{if(!isMuted)toggleMic();toast('Host muted everyone','warn');});
+conn.on('ReceiveMessage',msg=>appendChatMessage(msg));
+conn.on('Reaction',(cid,emoji)=>showFloatingReaction(emoji));
+conn.on('ScreenShareStarted',cid=>{document.getElementById(`tile-${cid}`)?.classList.add('screenshare');toast(`${peerInfo[cid]?.name??'Someone'} started screen sharing`);});
+conn.on('ScreenShareStopped',cid=>document.getElementById(`tile-${cid}`)?.classList.remove('screenshare'));
+conn.on('SystemMessage',msg=>appendSystemMessage(msg));
+conn.on('WaitingRoomRequest',({connectionId,displayName,participantId})=>{addWaitingItem(connectionId,displayName,participantId);toast(`✋ ${displayName} is waiting`);});
+conn.on('MeetingEnded',()=>{clearInterval(timerInterval);document.getElementById('endedOverlay').style.display='flex';});
+conn.on('Removed',()=>{clearInterval(timerInterval);document.getElementById('endedOverlay').style.display='flex';});
+
+// Spotlight broadcast from admin
+conn.on('SpotlightChanged',cid=>{
+  if(!cid){
+    spotlightId=null;
+    toast('Spotlight cleared');
+  } else {
+    // If the spotlighted ID is our own connection, map to 'local'
+    // so getElementById('tile-local') resolves correctly
+    const isMe = cid === (myConnId ?? conn.connectionId);
+    spotlightId = isMe ? 'local' : cid;
+    const name = isMe ? DISPLAY : (peerInfo[cid]?.name ?? 'Participant');
+    toast(`📌 ${name} is in the spotlight`);
+  }
+  reflow();
+});
+
+// Viewers joined the Live page — send them our video stream
+// Use a separate viewerPeers map so viewer connections don't
+// conflict with participant-to-participant peer connections
+const viewerPeers = {};
+
+conn.on('NewViewerJoined', async ({viewerConnectionId, displayName}) => {
+  if(viewerPeers[viewerConnectionId]) return;
+
+  // If localStream isn't ready yet, retry after stream is initialised
+  if (!localStream || localStream.getTracks().length === 0) {
+    console.warn('NewViewerJoined: localStream not ready, retrying in 1.5s for', viewerConnectionId);
+    setTimeout(() => handleNewViewer(viewerConnectionId, displayName), 1500);
+    return;
+  }
+  await handleNewViewer(viewerConnectionId, displayName);
+});
+
+async function handleNewViewer(viewerConnectionId, displayName) {
+  if(viewerPeers[viewerConnectionId]) return;
+
+  const pc = new RTCPeerConnection(iceConfig);
+  viewerPeers[viewerConnectionId] = pc;
+
+  const audioTracks = localStream ? localStream.getAudioTracks() : [];
+  const videoTracks = localStream ? localStream.getVideoTracks() : [];
+
+  // Log full track state for diagnosis
+  console.log('handleNewViewer for', displayName);
+  audioTracks.forEach(t => console.log('  audio:', t.label, 'enabled:', t.enabled,
+    'muted:', t.muted, 'readyState:', t.readyState));
+  videoTracks.forEach(t => console.log('  video:', t.label, 'enabled:', t.enabled,
+    'readyState:', t.readyState));
+
+  // Only add live tracks
+  audioTracks.forEach(t => { if(t.readyState === 'live') pc.addTrack(t, localStream); });
+  videoTracks.forEach(t => { if(t.readyState === 'live') pc.addTrack(t, localStream); });
+
+  // If no live audio track found, request mic separately as fallback
+  if(audioTracks.filter(t => t.readyState === 'live').length === 0) {
+    console.warn('No live audio track — requesting mic separately');
+    try {
+      const audioStream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation:true, noiseSuppression:true, autoGainControl:true }, video: false });
+      const freshAudio = audioStream.getAudioTracks()[0];
+      if(freshAudio) {
+        localStream.addTrack(freshAudio);
+        pc.addTrack(freshAudio, localStream);
+        console.log('Fresh audio track added:', freshAudio.label);
+      }
+    } catch(e) {
+      console.error('Could not get fresh audio track:', e);
+    }
+  }
+
+  pc.onicecandidate = e => {
+    if(e.candidate) conn.invoke('SendIceCandidate', viewerConnectionId, e.candidate);
+  };
+
+  pc.onconnectionstatechange = () => {
+    console.log('Viewer peer', viewerConnectionId, 'state:', pc.connectionState);
+    if(pc.connectionState === 'disconnected' || pc.connectionState === 'failed') {
+      pc.close(); delete viewerPeers[viewerConnectionId];
+    }
+  };
+
+  try {
+    // Force audio in the offer even if host is currently muted.
+    // Muting disables the track (enabled=false) but the track still exists
+    // and must be negotiated so the viewer receives audio when host unmutes.
+    const offer = await pc.createOffer({
+      offerToReceiveAudio: false,   // we SEND, not receive
+      offerToReceiveVideo: false,
+      voiceActivityDetection: false // don't let VAD suppress audio m-line
+    });
+    await pc.setLocalDescription(offer);
+    await conn.invoke('SendOffer', viewerConnectionId, offer);
+    const audioLines = offer.sdp.split('\n').filter(l => l.startsWith('m=audio'));
+    console.log('Offer sent to viewer:', displayName,
+      '| audio m-lines:', audioLines.length,
+      '| snippet:', audioLines[0] || 'NONE - AUDIO MISSING FROM SDP');
+  } catch(e) {
+    console.error('Failed to create offer for viewer:', e);
+  }
+}
+
+// ── WebRTC ────────────────────────────────────────────────
+async function createOffer(cid){
+  const pc=getOrCreatePeer(cid);
+  const offer=await pc.createOffer();
+  await pc.setLocalDescription(offer);
+  await conn.invoke('SendOffer',cid,offer);
+}
+function getOrCreatePeer(cid){
+  if(peers[cid]) return peers[cid];
+  const pc=new RTCPeerConnection(iceConfig);
+  peers[cid]=pc;
+  localStream.getTracks().forEach(t=>pc.addTrack(t,localStream));
+  pc.onicecandidate=e=>{if(e.candidate) conn.invoke('SendIceCandidate',cid,e.candidate);};
+  pc.ontrack=e=>{
+    let tile=document.getElementById(`tile-${cid}`);
+    if(!tile) tile=addRemoteTile(cid,peerInfo[cid]?.name??'Participant',peerInfo[cid]?.photo);
+    const vid=tile.querySelector('video');
+    if(vid&&e.streams[0]){vid.srcObject=e.streams[0];tile.classList.remove('video-off');tile.classList.add('video-on');}
+    reflow();
+  };
+  pc.oniceconnectionstatechange=()=>{
+    if(pc.iceConnectionState==='disconnected'||pc.iceConnectionState==='failed'){
+      document.getElementById(`tile-${cid}`)?.remove();closePeer(cid);reflow();
+    }
+  };
+  return pc;
+}
+function closePeer(cid){peers[cid]?.close();delete peers[cid];}
+function addRemoteTile(cid,name,photo='/images/avatar-default.png'){
+  const grid=document.getElementById('videoGrid');
+  const tile=document.createElement('div');
+  tile.className='video-tile video-off'; tile.id=`tile-${cid}`;
+  tile.innerHTML=`<video autoplay playsinline id="vid-${cid}"></video>
+    <div class="tile-avatar"><img src="${escHtml(photo)}" alt="${escHtml(name)}"/><span>${escHtml(name)}</span></div>
+    <div class="tile-name">${escHtml(name)}</div>
+    <div class="tile-badges" id="badges-${cid}"></div>`;
+  grid.appendChild(tile);
+  if(IS_HOST||IS_ADMIN) attachCtxMenu(tile,cid,name);
+  reflow(); return tile;
+}
+function addBadge(cid,type,icon){
+  const c=document.getElementById(cid===conn.connectionId?'localBadges':`badges-${cid}`);
+  if(!c||c.querySelector(`#badge-${type}-${cid}`)) return;
+  const b=document.createElement('div'); b.className=`tile-badge badge-${type}`; b.id=`badge-${type}-${cid}`; b.textContent=icon;
+  c.appendChild(b);
+}
+
+// ── Spotlight ─────────────────────────────────────────────
+function toggleSpotlightMode(){
+  spotlightMode=!spotlightMode;
+  document.getElementById('btnSpotlight')?.classList.toggle('ctrl-active',spotlightMode);
+  toast(spotlightMode?'📌 Click or right-click any participant to spotlight':'Spotlight mode off');
+}
+function setSpotlight(cid){
+  if(spotlightId===cid){clearSpotlight();return;}
+  spotlightId=cid; reflow();
+  const name=peerInfo[cid]?.name??(cid==='local'?DISPLAY:'Participant');
+  toast(`📌 ${name} spotlighted`);
+  // Translate 'local' → real connection ID so other clients find the correct tile
+  const broadcastId = cid==='local' ? (myConnId ?? conn.connectionId) : cid;
+  conn.invoke('SetSpotlight',ROOM_CODE,broadcastId).catch(console.error);
+  refreshSpotlightBtns();
+}
+function clearSpotlight(){
+  spotlightId=null; reflow();
+  toast('Spotlight cleared');
+  conn.invoke('SetSpotlight',ROOM_CODE,'').catch(console.error);
+  refreshSpotlightBtns();
+  spotlightMode=false;
+  document.getElementById('btnSpotlight')?.classList.remove('ctrl-active');
+}
+function refreshSpotlightBtns(){
+  document.querySelectorAll('.spotlight-person-btn').forEach(b=>{
+    b.classList.toggle('active',b.dataset.cid===spotlightId);
+  });
+  const lbl=document.getElementById('spotlightLabel');
+  const name=spotlightId?(peerInfo[spotlightId]?.name??(spotlightId==='local'?DISPLAY:'Participant')):null;
+  lbl.style.display=name?'flex':'none';
+  if(name) document.getElementById('spotlightName').textContent=name;
+}
+function attachCtxMenu(tile,cid,name){
+  tile.addEventListener('contextmenu',e=>{e.preventDefault();showCtxMenu(cid,name,e.clientX,e.clientY);});
+  tile.addEventListener('click',()=>{ if(spotlightMode&&(IS_HOST||IS_ADMIN)) setSpotlight(cid); });
+  let pt; tile.addEventListener('touchstart',()=>{pt=setTimeout(()=>showCtxMenu(cid,name,tile.getBoundingClientRect().x,tile.getBoundingClientRect().y),600);},{passive:true});
+  tile.addEventListener('touchend',()=>clearTimeout(pt));
+}
+function showCtxMenu(cid,name,x,y){
+  const menu=document.getElementById('spotlightCtxMenu');
+  const pinned=spotlightId===cid;
+  menu.style.cssText=`display:block;left:${Math.min(x,window.innerWidth-195)}px;top:${Math.min(y,window.innerHeight-130)}px`;
+  menu.innerHTML=`<div class="spm-header">${escHtml(name)}</div>
+    <button onclick="setSpotlight('${cid}');closeCtxMenu()">
+      <i class="fas fa-${pinned?'star-half-stroke':'star'}"></i>
+      ${pinned?'Remove spotlight':'Spotlight this participant'}
+    </button>
+    ${pinned?`<button onclick="clearSpotlight();closeCtxMenu()"><i class="fas fa-times"></i> Clear spotlight</button>`:''}
+    ${(IS_HOST||IS_ADMIN)&&cid!=='local'?`<div class="spm-divider"></div>
+    <button onclick="conn.invoke('ForceMute','${cid}');closeCtxMenu()"><i class="fas fa-microphone-slash"></i> Mute this person</button>`:''}`;
+  setTimeout(()=>document.addEventListener('click',closeCtxMenu,{once:true}),30);
+}
+function closeCtxMenu(){document.getElementById('spotlightCtxMenu').style.display='none';}
+
+// ── Reflow (spotlight aware) ──────────────────────────────
+// Hidden off-screen container for non-spotlighted tiles
+// Using display:none on tiles destroys their video layout; moving them
+// to a detached container keeps srcObject alive
+const _hiddenPool = document.createElement('div');
+_hiddenPool.style.cssText = 'position:fixed;left:-9999px;top:-9999px;width:1px;height:1px;overflow:hidden';
+document.body.appendChild(_hiddenPool);
+
+function reflow(){
+  const grid = document.getElementById('videoGrid');
+  if(!grid) return;
+
+  if(spotlightId){
+    // Move ALL tiles to hidden pool first (preserves video streams)
+    Array.from(grid.querySelectorAll('.video-tile')).forEach(t => {
+      t.classList.remove('spotlighted');
+      _hiddenPool.appendChild(t);
+    });
+
+    // Move spotlighted tile back to grid
+    const sp = document.getElementById(`tile-${spotlightId}`);
+    if(sp){
+      sp.classList.add('spotlighted');
+      grid.appendChild(sp);
+      // Resume video if paused after DOM move
+      const vid = sp.querySelector('video');
+      if(vid && vid.paused && vid.srcObject) vid.play().catch(()=>{});
+    }
+    grid.className = 'video-grid solo spotlight-mode';
+
+  } else {
+    // Move all tiles from hidden pool back to grid
+    Array.from(_hiddenPool.querySelectorAll('.video-tile')).forEach(t => {
+      t.classList.remove('spotlighted');
+      grid.appendChild(t);
+      const vid = t.querySelector('video');
+      if(vid && vid.paused && vid.srcObject) vid.play().catch(()=>{});
+    });
+    const n = grid.querySelectorAll('.video-tile').length;
+    grid.className = 'video-grid '+(n<=1?'solo':n===2?'duo':n===3?'trio':n<=4?'quad':'many');
+  }
+  refreshSpotlightBtns();
+}
+
+// ── Counts ────────────────────────────────────────────────
+function updateViewerCount(n){document.getElementById('viewerCount').textContent=n;}
+function updateMemberCount(n){document.getElementById('memberCount').textContent=n;}
+
+// ── Controls ──────────────────────────────────────────────
+function toggleMic(){
+  isMuted=!isMuted; localStream.getAudioTracks().forEach(t=>t.enabled=!isMuted);
+  document.getElementById('btnMic').classList.toggle('ctrl-danger',isMuted);
+  document.getElementById('micIcon').className=isMuted?'fas fa-microphone-slash':'fas fa-microphone';
+  conn.invoke('ToggleMute',ROOM_CODE,isMuted);
+  if(isMuted) addBadge(conn.connectionId,'mute','🔇'); else document.getElementById(`badge-mute-${conn.connectionId}`)?.remove();
+}
+async function toggleCamera(){
+  isCamOff=!isCamOff; localStream.getVideoTracks().forEach(t=>t.enabled=!isCamOff);
+  const t=document.getElementById('tile-local');
+  t?.classList.toggle('video-off',isCamOff); t?.classList.toggle('video-on',!isCamOff);
+  document.getElementById('btnCam').classList.toggle('ctrl-danger',isCamOff);
+  document.getElementById('camIcon').className=isCamOff?'fas fa-video-slash':'fas fa-video';
+  conn.invoke('ToggleVideo',ROOM_CODE,isCamOff);
+}
+async function toggleScreenShare(){
+  if(!isScreenSharing){
+    try{
+      screenStream=await navigator.mediaDevices.getDisplayMedia({video:true});
+      const track=screenStream.getVideoTracks()[0];
+      Object.values(peers).forEach(pc=>{const s=pc.getSenders().find(s=>s.track?.kind==='video');if(s)s.replaceTrack(track);});
+      document.getElementById('localVideo').srcObject=screenStream;
+      track.onended=()=>{if(isScreenSharing)toggleScreenShare();};
+      isScreenSharing=true; document.getElementById('btnScreen').classList.add('ctrl-active');
+      conn.invoke('StartScreenShare',ROOM_CODE);
+    }catch{}
+  }else{
+    const vt=localStream.getVideoTracks()[0];
+    Object.values(peers).forEach(pc=>{const s=pc.getSenders().find(s=>s.track?.kind==='video');if(s&&vt)s.replaceTrack(vt);});
+    document.getElementById('localVideo').srcObject=localStream;
+    screenStream?.getTracks().forEach(t=>t.stop());
+    isScreenSharing=false; document.getElementById('btnScreen').classList.remove('ctrl-active');
+    conn.invoke('StopScreenShare',ROOM_CODE);
+  }
+}
+function toggleHand(){isHandRaised=!isHandRaised;document.getElementById('btnHand').classList.toggle('ctrl-active',isHandRaised);conn.invoke('RaiseHand',ROOM_CODE,isHandRaised);}
+function muteAll(){conn.invoke('MuteAll',ROOM_CODE);}
+function confirmEnd(){if(confirm('End the meeting for everyone?'))conn.invoke('EndMeeting',ROOM_CODE);}
+function leaveMeeting(){conn.invoke('LeaveRoom',ROOM_CODE).then(()=>window.location.href='/Meeting');}
+
+// ── Sidebar ───────────────────────────────────────────────
+function toggleSidebar(tab){
+  const s=document.getElementById('meetSidebar');
+  if(!sidebarOpen||currentTab!==tab){s.classList.remove('closed');sidebarOpen=true;switchTab(tab);}
+  else{s.classList.add('closed');sidebarOpen=false;}
+}
+function switchTab(tab){
+  currentTab=tab;
+  document.querySelectorAll('.sidebar-tab').forEach(t=>t.classList.remove('active'));
+  document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));
+  document.getElementById(`tab${capitalize(tab)}`)?.classList.add('active');
+  document.getElementById(`panel${capitalize(tab)}`)?.classList.add('active');
+  if(tab==='chat'){unreadChat=0;document.getElementById('chatCount').style.display='none';}
+}
+
+// ── Chat ──────────────────────────────────────────────────
+function chatKeyDown(e){if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendChat();}}
+function sendChat(){const i=document.getElementById('chatInput');const m=i.value.trim();if(m){conn.invoke('SendMessage',ROOM_CODE,m,'chat');i.value='';}}
+function sendPrayer(){const i=document.getElementById('chatInput');const m=i.value.trim();if(m){conn.invoke('SendMessage',ROOM_CODE,'🙏 '+m,'prayer');i.value='';}}
+function appendChatMessage({senderName,message,type,sentAt,connectionId}){
+  const box=document.getElementById('chatMessages');
+  const isOwn=connectionId===conn.connectionId, isPrayer=type==='prayer';
+  const div=document.createElement('div'); div.className=`chat-msg-meet ${isOwn?'own':''}`;
+  div.innerHTML=`${!isOwn?`<div class="msg-sender">${escHtml(senderName)}</div>`:''}
+    <div class="${isPrayer?'msg-prayer':'msg-bubble-meet'}">${escHtml(message)}</div>
+    <div class="msg-time">${sentAt}</div>`;
+  box.appendChild(div); box.scrollTop=box.scrollHeight;
+  if(currentTab!=='chat'||!sidebarOpen){unreadChat++;const b=document.getElementById('chatCount');b.style.display='inline';b.textContent=unreadChat;}
+}
+function appendSystemMessage(msg){const box=document.getElementById('chatMessages');const d=document.createElement('div');d.className='msg-system';d.textContent=msg;box.appendChild(d);box.scrollTop=box.scrollHeight;}
+
+// ── Participants ──────────────────────────────────────────
+function renderParticipants(list){document.getElementById('participantList').innerHTML='';list.forEach(p=>addParticipantItem(p.connectionId,p.displayName,p.photo,p.isHost));updatePeopleCount();}
+function addParticipantItem(cid,name,photo,isHost){
+  const c=document.getElementById('participantList');
+  if(document.getElementById(`person-${cid}`)) return;
+  const div=document.createElement('div'); div.className='participant-item'; div.id=`person-${cid}`;
+  div.innerHTML=`<img src="${escHtml(photo??'/images/avatar-default.png')}" alt="${escHtml(name)}"/>
+    <span class="participant-name">${escHtml(name)}</span>
+    <div class="participant-badges">
+      ${isHost?'<span title="Host">👑</span>':''}
+      ${(IS_HOST||IS_ADMIN)?`<button class="spotlight-person-btn ${spotlightId===cid?'active':''}"
+        data-cid="${cid}" onclick="setSpotlight('${cid}')" title="Spotlight">
+        <i class="fas fa-star"></i></button>`:''}
+    </div>`;
+  c.appendChild(div);
+}
+function addWaitingItem(cid,name,pid){
+  let w=document.getElementById('waitingList');
+  if(!w.querySelector('h4')) w.innerHTML=`<div class="waiting-section"><h4><i class="fas fa-clock"></i> Waiting Room</h4><div id="waitingItems"></div></div>`;
+  const item=document.createElement('div'); item.className='waiting-item'; item.id=`wait-${cid}`;
+  item.innerHTML=`<span>${escHtml(name)}</span><button class="admit-btn" onclick="admitParticipant(${pid},'${cid}')">Admit</button>`;
+  document.getElementById('waitingItems')?.appendChild(item);
+  toggleSidebar('people');
+}
+function admitParticipant(pid,cid){conn.invoke('AdmitParticipant',ROOM_CODE,pid);document.getElementById(`wait-${cid}`)?.remove();}
+function updatePeopleCount(){
+  const n=document.querySelectorAll('.participant-item').length;
+  document.getElementById('peopleCount').textContent=n;
+  updateMemberCount(n+1);
+}
+
+// ── Reactions ─────────────────────────────────────────────
+function toggleReactions(){document.getElementById('reactionsBar').classList.toggle('visible');}
+function sendReaction(emoji){conn.invoke('SendReaction',ROOM_CODE,emoji);showFloatingReaction(emoji);document.getElementById('reactionsBar').classList.remove('visible');}
+function showFloatingReaction(emoji){const el=document.createElement('div');el.className='floating-reaction';el.textContent=emoji;el.style.left=(20+Math.random()*60)+'%';el.style.bottom='100px';document.body.appendChild(el);setTimeout(()=>el.remove(),2600);}
+
+// ── Timer ─────────────────────────────────────────────────
+function startTimer(){timerInterval=setInterval(()=>{meetingSeconds++;const h=Math.floor(meetingSeconds/3600),m=Math.floor((meetingSeconds%3600)/60),s=meetingSeconds%60;document.getElementById('meetTimer').textContent=h>0?`${pad(h)}:${pad(m)}:${pad(s)}`:`${pad(m)}:${pad(s)}`;},1000);}
+
+// ── Utilities ─────────────────────────────────────────────
+function updateMediaButtons(){
+  if(isMuted){document.getElementById('btnMic').classList.add('ctrl-danger');document.getElementById('micIcon').className='fas fa-microphone-slash';}
+  if(isCamOff){document.getElementById('btnCam').classList.add('ctrl-danger');document.getElementById('camIcon').className='fas fa-video-slash';}
+}
+function copyCode(){navigator.clipboard.writeText(ROOM_CODE);toast('Room code copied!','success');}
+function toast(msg,type='info'){
+  const c=document.getElementById('toastContainer'),t=document.createElement('div');
+  t.className='toast';
+  t.innerHTML=`<i class="fas fa-${type==='success'?'check-circle':type==='warn'?'triangle-exclamation':'circle-info'}" style="color:${type==='success'?'#22c55e':type==='warn'?'#f59e0b':'#7c6ff7'}"></i> ${escHtml(msg)}`;
+  c.appendChild(t); setTimeout(()=>t.remove(),3500);
+}
+function escHtml(s){const d=document.createElement('div');d.textContent=s??'';return d.innerHTML;}
+function capitalize(s){return s.charAt(0).toUpperCase()+s.slice(1);}
+function pad(n){return String(n).padStart(2,'0');}
+
+// ── LiveSession hub — verse overlays from Admin LiveSettings ─
+const liveConn = SERMON_ID > 0
+    ? new signalR.HubConnectionBuilder()
+        .withUrl('/liveSessionHub').withAutomaticReconnect().build()
+    : null;
+
+if (liveConn) {
+    liveConn.on('VerseChanged', ({reference, verseText, translation}) => {
+        document.getElementById('verseText').textContent = `"${verseText}"`;
+        document.getElementById('verseRef').textContent  = `${reference} (${translation})`;
+        document.getElementById('verseOverlay').style.display = 'block';
+    });
+    liveConn.on('VerseCleared', () => {
+        document.getElementById('verseOverlay').style.display = 'none';
+    });
+    liveConn.on('OverlayToggled', (overlay, visible) => {
+        if (overlay === 'verse')
+            document.getElementById('verseOverlay').style.display = visible ? 'block' : 'none';
+    });
+    liveConn.on('SettingsChanged', s => {
+        if (!s.showVerseOverlay || !s.activeVerse)
+            document.getElementById('verseOverlay').style.display = 'none';
+    });
+}
+
+(async()=>{
+    await initMedia();
+    await conn.start();
+    await conn.invoke('JoinRoom',ROOM_CODE,DISPLAY);
+
+    // Connect to LiveSession hub to receive verse projections
+    if (liveConn) {
+        await liveConn.start();
+        await liveConn.invoke('JoinLiveRoom', SERMON_ID);
+        // Load current verse if one is already active
+        try {
+            const res = await fetch(`/api/LiveSettings/${SERMON_ID}/State`);
+            const s   = await res.json();
+            if (s.showVerseOverlay && s.activeVerse) {
+                document.getElementById('verseText').textContent = `"${s.activeVerse.verseText}"`;
+                document.getElementById('verseRef').textContent  =
+                    `${s.activeVerse.reference} (${s.activeVerse.translation})`;
+                document.getElementById('verseOverlay').style.display = 'block';
+            }
+        } catch {}
+    }
+})();
+window.addEventListener('beforeunload',()=>{
+    conn.invoke('LeaveRoom',ROOM_CODE);
+    liveConn?.stop();
+});
+</script>
+</body>
+</html>

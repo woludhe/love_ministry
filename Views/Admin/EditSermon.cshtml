@@ -1,0 +1,341 @@
+﻿@model ChurchMinistry.Models.Sermon
+@{
+    ViewData["Title"] = "Edit Sermon";
+    Layout = "~/Views/Shared/_AdminDashboard_Layout.cshtml";
+}
+
+<div class="member-main">
+    <section class="page-header">
+        <h1><i class="fas fa-pen"></i> Edit Sermon</h1>
+        <p>Update the details for <strong>@Model.Title</strong></p>
+    </section>
+
+    <div class="form-page">
+        <form asp-action="EditSermon" method="post" enctype="multipart/form-data">
+            <input type="hidden" asp-for="Id" />
+            <input type="hidden" asp-for="ThumbnailUrl" />
+            <input type="hidden" asp-for="ViewCount" />
+            <input type="hidden" asp-for="CreatedAt" />
+
+            <div asp-validation-summary="All" class="validation-summary"></div>
+
+            <div class="form-row">
+                <div class="form-group">
+                    <label asp-for="Title">Title <span style="color:var(--coral)">*</span></label>
+                    <input asp-for="Title" class="form-control" required />
+                    <span asp-validation-for="Title" class="field-error"></span>
+                </div>
+                <div class="form-group">
+                    <label asp-for="Speaker">Speaker</label>
+                    <input asp-for="Speaker" class="form-control" />
+                </div>
+            </div>
+
+            <div class="form-row">
+                <div class="form-group">
+                    <label asp-for="SeriesName">Series Name</label>
+                    <input asp-for="SeriesName" class="form-control" />
+                </div>
+                <div class="form-group">
+                    <label asp-for="SermonDate">Sermon Date</label>
+                    <input asp-for="SermonDate" class="form-control" type="datetime-local" />
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label asp-for="ScriptureReference">Scripture Reference</label>
+                <input asp-for="ScriptureReference" class="form-control"
+                       placeholder="e.g. John 3:16" />
+            </div>
+
+            <div class="form-group">
+                <label asp-for="Description">Description</label>
+                <textarea asp-for="Description" class="form-control" rows="4"></textarea>
+            </div>
+
+            <div class="form-row">
+                <div class="form-group">
+                    <label asp-for="VideoUrl">Video URL</label>
+                    <input asp-for="VideoUrl" class="form-control"
+                           placeholder="https://youtube.com/watch?v=..." />
+                </div>
+                <div class="form-group">
+                    <label asp-for="AudioUrl">Audio URL</label>
+                    <input asp-for="AudioUrl" class="form-control" />
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label asp-for="Tags">Tags (comma separated)</label>
+                <input asp-for="Tags" class="form-control" placeholder="faith, prayer, healing" />
+            </div>
+
+            @* {{-- ═══════════════════════════════════════════════════
+            ONLINE MEETING INTEGRATION
+            ═══════════════════════════════════════════════════ --}} *@
+
+            <div class="form-group">
+                <div style="background:var(--purple-l);border:1px solid #ddd6fe;border-radius:10px;
+                 padding:.85rem 1rem;display:flex;align-items:center;
+                 justify-content:space-between;gap:1rem">
+                    <div>
+                        <div style="font-size:.9rem;font-weight:700">
+                            <i class="fas fa-video" style="color:var(--purple)"></i>
+                            Stream via Online Meeting Room
+                        </div>
+                        <div class="meta">
+                            Link a meeting room so viewers join directly from the live page
+                        </div>
+                    </div>
+                    <label style="display:inline-flex;cursor:pointer">
+                        <input asp-for="IsOnlineMeeting" type="checkbox" id="isOnlineMeetingCheck"
+                               style="display:none" onchange="toggleMeetingMode(this.checked)" />
+                        <span class="ls-toggle" id="meetingToggle"
+                              style="background:@(Model.IsOnlineMeeting ? "var(--purple)" : "var(--border)")">
+                        </span>
+                    </label>
+                </div>
+            </div>
+
+            @* {{-- Meeting room picker --}} *@
+            <div id="meetingRoomGroup"
+                 style="display:@(Model.IsOnlineMeeting ? "block" : "none")">
+                <div class="form-group">
+                    <label asp-for="MeetingRoomCode">
+                        <i class="fas fa-link" style="color:var(--purple)"></i>
+                        Meeting Room Code
+                    </label>
+                    <div style="display:flex;gap:.6rem">
+                        <select asp-for="MeetingRoomCode" class="form-control" id="roomCodeSelect"
+                                onchange="updateRoomPreview(this)">
+                            <option value="">— Select a meeting room —</option>
+                            @foreach (var room in (ViewBag.MeetingRooms as List<ChurchMinistry.Models.MeetingRoom>
+                            ?? new List<ChurchMinistry.Models.MeetingRoom>()))
+                            {
+                                var extraInfo = room.Status == ChurchMinistry.Models.RoomStatus.Live
+                                ? " • LIVE"
+                                : room.ScheduledAt.HasValue
+                                ? $" • {room.ScheduledAt.Value:dd MMM h:mm tt}"
+                                : "";
+
+                                <option value="@room.RoomCode"
+                                        selected="@(Model?.MeetingRoomCode == room.RoomCode)">
+                                    @room.RoomCode — @room.Title (@room.MeetingType@extraInfo)
+                                </option>
+                            }
+                        </select>
+                        <a asp-controller="Meeting" asp-action="Create" target="_blank"
+                           class="btn btn-outline btn-sm" style="white-space:nowrap">
+                            <i class="fas fa-plus"></i> New Room
+                        </a>
+                    </div>
+                    <small class="meta">
+                        No room yet?
+                        <a asp-controller="Meeting" asp-action="Create" target="_blank">
+                            Create one first
+                        </a>
+                        then refresh this page.
+                    </small>
+                </div>
+
+                <div id="roomPreviewCard"
+                     style="display:@(!string.IsNullOrEmpty(Model.MeetingRoomCode) ? "block" : "none");
+                        background:var(--purple-l);border:1px solid #ddd6fe;border-radius:10px;
+                        padding:1rem;margin-bottom:1.25rem">
+                    <div style="display:flex;align-items:center;gap:.75rem">
+                        <div style="width:38px;height:38px;background:var(--purple);border-radius:8px;
+                         display:flex;align-items:center;justify-content:center;color:white">
+                            <i class="fas fa-video"></i>
+                        </div>
+                        <div>
+                            <div id="previewTitle" style="font-weight:700;font-size:.9rem">
+                                @(Model.MeetingRoomCode ?? "")
+                            </div>
+                            <div id="previewCode"
+                                 style="font-size:.78rem;color:var(--text-s);font-family:monospace">
+                                @Model.MeetingRoomCode
+                            </div>
+                        </div>
+                        <span id="previewStatus" class="status-badge status-active"
+                              style="margin-left:auto">Linked</span>
+                    </div>
+                    <p style="font-size:.78rem;color:var(--text-s);margin-top:.5rem">
+                        <i class="fas fa-info-circle"></i>
+                        Logged-in members get full meeting controls.
+                        Guests see the video stream only.
+                    </p>
+                </div>
+            </div>
+
+            @* {{-- Standard live stream URL --}} *@
+            <div id="liveStreamGroup"
+                 style="display:@(Model.IsOnlineMeeting ? "none" : "block")">
+                <div class="form-group">
+                    <label asp-for="LiveStreamUrl">
+                        <i class="fas fa-broadcast-tower" style="color:var(--coral)"></i>
+                        Live Stream URL
+                    </label>
+                    <input asp-for="LiveStreamUrl" class="form-control"
+                           placeholder="https://youtube.com/live/... or RTMP stream URL" />
+                    <small class="meta">
+                        YouTube Live, Facebook Live, or any HLS/RTMP stream URL
+                    </small>
+                </div>
+            </div>
+
+            @* {{-- Thumbnail --}} *@
+            <div class="form-group">
+                <label>Thumbnail Image</label>
+                @if (!string.IsNullOrEmpty(Model.ThumbnailUrl))
+                {
+                    <div class="thumbnail-preview">
+                        <img src="@Model.ThumbnailUrl" id="thumbPreview" alt="Current thumbnail" />
+                        <p class="meta" style="margin-top:.4rem">
+                            Current thumbnail. Upload a new image to replace it.
+                        </p>
+                    </div>
+                }
+                else
+                {
+                    <div class="thumbnail-preview placeholder" id="thumbPlaceholder">
+                        <i class="fas fa-image fa-2x" style="color:var(--border)"></i>
+                        <p class="meta">No thumbnail set</p>
+                    </div>
+                }
+                <input type="file" name="thumbnail" accept="image/*" class="form-control"
+                       style="margin-top:.5rem" onchange="previewThumb(this)" />
+            </div>
+
+            <div class="form-row">
+                <div class="form-group checkbox-group">
+                    <label>
+                        <input asp-for="IsPublished" type="checkbox" />
+                        Published (visible to members)
+                    </label>
+                </div>
+            </div>
+
+            <div style="display:flex;gap:.75rem;margin-top:1.5rem">
+                <button type="submit" class="btn btn-primary">
+                    <i class="fas fa-save"></i> Save Changes
+                </button>
+                <a asp-action="Sermons" class="btn btn-outline">
+                    <i class="fas fa-times"></i> Cancel
+                </a>
+                <a asp-controller="Media" asp-action="Watch" asp-route-id="@Model.Id"
+                   class="btn btn-outline" target="_blank" style="margin-left:auto">
+                    <i class="fas fa-eye"></i> Preview
+                </a>
+            </div>
+        </form>
+    </div>
+</div>
+
+@section Scripts {
+    <script>
+        const roomData = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(
+        (ViewBag.MeetingRooms as List<ChurchMinistry.Models.MeetingRoom> ?? new())
+        .Select(r => new
+        {
+        code = r.RoomCode,
+        title = r.Title,
+        status = r.Status.ToString(),
+        type = r.MeetingType.ToString()
+        })
+        ));
+
+        function toggleMeetingMode(on) {
+            document.getElementById('meetingRoomGroup').style.display = on ? 'block' : 'none';
+            document.getElementById('liveStreamGroup').style.display = on ? 'none' : 'block';
+            document.getElementById('meetingToggle').style.background =
+                on ? 'var(--purple)' : 'var(--border)';
+            if (!on) document.getElementById('roomPreviewCard').style.display = 'none';
+        }
+
+        function updateRoomPreview(sel) {
+            const room = roomData.find(r => r.code === sel.value);
+            const card = document.getElementById('roomPreviewCard');
+            if (room) {
+                document.getElementById('previewTitle').textContent = room.title;
+                document.getElementById('previewCode').textContent = room.code + ' · ' + room.type;
+                const s = document.getElementById('previewStatus');
+                s.textContent = room.status === 'Live' ? '🔴 Live' :
+                    room.status === 'Scheduled' ? '🕐 Scheduled' : room.status;
+                s.className = 'status-badge ' +
+                    (room.status === 'Live' ? 'status-active' : 'status-pending');
+                card.style.display = 'block';
+            } else {
+                card.style.display = 'none';
+            }
+        }
+
+        function previewThumb(input) {
+            if (input.files && input.files[0]) {
+                const reader = new FileReader();
+                reader.onload = e => {
+                    let img = document.getElementById('thumbPreview');
+                    if (!img) {
+                        const ph = document.getElementById('thumbPlaceholder');
+                        if (ph) ph.innerHTML =
+                            `<img id="thumbPreview" style="max-width:280px;border-radius:8px" />`;
+                        img = document.getElementById('thumbPreview');
+                    }
+                    if (img) img.src = e.target.result;
+                };
+                reader.readAsDataURL(input.files[0]);
+            }
+        }
+
+        // Init — trigger preview for currently selected room
+        const sel = document.getElementById('roomCodeSelect');
+        if (sel && sel.value) updateRoomPreview(sel);
+    </script>
+
+    <style>
+        .ls-toggle {
+            width: 36px;
+            height: 20px;
+            border-radius: 100px;
+            position: relative;
+            display: inline-block;
+            transition: background .2s;
+        }
+
+            .ls-toggle::after {
+                content: '';
+                position: absolute;
+                width: 16px;
+                height: 16px;
+                background: white;
+                border-radius: 50%;
+                top: 2px;
+                left: 2px;
+                transition: transform .2s;
+                box-shadow: 0 1px 3px rgba(0,0,0,.2);
+            }
+
+        .thumbnail-preview {
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: .75rem;
+            background: #f9fafb;
+            display: inline-block;
+        }
+
+            .thumbnail-preview img {
+                max-width: 280px;
+                max-height: 160px;
+                object-fit: cover;
+                border-radius: 6px;
+                display: block;
+            }
+
+            .thumbnail-preview.placeholder {
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                gap: .4rem;
+                padding: 1.5rem 2rem;
+            }
+    </style>
+}

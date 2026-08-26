@@ -1,0 +1,463 @@
+@model ChurchMinistry.Models.ChurchEvent
+@{
+    ViewData["Title"] = Model.Title;
+    Layout = "~/Views/Shared/_Layout.cshtml";
+    bool isPaid        = Model.TicketPrice.HasValue && Model.TicketPrice > 0;
+    bool isPast        = Model.StartDate < DateTime.UtcNow;
+    var  myReg         = ViewBag.MyRegistration as ChurchMinistry.Models.EventRegistration;
+    int  confirmed     = ViewBag.ConfirmedCount  as int? ?? 0;
+    int? spotsLeft     = ViewBag.SpotsLeft       as int?;
+    bool isSoldOut     = spotsLeft.HasValue && spotsLeft <= 0;
+    bool isRegistered  = myReg != null && myReg.PaymentStatus != ChurchMinistry.Models.PaymentStatus.Failed;
+    bool hasPending    = myReg?.PaymentStatus == ChurchMinistry.Models.PaymentStatus.Pending
+                      && myReg?.AmountPaid < myReg?.TotalAmount;
+}
+@using ChurchMinistry.Models
+
+<div class="event-detail-page container">
+
+    @* {{-- Banner --}} *@
+    @if (!string.IsNullOrEmpty(Model.ImageUrl))
+    {
+        <div class="event-detail-banner">
+            <img src="@Model.ImageUrl" alt="@Model.Title" />
+        </div>
+    }
+
+    <div class="event-detail-layout">
+
+        @* {{-- ── Main content ── --}} *@
+        <div class="event-detail-main">
+
+            @* {{-- Header --}} *@
+            <div style="display:flex;align-items:flex-start;justify-content:space-between;
+                 flex-wrap:wrap;gap:1rem;margin-bottom:1.25rem">
+                <div>
+                    <div class="event-badge-row" style="margin-bottom:.6rem">
+                        @if (isPaid)
+                        {
+                            <span class="event-badge event-badge-paid">
+                                <i class="fas fa-ticket-alt"></i>
+                                UGX @Model.TicketPrice!.Value.ToString("N0")
+                            </span>
+                        }
+                        else
+                        {
+                            <span class="event-badge event-badge-free">
+                                <i class="fas fa-check-circle"></i> Free Entry
+                            </span>
+                        }
+                        @if (Model.IsAllDay)
+                        {
+                            <span class="event-badge event-badge-allday">All Day</span>
+                        }
+                        @if (Model.AllowPartialPayment)
+                        {
+                            <span class="event-badge event-badge-partial">
+                                <i class="fas fa-coins"></i> Partial Pay Allowed
+                            </span>
+                        }
+                    </div>
+                    <h1 style="font-size:1.75rem;font-weight:800;margin-bottom:.4rem">@Model.Title</h1>
+                </div>
+                @if (User.IsInRole("Admin") || User.IsInRole("Pastor"))
+                {
+                    <a asp-controller="Admin" asp-action="EditEvent"
+                       asp-route-id="@Model.Id" class="btn btn-outline btn-sm">
+                        <i class="fas fa-pen"></i> Edit Event
+                    </a>
+                }
+            </div>
+
+            @* {{-- Meta grid --}} *@
+            <div class="event-meta-grid">
+                <div>
+                    <i class="fas fa-calendar" style="color:var(--purple)"></i>
+                    <strong>Date</strong><br/>
+                    @if (Model.IsAllDay)
+                    {
+                        @Model.StartDate.ToString("dddd, dd MMMM yyyy")
+                        @if (Model.EndDate.Date != Model.StartDate.Date)
+                        { <span> – @Model.EndDate.ToString("dd MMMM yyyy")</span> }
+                        <span class="tag" style="margin-left:.3rem">All Day</span>
+                    }
+                    else
+                    {
+                        @Model.StartDate.ToString("dddd, dd MMMM yyyy")
+                    }
+                </div>
+                @if (!Model.IsAllDay)
+                {
+                    <div>
+                        <i class="fas fa-clock" style="color:var(--purple)"></i>
+                        <strong>Time</strong><br/>
+                        @Model.StartDate.ToString("h:mm tt") – @Model.EndDate.ToString("h:mm tt")
+                    </div>
+                }
+                @if (!string.IsNullOrEmpty(Model.Location))
+                {
+                    <div>
+                        <i class="fas fa-map-marker-alt" style="color:var(--purple)"></i>
+                        <strong>Location</strong><br />@Model.Location
+                    </div>
+                }
+                <div>
+                    <i class="fas fa-users" style="color:var(--purple)"></i>
+                    <strong>Registered</strong><br/>
+                    @confirmed @(Model.MaxCapacity.HasValue ? $" / {Model.MaxCapacity}" : "")
+                    @if (spotsLeft.HasValue && !isSoldOut && spotsLeft <= 10)
+                    {
+                        <span style="color:var(--coral);font-weight:700">
+                            - Only @spotsLeft spots left!
+                        </span>
+                    }
+                    @if (isSoldOut)
+                    {
+                        <span style="color:var(--coral);font-weight:700"> - Sold Out</span>
+                    }
+                </div>
+            </div>
+
+            @* {{-- Rich description --}} *@
+            @if (!string.IsNullOrEmpty(Model.RichDescription))
+            {
+                <div class="event-rich-description">
+                    @Html.Raw(Model.RichDescription)
+                </div>
+            }
+            else if (!string.IsNullOrEmpty(Model.Description))
+            {
+                <div class="event-rich-description">
+                    <p>@Model.Description</p>
+                </div>
+            }
+
+            @* {{-- Photo gallery --}} *@
+            @if (Model.Gallery.Any())
+            {
+                <div class="event-gallery-section">
+                    <h3 class="event-gallery-heading">
+                        <i class="fas fa-images"></i> Photo Gallery
+                    </h3>
+                    <div class="event-gallery-grid" id="eventGallery">
+                        @foreach (var img in Model.Gallery)
+                        {
+                            <div class="event-gallery-item" onclick="openLightbox('@img')">
+                                <img src="@img" alt="Event photo" loading="lazy" />
+                                <div class="gallery-hover-overlay">
+                                    <i class="fas fa-expand"></i>
+                                </div>
+                            </div>
+                        }
+                    </div>
+                </div>
+            }
+
+        </div>
+
+        @* {{-- ── Registration sidebar ── --}} *@
+        <aside class="event-detail-sidebar">
+
+            @* {{-- My registration status --}} *@
+            @if (isRegistered)
+            {
+                <div class="reg-status-card">
+                    @if (myReg!.IsFullyPaid || myReg.PaymentStatus == PaymentStatus.Free)
+                    {
+                        <div class="reg-status-icon reg-status-green">
+                            <i class="fas fa-check-circle fa-2x"></i>
+                        </div>
+                        <div>
+                            <strong>You're registered!</strong>
+                            <p>Check your email for confirmation.</p>
+                            @if (myReg.IsBehalf && !string.IsNullOrEmpty(myReg.BehalfName))
+                            {
+                                <p class="meta">Registered for: <strong>@myReg.BehalfName</strong></p>
+                            }
+                        </div>
+                    }
+                    else if (hasPending)
+                    {
+                        <div class="reg-status-icon reg-status-amber">
+                            <i class="fas fa-clock fa-2x"></i>
+                        </div>
+                        <div style="flex:1">
+                            <strong>Partial Payment Made</strong>
+                            <div style="font-size:.85rem;margin-top:.35rem">
+                                <div class="partial-progress">
+                                    <div class="partial-progress-fill"
+                                         style="width:@((myReg.AmountPaid / myReg.TotalAmount * 100).ToString("F0"))%">
+                                    </div>
+                                </div>
+                                <p style="margin-top:.3rem">
+                                    Paid: <strong style="color:var(--green)">UGX @myReg.AmountPaid.ToString("N0")</strong><br/>
+                                    Balance: <strong style="color:var(--coral)">UGX @myReg.BalanceDue.ToString("N0")</strong>
+                                </p>
+                            </div>
+                            <a asp-action="Pay" asp-route-id="@Model.Id"
+                               class="btn btn-primary btn-sm btn-full" style="margin-top:.75rem">
+                                <i class="fas fa-credit-card"></i> Pay Balance
+                            </a>
+                        </div>
+                    }
+                </div>
+            }
+            else if (!isPast && Model.RequiresRegistration && !isSoldOut)
+            {
+                @if (!User.Identity!.IsAuthenticated)
+                {
+                    <div class="reg-sidebar-card">
+                        <p style="text-align:center;color:var(--text-s);margin-bottom:1rem">
+                            Sign in to register for this event
+                        </p>
+                        <a asp-controller="Account" asp-action="Login"
+                           asp-route-returnUrl="@Context.Request.Path"
+                           class="btn btn-primary btn-full">
+                            <i class="fas fa-sign-in-alt"></i> Sign In to Register
+                        </a>
+                    </div>
+                }
+                else if (isPaid)
+                {
+                    <div class="reg-sidebar-card">
+                        <h3 style="font-size:.95rem;font-weight:700;margin-bottom:.85rem">
+                            <i class="fas fa-ticket-alt" style="color:var(--purple)"></i>
+                            Get Your Ticket
+                        </h3>
+                        <div class="summary-row">
+                            <span>Ticket price</span>
+                            <strong>UGX @Model.TicketPrice!.Value.ToString("N0")</strong>
+                        </div>
+                        @if (Model.AllowPartialPayment && Model.MinPartialAmount.HasValue)
+                        {
+                            <div class="summary-row" style="color:var(--green);font-size:.82rem">
+                                <span>Min deposit</span>
+                                <span>UGX @Model.MinPartialAmount.Value.ToString("N0")</span>
+                            </div>
+                        }
+                        <div class="payment-methods-row" style="margin:.85rem 0">
+                            <span class="badge mtn">MTN</span>
+                            <span class="badge airtel">Airtel</span>
+                            <span class="badge mpesa">M-Pesa</span>
+                            <span class="badge visa">VISA</span>
+                        </div>
+                        <a asp-action="Pay" asp-route-id="@Model.Id"
+                           class="btn btn-primary btn-full" style="padding:.8rem">
+                            <i class="fas fa-lock"></i>
+                            Pay &amp; Register
+                        </a>
+                        <a asp-action="Pay" asp-route-id="@Model.Id"
+                           asp-route-isBehalf="true"
+                           class="btn btn-outline btn-full btn-sm" style="margin-top:.5rem">
+                            <i class="fas fa-user-friends"></i>
+                            Register for Someone Else
+                        </a>
+                        <p class="secure-note" style="margin-top:.6rem">
+                            <i class="fas fa-shield-alt"></i> Secured by Flutterwave
+                        </p>
+                    </div>
+                }
+                else
+                {
+                    <div class="reg-sidebar-card">
+                        <h3 style="font-size:.95rem;font-weight:700;margin-bottom:1rem">
+                            <i class="fas fa-user-plus" style="color:var(--purple)"></i>
+                            Register - Free
+                        </h3>
+                        <form asp-action="Register" method="post">
+                            <input type="hidden" name="EventId" value="@Model.Id" />
+                            <div class="form-group">
+                                <label>Full Name</label>
+                                <input name="Name" class="form-control" required />
+                            </div>
+                            <div class="form-group">
+                                <label>Email</label>
+                                <input name="Email" type="email" class="form-control" required />
+                            </div>
+                            <div class="form-group">
+                                <label>Phone</label>
+                                <input name="Phone" class="form-control" />
+                            </div>
+                            <button type="submit" class="btn btn-primary btn-full">
+                                <i class="fas fa-check"></i> Register Now
+                            </button>
+                        </form>
+                    </div>
+                }
+            }
+            else if (isSoldOut)
+            {
+                <div class="reg-sidebar-card" style="text-align:center">
+                    <i class="fas fa-times-circle fa-2x" style="color:var(--coral);margin-bottom:.5rem;display:block"></i>
+                    <strong>Sold Out</strong>
+                    <p class="meta" style="margin-top:.3rem">All spots have been taken.</p>
+                </div>
+            }
+            else if (isPast)
+            {
+                <div class="reg-sidebar-card" style="text-align:center">
+                    <i class="fas fa-calendar-check fa-2x" style="color:var(--text-s);margin-bottom:.5rem;display:block"></i>
+                    <strong>Event has passed</strong>
+                </div>
+            }
+
+            <a asp-action="Index" class="btn btn-outline btn-full btn-sm"
+               style="margin-top:.75rem">
+                <i class="fas fa-arrow-left"></i> Back to Events
+            </a>
+        </aside>
+
+    </div>
+
+    @* {{-- Lightbox --}} *@
+    <div id="lightbox" class="lightbox" onclick="closeLightbox()">
+        <button class="lightbox-close" onclick="closeLightbox()">
+            <i class="fas fa-times"></i>
+        </button>
+        <button class="lightbox-prev" onclick="lightboxNav(-1, event)">
+            <i class="fas fa-chevron-left"></i>
+        </button>
+        <img id="lightboxImg" src="" alt="" />
+        <button class="lightbox-next" onclick="lightboxNav(1, event)">
+            <i class="fas fa-chevron-right"></i>
+        </button>
+        <div class="lightbox-counter" id="lightboxCounter"></div>
+    </div>
+
+</div>
+
+@section Scripts {
+<script>
+// ── Lightbox ──────────────────────────────────────────────
+const galleryImages = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Model.Gallery));
+let lightboxIndex = 0;
+
+function openLightbox(url) {
+    lightboxIndex = galleryImages.indexOf(url);
+    document.getElementById('lightboxImg').src = url;
+    document.getElementById('lightbox').classList.add('lightbox-open');
+    updateCounter();
+    document.addEventListener('keydown', lightboxKeyNav);
+}
+
+function closeLightbox() {
+    document.getElementById('lightbox').classList.remove('lightbox-open');
+    document.removeEventListener('keydown', lightboxKeyNav);
+}
+
+function lightboxNav(dir, e) {
+    e?.stopPropagation();
+    lightboxIndex = (lightboxIndex + dir + galleryImages.length) % galleryImages.length;
+    document.getElementById('lightboxImg').src = galleryImages[lightboxIndex];
+    updateCounter();
+}
+
+function updateCounter() {
+    document.getElementById('lightboxCounter').textContent =
+        `${lightboxIndex + 1} / ${galleryImages.length}`;
+}
+
+function lightboxKeyNav(e) {
+    if (e.key === 'ArrowRight') lightboxNav(1);
+    if (e.key === 'ArrowLeft')  lightboxNav(-1);
+    if (e.key === 'Escape')     closeLightbox();
+}
+</script>
+
+<style>
+.event-detail-banner      { border-radius:var(--radius); overflow:hidden;
+                            margin-bottom:2rem; max-height:400px; }
+.event-detail-banner img  { width:100%; max-height:400px; object-fit:cover; }
+.event-detail-layout      { display:grid; grid-template-columns:1fr 300px;
+                            gap:2rem; align-items:start; }
+.event-detail-main        { min-width:0; }
+.event-detail-sidebar     { display:flex; flex-direction:column; gap:.75rem;
+                            position:sticky; top:80px; }
+
+/* Rich description */
+.event-rich-description   { background:var(--white); border:1px solid var(--border);
+                            border-radius:var(--radius); padding:1.5rem;
+                            box-shadow:var(--shadow); margin:1.25rem 0;
+                            font-size:.95rem; line-height:1.8; }
+.event-rich-description h1,.event-rich-description h2,.event-rich-description h3
+                          { margin:1rem 0 .5rem; font-weight:700; }
+.event-rich-description ul,.event-rich-description ol
+                          { padding-left:1.5rem; margin:.5rem 0; }
+.event-rich-description img { max-width:100%; border-radius:8px; }
+.event-rich-description table { width:100%; border-collapse:collapse; }
+.event-rich-description td,
+.event-rich-description th { border:1px solid var(--border); padding:.5rem; }
+
+/* Gallery */
+.event-gallery-section    { margin-top:1.5rem; }
+.event-gallery-heading    { font-size:1rem; font-weight:700; margin-bottom:.85rem;
+                            display:flex; align-items:center; gap:.45rem; }
+.event-gallery-grid       { display:grid;
+                            grid-template-columns:repeat(auto-fill,minmax(140px,1fr));
+                            gap:.6rem; }
+.event-gallery-item       { position:relative; aspect-ratio:1; border-radius:8px;
+                            overflow:hidden; cursor:pointer;
+                            border:1px solid var(--border); }
+.event-gallery-item img   { width:100%; height:100%; object-fit:cover;
+                            transition:transform .3s; }
+.event-gallery-item:hover img { transform:scale(1.08); }
+.gallery-hover-overlay    { position:absolute; inset:0; background:rgba(0,0,0,.35);
+                            display:flex; align-items:center; justify-content:center;
+                            color:white; font-size:1.1rem; opacity:0; transition:opacity .2s; }
+.event-gallery-item:hover .gallery-hover-overlay { opacity:1; }
+
+/* Lightbox */
+.lightbox                 { position:fixed; inset:0; background:rgba(0,0,0,.92);
+                            z-index:9999; display:none; align-items:center;
+                            justify-content:center; }
+.lightbox.lightbox-open   { display:flex; }
+.lightbox img             { max-width:90vw; max-height:85vh; border-radius:8px;
+                            box-shadow:0 8px 32px rgba(0,0,0,.6); }
+.lightbox-close           { position:absolute; top:1.25rem; right:1.25rem;
+                            background:rgba(255,255,255,.12); border:none; color:white;
+                            width:40px; height:40px; border-radius:50%; font-size:1rem;
+                            cursor:pointer; display:flex; align-items:center; justify-content:center; }
+.lightbox-prev,
+.lightbox-next            { position:absolute; top:50%; transform:translateY(-50%);
+                            background:rgba(255,255,255,.12); border:none; color:white;
+                            width:44px; height:44px; border-radius:50%; font-size:1rem;
+                            cursor:pointer; display:flex; align-items:center; justify-content:center; }
+.lightbox-prev            { left:1.25rem; }
+.lightbox-next            { right:1.25rem; }
+.lightbox-counter         { position:absolute; bottom:1.25rem; left:50%;
+                            transform:translateX(-50%); color:rgba(255,255,255,.6);
+                            font-size:.82rem; }
+
+/* Registration sidebar cards */
+.reg-sidebar-card         { background:var(--white); border:1px solid var(--border);
+                            border-radius:var(--radius); padding:1.25rem;
+                            box-shadow:var(--shadow); }
+.reg-status-card          { background:var(--white); border:1px solid var(--border);
+                            border-radius:var(--radius); padding:1.25rem;
+                            box-shadow:var(--shadow); display:flex;
+                            align-items:flex-start; gap:.85rem; }
+.reg-status-icon          { flex-shrink:0; }
+.reg-status-green         { color:var(--green); }
+.reg-status-amber         { color:var(--amber); }
+
+/* Partial payment progress */
+.partial-progress         { height:6px; background:#f3f4f6; border-radius:100px;
+                            overflow:hidden; }
+.partial-progress-fill    { height:100%; background:var(--green); border-radius:100px; }
+
+.event-badge-row          { display:flex; gap:.35rem; flex-wrap:wrap; }
+.event-badge              { display:inline-flex; align-items:center; gap:.3rem;
+                            padding:.2rem .65rem; border-radius:100px;
+                            font-size:.75rem; font-weight:700; }
+.event-badge-paid         { background:#ede9fe; color:#5b21b6; }
+.event-badge-free         { background:#d1fae5; color:#065f46; }
+.event-badge-allday       { background:#dbeafe; color:#1e40af; }
+.event-badge-partial      { background:#fef3c7; color:#92400e; }
+
+@@media (max-width:900px) {
+  .event-detail-layout    { grid-template-columns:1fr; }
+  .event-detail-sidebar   { position:static; }
+  .event-gallery-grid     { grid-template-columns:repeat(auto-fill,minmax(110px,1fr)); }
+}
+</style>
+}

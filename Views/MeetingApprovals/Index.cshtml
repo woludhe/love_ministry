@@ -1,0 +1,352 @@
+@{
+    ViewData["Title"] = "Meeting Approvals";
+    Layout = "~/Views/Shared/_AdminDashboard_Layout.cshtml";
+}
+@using ChurchMinistry.Models
+
+<div class="admin-main">
+    <div class="admin-topbar">
+        <h1>Meeting Approvals</h1>
+    </div>
+
+    @* {{-- Pending --}} *@
+    @{
+        var pending = ViewBag.Pending as List<MeetingRoom> ?? new List<MeetingRoom>();
+        var recent = ViewBag.Recent as List<MeetingRoom> ?? new List<MeetingRoom>();
+    }
+
+    @if (!pending.Any())
+    {
+        <div class="approval-empty">
+            <i class="fas fa-check-circle fa-3x" style="color:var(--green)"></i>
+            <h3>All caught up!</h3>
+            <p>No meetings are waiting for approval.</p>
+        </div>
+    }
+    else
+    {
+        <div class="section-label" style="margin-bottom:1rem">
+            <i class="fas fa-clock" style="color:var(--amber)"></i>
+            Pending Approval - @pending.Count
+        </div>
+
+        <div class="approval-list">
+            @foreach (var room in pending)
+            {
+                <div class="approval-card approval-card-pending">
+                    <div class="approval-card-header">
+                        <div>
+                            <div class="approval-type-badge @room.MeetingType.ToString().ToLower()">
+                                @room.MeetingType
+                            </div>
+                            <h3 class="approval-title">@room.Title</h3>
+                            @if (!string.IsNullOrEmpty(room.Description))
+                            {
+                                <p class="approval-desc">@room.Description</p>
+                            }
+                        </div>
+                        <div class="approval-status-badge pending">
+                            <i class="fas fa-clock"></i> Pending
+                        </div>
+                    </div>
+
+                    <div class="approval-meta-row">
+                        <span>
+                            <i class="fas fa-user"></i>
+                            @(room.HostMember?.FullName ?? "Unknown")
+                        </span>
+                        @if (room.ScheduledAt.HasValue)
+                        {
+                            <span>
+                                <i class="fas fa-calendar"></i>
+                                @room.ScheduledAt.Value.ToLocalTime().ToString("ddd, dd MMM yyyy · h:mm tt")
+                            </span>
+                        }
+                        <span>
+                            <i class="fas fa-users"></i>
+                            Max @room.MaxParticipants participants
+                        </span>
+                        @if (room.IsRecurring)
+                        {
+                            <span><i class="fas fa-rotate"></i> Recurring</span>
+                        }
+                        @if (!string.IsNullOrEmpty(room.PassCode))
+                        {
+                            <span><i class="fas fa-lock"></i> Has passcode</span>
+                        }
+                        <span>
+                            <i class="fas fa-code"></i> @room.RoomCode
+                        </span>
+                    </div>
+
+                    <div class="approval-actions">
+                        @* {{-- Approve button --}} *@
+                        <form asp-action="Approve" asp-route-id="@room.Id" method="post" style="display:inline">
+                            <button type="submit" class="btn btn-primary btn-sm">
+                                <i class="fas fa-check"></i> Approve
+                            </button>
+                        </form>
+
+                        @* {{-- Reject with reason --}} *@
+                        <button class="btn btn-outline btn-sm btn-reject"
+                                onclick="showRejectForm(@room.Id)">
+                            <i class="fas fa-times"></i> Reject
+                        </button>
+
+                        @* {{-- Reject form (hidden until button clicked) --}} *@
+                        <form asp-action="Reject" asp-route-id="@room.Id" method="post"
+                              id="reject-form-@room.Id" class="reject-inline-form" style="display:none">
+                            <input type="text" name="reason" placeholder="Reason for rejection (required)"
+                                   class="form-control" required style="flex:1" />
+                            <button type="submit" class="btn btn-sm" style="background:#fee2e2;color:#dc2626;border:1px solid #fca5a5;font-weight:700">
+                                Confirm Reject
+                            </button>
+                            <button type="button" class="btn btn-outline btn-sm"
+                                    onclick="hideRejectForm(@room.Id)">
+                                Cancel
+                            </button>
+                        </form>
+                    </div>
+                </div>
+            }
+        </div>
+    }
+
+    @* {{-- Recent decisions --}} *@
+    @if (recent.Any())
+    {
+        <div class="section-label" style="margin:2rem 0 1rem">
+            <i class="fas fa-history" style="color:var(--text-s)"></i>
+            Recent Decisions
+        </div>
+        <div class="table-card">
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Meeting</th>
+                        <th>Host</th>
+                        <th>Scheduled</th>
+                        <th>Status</th>
+                        <th>Decided</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var room in recent)
+                    {
+                        <tr>
+                            <td>
+                                <strong>@room.Title</strong>
+                                <br /><small class="meta">@room.RoomCode</small>
+                            </td>
+                            <td>@room.HostMember?.FullName</td>
+                            <td>@room.ScheduledAt?.ToLocalTime().ToString("dd MMM yyyy")</td>
+                            <td>
+                                @if (room.ApprovalStatus == ApprovalStatus.Approved)
+                                {
+                                    <span class="status-badge status-active">
+                                        <i class="fas fa-check-circle"></i> Approved
+                                    </span>
+                                }
+                                else
+                                {
+                                    <span class="status-badge status-inactive">
+                                        <i class="fas fa-times-circle"></i> Rejected
+                                    </span>
+                                }
+                                @if (!string.IsNullOrEmpty(room.RejectionReason))
+                                {
+                                    <br />
+
+                                    <small class="meta" title="@room.RejectionReason">
+                                        @room.RejectionReason.Substring(0, Math.Min(room.RejectionReason.Length, 50))@(room.RejectionReason.Length > 50 ? "…" : "")
+                                    </small>
+                                }
+                            </td>
+                            <td>@room.ApprovedAt?.ToLocalTime().ToString("dd MMM, h:mm tt")</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+</div>
+
+@section Scripts {
+    <script>
+        function showRejectForm(id) {
+            document.getElementById('reject-form-' + id).style.display = 'flex';
+        }
+        function hideRejectForm(id) {
+            document.getElementById('reject-form-' + id).style.display = 'none';
+        }
+    </script>
+    <style>
+        .approval-list {
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+            margin-bottom: 2rem;
+        }
+
+        .approval-card {
+            background: var(--white);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 1.25rem;
+            box-shadow: var(--shadow);
+        }
+
+        .approval-card-pending {
+            border-left: 3px solid var(--amber);
+        }
+
+        .approval-card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            gap: 1rem;
+            margin-bottom: .85rem;
+        }
+
+        .approval-title {
+            font-size: 1rem;
+            font-weight: 700;
+            margin: .3rem 0 .2rem;
+        }
+
+        .approval-desc {
+            font-size: .85rem;
+            color: var(--text-s);
+        }
+
+        .approval-type-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: .3rem;
+            font-size: .72rem;
+            font-weight: 700;
+            padding: .2rem .6rem;
+            border-radius: 100px;
+            margin-bottom: .4rem;
+        }
+
+        .prayer {
+            background: #ede9fe;
+            color: #5b21b6;
+        }
+
+        .biblestudy {
+            background: #dbeafe;
+            color: #1d4ed8;
+        }
+
+        .worship {
+            background: #fce7f3;
+            color: #9d174d;
+        }
+
+        .youthservice {
+            background: #d1fae5;
+            color: #065f46;
+        }
+
+        .cellgroup {
+            background: #fef3c7;
+            color: #92400e;
+        }
+
+        .generalservice {
+            background: #f3f4f6;
+            color: #374151;
+        }
+
+        .oneonone {
+            background: #e0f2fe;
+            color: #0369a1;
+        }
+
+        .approval-status-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: .35rem;
+            padding: .35rem .8rem;
+            border-radius: 100px;
+            font-size: .78rem;
+            font-weight: 700;
+            flex-shrink: 0;
+        }
+
+            .approval-status-badge.pending {
+                background: #fef3c7;
+                color: #92400e;
+            }
+
+        .approval-meta-row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: .75rem 1.5rem;
+            font-size: .82rem;
+            color: var(--text-s);
+            margin-bottom: 1rem;
+        }
+
+            .approval-meta-row i {
+                color: var(--purple);
+            }
+
+        .approval-actions {
+            display: flex;
+            align-items: center;
+            gap: .6rem;
+            flex-wrap: wrap;
+            padding-top: .85rem;
+            border-top: 1px solid var(--border);
+        }
+
+        .btn-reject {
+            color: #dc2626 !important;
+            border-color: #fca5a5 !important;
+        }
+
+            .btn-reject:hover {
+                background: #fee2e2 !important;
+            }
+
+        .reject-inline-form {
+            display: flex;
+            align-items: center;
+            gap: .5rem;
+            flex: 1;
+            min-width: 260px;
+            flex-wrap: wrap;
+        }
+
+        .approval-empty {
+            text-align: center;
+            padding: 5rem 1.5rem;
+            color: var(--text-s);
+        }
+
+            .approval-empty h3 {
+                font-size: 1.2rem;
+                font-weight: 700;
+                color: var(--text);
+                margin: .75rem 0 .4rem;
+            }
+
+        .sidebar-badge {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 18px;
+            height: 18px;
+            background: #ef4444;
+            color: white;
+            border-radius: 100px;
+            font-size: .65rem;
+            font-weight: 800;
+            padding: 0 4px;
+            margin-left: auto;
+        }
+    </style>
+}

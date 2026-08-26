@@ -1,0 +1,381 @@
+@inject Microsoft.Extensions.Configuration.IConfiguration Config
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>@(ViewData["Title"] ?? @Config["Church:Name"])</title>
+    <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" />
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Urbanist:ital,wght@0,100..900;1,100..900&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400..800;1,400..800&family=Urbanist:ital,wght@0,100..900;1,100..900&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400..800;1,400..800&family=Gloria+Hallelujah:ital,wght@0,100..900;1,100..900&display=swap" rel="stylesheet">
+    @await RenderSectionAsync("css", required: false)
+    <style>
+        /* Loader overlay */
+        #pageLoader {
+            position: fixed;
+            inset: 0;
+            z-index: 99999;
+            background: linear-gradient(135deg, #0f0a2e 0%, #1e1b4b 50%, #312e81 100%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: opacity .5s ease, visibility .5s ease;
+        }
+
+            #pageLoader.loader-hidden {
+                opacity: 0;
+                visibility: hidden;
+                pointer-events: none;
+            }
+
+        /* Inner centred content */
+        .loader-inner {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 1.25rem;
+            text-align: center;
+            padding: 2rem;
+            animation: loaderFadeIn .5s ease;
+        }
+
+        @@keyframes loaderFadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(12px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        /* Cross SVG */
+        .loader-logo {
+            width: 52px;
+            height: 68px;
+            filter: drop-shadow(0 0 18px rgba(99,102,241,.7));
+            animation: loaderPulse 2s ease-in-out infinite;
+        }
+
+        @@keyframes loaderPulse {
+            0%, 100% {
+                filter: drop-shadow(0 0 14px rgba(99,102,241,.6));
+                transform: scale(1);
+            }
+
+            50% {
+                filter: drop-shadow(0 0 28px rgba(124,111,247,.9));
+                transform: scale(1.04);
+            }
+        }
+
+        /* Church name */
+        .loader-name {
+            font-family: 'Inter', sans-serif;
+            font-size: 1.1rem;
+            font-weight: 700;
+            color: rgba(255,255,255,.9);
+            letter-spacing: .04em;
+        }
+
+        /* Progress bar track */
+        .loader-bar-wrap {
+            width: 220px;
+            height: 3px;
+            background: rgba(255,255,255,.1);
+            border-radius: 100px;
+            overflow: hidden;
+        }
+
+        /* Progress bar fill */
+        .loader-bar {
+            height: 100%;
+            width: 0%;
+            background: linear-gradient(90deg, #6366f1, #c4b5fd);
+            border-radius: 100px;
+            transition: width .35s ease;
+            box-shadow: 0 0 8px rgba(99,102,241,.8);
+        }
+
+        /* Loading text */
+        .loader-text {
+            font-size: .78rem;
+            color: rgba(255,255,255,.45);
+            font-family: 'Inter', sans-serif;
+            letter-spacing: .06em;
+            min-height: 1.2em;
+        }
+
+        /* Shimmer particles (decorative) */
+        .loader-inner::before {
+            content: '';
+            position: fixed;
+            inset: 0;
+            background: radial-gradient(circle at 20% 30%, rgba(99,102,241,.08) 0%, transparent 50%), radial-gradient(circle at 80% 70%, rgba(124,111,247,.06) 0%, transparent 50%);
+            pointer-events: none;
+            z-index: -1;
+        }
+    </style>
+</head>
+<body>
+    <div id="pageLoader">
+        <div class="loader-inner">
+            <div class="loader-logo">
+                <svg viewBox="0 0 60 80" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <rect x="24" y="0" width="12" height="80" rx="4" fill="white" opacity="0.15">
+                        <animate attributeName="opacity" values="0.15;1;0.15" dur="1.8s" repeatCount="indefinite" />
+                    </rect>
+                    <rect x="0" y="22" width="60" height="12" rx="4" fill="white" opacity="0.15">
+                        <animate attributeName="opacity" values="0.15;1;0.15" dur="1.8s" begin="0.3s" repeatCount="indefinite" />
+                    </rect>
+                    <rect x="24" y="0" width="12" height="80" rx="4" fill="url(#crossGrad)" />
+                    <rect x="0" y="22" width="60" height="12" rx="4" fill="url(#crossGrad)" />
+                    <defs>
+                        <linearGradient id="crossGrad" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="0%" stop-color="#c4b5fd" />
+                            <stop offset="100%" stop-color="#6366f1" />
+                        </linearGradient>
+                    </defs>
+                </svg>
+            </div>
+            <div class="loader-name">@Config["Church:Name"]</div>
+            <div class="loader-bar-wrap">
+                <div class="loader-bar" id="loaderBar"></div>
+            </div>
+            <div class="loader-text" id="loaderText">Loading…</div>
+        </div>
+    </div>
+    <nav class="navbar">
+        <div class="nav-container">
+            <a class="nav-brand" asp-controller="Home" asp-action="Index" style="background-color: black; border-radius: 10px; padding: 5px; margin: 2px;">
+                <img src="/images/logo.png" alt="logo" width="80" style="height: auto; aspect-ratio: 16 / 9;">
+            </a>
+            @* <span class="brand-icon">✝</span>
+            <span>@Config["Church:Name"]</span> *@
+            <button class="nav-toggle" id="navToggle"><i class="fas fa-bars"></i></button>
+            <ul class="nav-links" id="navLinks">
+                <li><a asp-controller="Home" asp-action="Index">Home</a></li>
+                <li><a asp-controller="Media" asp-action="Index">Sermons</a></li>
+                <li><a asp-controller="Media" asp-action="Live">Live</a></li>
+                <li><a asp-controller="Events" asp-action="Index">Events</a></li>
+                <li><a asp-controller="Prayer" asp-action="Index">Prayer</a></li>
+                <li><a asp-controller="Meeting" asp-action="Index"><i class="fas fa-video"></i> Meetings</a></li>
+                @if (User.Identity?.IsAuthenticated == true)
+                {
+                    <li><a asp-controller="Community" asp-action="Index">Community</a></li>
+                    <li><a asp-controller="Giving" asp-action="Give" class="btn-give">Give</a></li>
+
+                    <li class="nav-user">
+                        <a asp-controller="Members" asp-action="Dashboard">
+                            <i class="fas fa-user-circle"></i> My Account
+                        </a>
+                        @if (User.IsInRole("Admin") || User.IsInRole("Pastor"))
+                        {
+                            <a asp-controller="Admin" asp-action="Index" class="admin-link">
+                                <i class="fas fa-cog"></i> Admin
+                            </a>
+                        }
+                        <form asp-controller="Account" asp-action="Logout" method="post" style="display:inline">
+                            <button type="submit" class="btn-logout">Sign Out</button>
+                        </form>
+                    </li>
+                    @* @if (User.IsInRole("Admin") || User.IsInRole("Pastor"))
+                {
+                <li>
+                <a asp-controller="MeetingApprovals" asp-action="Index"
+                id="meetingApprovalLink" style="display:flex;align-items:center;gap:.4rem">
+                <i class="fas fa-clock"></i> Approvals
+                <span id="approvalBadge" class="notif-count"
+                style="display:none;position:relative;top:auto;right:auto"></span>
+                </a>
+                </li>
+                } *@
+                    @* {{ --Notification Bell--}} *@
+                    <li class="nav-notif" id="notifBell">
+                        <button class="notif-bell-btn" onclick="toggleNotifDropdown()" title="Notifications">
+                            <i class="fas fa-bell"></i>
+                            <span class="notif-count" id="notifCount" style="display:none">0</span>
+                        </button>
+                        <div class="notif-dropdown" id="notifDropdown">
+                            <div class="notif-dropdown-header">
+                                <strong>Notifications</strong>
+                                <button class="mark-all-btn" onclick="markAllRead()">Mark all read</button>
+                            </div>
+                            <div class="notif-dropdown-list" id="notifList">
+                                <div class="notif-loading"><i class="fas fa-spinner fa-spin"></i></div>
+                            </div>
+                            <div class="notif-dropdown-footer">
+                                <a asp-controller="Notifications" asp-action="Index">View all notifications</a>
+                            </div>
+                        </div>
+                    </li>
+                }
+                else
+                {
+                    <li><a asp-controller="Giving" asp-action="Give" class="btn-give">Give Online</a></li>
+                    <li><a asp-controller="Account" asp-action="Login">Login</a></li>
+                    <li><a asp-controller="Account" asp-action="Register" class="btn-join">Join Us</a></li>
+                }
+            </ul>
+        </div>
+    </nav>
+
+    @if (TempData["Success"] != null)
+    {
+        <div class="alert alert-success"><i class="fas fa-check-circle"></i> @TempData["Success"]</div>
+    }
+    @if (TempData["Error"] != null)
+    {
+        <div class="alert alert-error"><i class="fas fa-exclamation-circle"></i> @TempData["Error"]</div>
+    }
+    @if (TempData["Info"] != null)
+    {
+        <div class="alert alert-info"><i class="fas fa-info-circle"></i> @TempData["Info"]</div>
+    }
+
+    <main>
+        @RenderBody()
+    </main>
+
+    <footer class="footer">
+        <div class="footer-grid">
+            <div class="footer-col">
+                <h3>✝ @Config["Church:Name"]</h3>
+                <p>@Config["Church:Motto"]</p>
+                <div class="social-links">
+                    <a href="#"><i class="fab fa-facebook"></i></a>
+                    <a href="#"><i class="fab fa-youtube"></i></a>
+                    <a href="#"><i class="fab fa-instagram"></i></a>
+                    <a href="#"><i class="fab fa-twitter"></i></a>
+                </div>
+            </div>
+            <div class="footer-col">
+                <h4>Quick Links</h4>
+                <ul>
+                    <li><a asp-controller="Media" asp-action="Index">Sermons</a></li>
+                    <li><a asp-controller="Events" asp-action="Index">Events</a></li>
+                    <li><a asp-controller="Prayer" asp-action="Submit">Prayer Request</a></li>
+                    <li><a asp-controller="Giving" asp-action="Give">Give Online</a></li>
+                    <li><a asp-controller="Newsletter" asp-action="Index">Newsletter</a></li>
+                </ul>
+            </div>
+            <div class="footer-col">
+                <h4>Service Times</h4>
+                <p><strong>Sunday Service</strong><br>8:00 AM & 10:30 AM</p>
+                <p><strong>Midweek Bible Study</strong><br>Wednesday 6:30 PM</p>
+                <p><strong>Prayer Meeting</strong><br>Friday 6:00 PM</p>
+            </div>
+            <div class="footer-col">
+                <h4>Contact</h4>
+                <p><i class="fas fa-map-marker-alt"></i> @Config["Church:Address"]</p>
+                <p><i class="fas fa-phone"></i> @Config["Church:Phone"]</p>
+                <p><i class="fas fa-envelope"></i> @Config["Church:Email"]</p>
+                <form asp-controller="Home" asp-action="Subscribe" method="post" class="footer-subscribe">
+                    <input type="email" name="Email" placeholder="Your email" required />
+                    <button type="submit">Subscribe</button>
+                </form>
+            </div>
+        </div>
+        <div class="footer-bottom">
+            <p>&copy; @DateTime.Now.Year @Config["Church:Name"]. All rights reserved.</p>
+            <a class="secure-note" href="mdosisolutions.com">Developed by Mdosi Solutions Ltd.</a>
+        </div>
+    </footer>
+
+    <script src="~/js/site.js" asp-append-version="true"></script>
+    @await RenderSectionAsync("Scripts", required: false)
+    @if (User.Identity?.IsAuthenticated == true)
+    {
+        <link rel="stylesheet" href="~/css/notification.css" asp-append-version="true" />
+        <script src="~/js/notification.js"></script>
+    }
+
+    @if (User.IsInRole("Admin") || User.IsInRole("Pastor"))
+    {
+        <script>
+            async function pollApprovals() {
+                try {
+                    const res = await fetch('/MeetingApprovals/PendingCount');
+                    const data = await res.json();
+                    const badge = document.getElementById('approvalBadge');
+                    if (badge) {
+                        if (data.count > 0) {
+                            badge.textContent = data.count;
+                            badge.style.display = 'inline-flex';
+                        } else {
+                            badge.style.display = 'none';
+                        }
+                    }
+                } catch { }
+            }
+            pollApprovals();
+            setInterval(pollApprovals, 60000);
+        </script>
+    }
+
+    <script>
+        (function () {
+            const loader = document.getElementById('pageLoader');
+            const bar = document.getElementById('loaderBar');
+            const text = document.getElementById('loaderText');
+            const nameEl = document.getElementById('loaderChurchName');
+
+            // Steps with messages that reflect real browser loading phases
+            const steps = [
+                { pct: 15, msg: 'Connecting…' },
+                { pct: 35, msg: 'Loading resources…' },
+                { pct: 55, msg: 'Building the page…' },
+                { pct: 75, msg: 'Almost ready…' },
+                { pct: 90, msg: 'Finishing up…' },
+                { pct: 100, msg: 'You are Connected!' }
+            ];
+
+            let step = 0;
+
+            function advance() {
+                if (step >= steps.length) return;
+                const s = steps[step++];
+                bar.style.width = s.pct + '%';
+                text.textContent = s.msg;
+            }
+
+            // Tick through steps at intervals
+            advance(); // immediate first tick
+            const ticker = setInterval(() => {
+                if (step < steps.length - 1) advance();
+                else clearInterval(ticker);
+            }, 280);
+
+            function hideLoader() {
+                // Jump to 100% then fade out
+                bar.style.width = '100%';
+                text.textContent = 'You are Connected!';
+                clearInterval(ticker);
+
+                setTimeout(() => {
+                    loader.classList.add('loader-hidden');
+                    // Remove from DOM after transition completes
+                    setTimeout(() => loader.remove(), 550);
+                }, 200);
+            }
+
+            // Hide when the page is fully loaded (images, fonts, all assets)
+            if (document.readyState === 'complete') {
+                hideLoader();
+            } else {
+                window.addEventListener('load', hideLoader);
+
+                // Safety net: never block the user longer than 5 seconds
+                setTimeout(hideLoader, 5000);
+            }
+        })();
+    </script>
+</body>
+</html>

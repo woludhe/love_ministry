@@ -1,0 +1,8 @@
+
+@model ChurchMinistry.Models.ChurchEvent
+@{
+    ViewData["Title"] = "Edit Event";
+    Layout = "~/Views/Shared/_AdminDashboard_Layout.cshtml";
+    bool isEdit = true;
+}
+@await Html.PartialAsync("_EventForm", Model)

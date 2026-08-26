@@ -1,0 +1,314 @@
+@{
+    ViewData["Title"] = "Event Registrations";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+    var ev = ViewBag.Event as ChurchMinistry.Models.ChurchEvent;
+    var registrations = ViewBag.Registrations as List<ChurchMinistry.Models.EventRegistration>
+                        ?? new List<ChurchMinistry.Models.EventRegistration>();
+    bool isPaid = ev?.TicketPrice.HasValue == true && ev.TicketPrice > 0;
+}
+@using ChurchMinistry.Models
+
+<div class="admin-layout">
+  <aside class="admin-sidebar">
+    <div class="sidebar-logo">⚙ Admin Panel</div>
+    <nav class="sidebar-nav">
+      <a asp-controller="Admin" asp-action="Index"><i class="fas fa-tachometer-alt"></i> Dashboard</a>
+      <a asp-controller="Admin" asp-action="Members"><i class="fas fa-users"></i> Members</a>
+      <a asp-controller="Admin" asp-action="Events" class="active"><i class="fas fa-calendar"></i> Events</a>
+      <a asp-controller="Admin" asp-action="Sermons"><i class="fas fa-video"></i> Sermons</a>
+      <a asp-controller="Admin" asp-action="Givings"><i class="fas fa-hand-holding-heart"></i> Givings</a>
+      <a asp-controller="Admin" asp-action="Reports"><i class="fas fa-chart-bar"></i> Reports</a>
+    </nav>
+  </aside>
+
+  <div class="admin-main">
+
+    @* {{-- Header --}} *@
+    <div class="admin-topbar" style="flex-wrap:wrap;gap:.75rem">
+      <div>
+        <a asp-controller="Admin" asp-action="Events"
+           style="font-size:.82rem;color:var(--text-s);display:flex;align-items:center;gap:.3rem;margin-bottom:.35rem">
+          <i class="fas fa-arrow-left"></i> Back to Events
+        </a>
+        <h1>@ev?.Title</h1>
+        <p class="meta" style="margin-top:.25rem">
+          <i class="fas fa-calendar"></i> @ev?.StartDate.ToString("dddd, dd MMMM yyyy · h:mm tt")
+          @if (!string.IsNullOrEmpty(ev?.Location))
+          { <span>&nbsp;·&nbsp; <i class="fas fa-map-marker-alt"></i> @ev.Location</span> }
+        </p>
+      </div>
+      <div style="display:flex;gap:.6rem;flex-wrap:wrap">
+        <button onclick="exportCsv()" class="btn btn-outline btn-sm">
+          <i class="fas fa-download"></i> Export CSV
+        </button>
+        <button onclick="window.print()" class="btn btn-outline btn-sm">
+          <i class="fas fa-print"></i> Print List
+        </button>
+      </div>
+    </div>
+
+    @* {{-- KPI row --}} *@
+    <div class="kpi-grid" style="margin-bottom:1.5rem">
+      <div class="kpi-card kpi-purple">
+        <div class="kpi-icon"><i class="fas fa-users"></i></div>
+        <div class="kpi-info">
+          <span class="kpi-label">Total Registrants</span>
+          <span class="kpi-value">@registrations.Count</span>
+        </div>
+      </div>
+      @if (isPaid)
+      {
+        <div class="kpi-card kpi-green">
+          <div class="kpi-icon"><i class="fas fa-check-circle"></i></div>
+          <div class="kpi-info">
+            <span class="kpi-label">Paid</span>
+            <span class="kpi-value">
+              @registrations.Count(r => r.PaymentStatus == PaymentStatus.Successful)
+            </span>
+          </div>
+        </div>
+        <div class="kpi-card kpi-amber">
+          <div class="kpi-icon"><i class="fas fa-clock"></i></div>
+          <div class="kpi-info">
+            <span class="kpi-label">Pending Payment</span>
+            <span class="kpi-value">
+              @registrations.Count(r => r.PaymentStatus == PaymentStatus.Pending)
+            </span>
+          </div>
+        </div>
+        <div class="kpi-card kpi-coral">
+          <div class="kpi-icon"><i class="fas fa-times-circle"></i></div>
+          <div class="kpi-info">
+            <span class="kpi-label">Failed / Unpaid</span>
+            <span class="kpi-value">
+              @registrations.Count(r => r.PaymentStatus == PaymentStatus.Failed)
+            </span>
+          </div>
+        </div>
+        <div class="kpi-card kpi-green">
+          <div class="kpi-icon"><i class="fas fa-hand-holding-heart"></i></div>
+          <div class="kpi-info">
+            <span class="kpi-label">Total Collected</span>
+            <span class="kpi-value">
+              UGX @registrations.Where(r => r.PaymentStatus == PaymentStatus.Successful).Sum(r => r.AmountPaid).ToString("N0")
+            </span>
+          </div>
+        </div>
+      }
+      else
+      {
+        <div class="kpi-card kpi-green">
+          <div class="kpi-icon"><i class="fas fa-check-circle"></i></div>
+          <div class="kpi-info">
+            <span class="kpi-label">Confirmed</span>
+            <span class="kpi-value">
+              @registrations.Count(r => r.IsConfirmed)
+            </span>
+          </div>
+        </div>
+        @if (ev?.MaxCapacity.HasValue == true)
+        {
+          <div class="kpi-card kpi-blue">
+            <div class="kpi-icon"><i class="fas fa-chair"></i></div>
+            <div class="kpi-info">
+              <span class="kpi-label">Spots Left</span>
+              <span class="kpi-value">
+                @(ev.MaxCapacity.Value - registrations.Count(r => r.IsConfirmed))
+              </span>
+            </div>
+          </div>
+        }
+      }
+    </div>
+
+    @* {{-- Filter tabs for paid events --}} *@
+    @if (isPaid)
+    {
+      <div style="display:flex;gap:.35rem;background:var(--white);border:1px solid var(--border);
+           border-radius:10px;padding:.25rem;width:fit-content;margin-bottom:1.25rem">
+        <button class="filter-tab active" onclick="filterTable('all', this)">All</button>
+        <button class="filter-tab" onclick="filterTable('Successful', this)">
+          <i class="fas fa-check" style="color:var(--green)"></i> Paid
+        </button>
+        <button class="filter-tab" onclick="filterTable('Pending', this)">
+          <i class="fas fa-clock" style="color:var(--amber)"></i> Pending
+        </button>
+        <button class="filter-tab" onclick="filterTable('Failed', this)">
+          <i class="fas fa-times" style="color:var(--coral)"></i> Failed
+        </button>
+      </div>
+    }
+
+    @* {{-- Registrations table --}} *@
+    <div class="table-card">
+      @if (!registrations.Any())
+      {
+        <div style="text-align:center;padding:3rem;color:var(--text-s)">
+          <i class="fas fa-users fa-2x" style="color:var(--border);display:block;margin-bottom:1rem"></i>
+          <p>No registrations yet for this event.</p>
+        </div>
+      }
+      else
+      {
+        <table class="data-table" id="regTable">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Name</th>
+              <th>Email</th>
+              <th>Phone</th>
+              <th>Registered</th>
+              @if (isPaid)
+              {
+                <th>Amount</th>
+                <th>Payment Status</th>
+                <th>Paid At</th>
+                <th>Reference</th>
+              }
+              else
+              {
+                <th>Status</th>
+              }
+            </tr>
+          </thead>
+          <tbody>
+          @{ int i = 1; }
+          @foreach (var r in registrations.OrderByDescending(r => r.RegisteredAt))
+          {
+            <tr class="reg-row" data-status="@r.PaymentStatus">
+              <td>@(i++)</td>
+              <td>
+                <div style="display:flex;align-items:center;gap:.5rem">
+                  @if (r.Member != null)
+                  {
+                    <img src="@(r.Member.ProfilePhoto ?? "/images/avatar-default.png")"
+                         class="avatar-xs" />
+                  }
+                  <div>
+                    <div style="font-weight:600;font-size:.88rem">@r.Name</div>
+                    @if (r.Member != null)
+                    {
+                      <div class="meta">@r.Member.MembershipType member</div>
+                    }
+                  </div>
+                </div>
+              </td>
+              <td><a href="mailto:@r.Email" style="font-size:.85rem">@r.Email</a></td>
+              <td class="meta">@r.Phone</td>
+              <td class="meta">@r.RegisteredAt.ToString("dd MMM yyyy, h:mm tt")</td>
+              @if (isPaid)
+              {
+                <td>
+                  @if (r.AmountPaid > 0)
+                  {
+                    <strong>UGX @r.AmountPaid.ToString("N0")</strong>
+                  }
+                  else { <span class="meta">-</span> }
+                </td>
+                <td>
+                  @if (r.PaymentStatus == PaymentStatus.Successful)
+                  {
+                    <span class="status-badge status-successful">
+                      <i class="fas fa-check-circle"></i> Paid
+                    </span>
+                  }
+                  else if (r.PaymentStatus == PaymentStatus.Pending)
+                  {
+                    <span class="status-badge status-pending">
+                      <i class="fas fa-clock"></i> Pending
+                    </span>
+                  }
+                  else if (r.PaymentStatus == PaymentStatus.Failed)
+                  {
+                    <span class="status-badge status-failed">
+                      <i class="fas fa-times-circle"></i> Failed
+                    </span>
+                  }
+                  else
+                  {
+                    <span class="status-badge status-inactive">@r.PaymentStatus</span>
+                  }
+                </td>
+                <td class="meta">
+                  @(r.PaidAt.HasValue ? r.PaidAt.Value.ToString("dd MMM, h:mm tt") : "-")
+                </td>
+                <td>
+                  @if (!string.IsNullOrEmpty(r.FlutterwaveRef))
+                  {
+                    <code style="font-size:.72rem;background:#f3f4f6;padding:.15rem .4rem;
+                          border-radius:4px">@r.FlutterwaveRef</code>
+                  }
+                  else { <span class="meta">-</span> }
+                </td>
+              }
+              else
+              {
+                <td>
+                  @if (r.IsConfirmed)
+                  {
+                    <span class="status-badge status-active">
+                      <i class="fas fa-check"></i> Confirmed
+                    </span>
+                  }
+                  else
+                  {
+                    <span class="status-badge status-pending">Pending</span>
+                  }
+                </td>
+              }
+            </tr>
+          }
+          </tbody>
+        </table>
+      }
+    </div>
+
+  </div>
+</div>
+
+@section Scripts {
+<script>
+// ── Filter tabs ───────────────────────────────────────────
+function filterTable(status, btn) {
+    document.querySelectorAll('.filter-tab').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    document.querySelectorAll('.reg-row').forEach(row => {
+        row.style.display = (status === 'all' || row.dataset.status === status) ? '' : 'none';
+    });
+}
+
+// ── CSV Export ────────────────────────────────────────────
+function exportCsv() {
+    const table  = document.getElementById('regTable');
+    if (!table) return;
+    const rows   = Array.from(table.querySelectorAll('tr'));
+    const csv    = rows.map(row =>
+        Array.from(row.querySelectorAll('th,td'))
+            .map(cell => `"${cell.innerText.replace(/"/g, '""').trim()}"`)
+            .join(',')
+    ).join('\n');
+
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href     = url;
+    a.download = 'event-registrations.csv';
+    a.click();
+    URL.revokeObjectURL(url);
+}
+</script>
+
+<style>
+.filter-tab         { padding:.35rem .9rem; border-radius:7px; border:none; background:none;
+                      font-size:.82rem; font-weight:600; color:var(--text-s);
+                      cursor:pointer; transition:all .15s;
+                      display:inline-flex; align-items:center; gap:.3rem; }
+.filter-tab:hover   { background:var(--purple-l); color:var(--purple); }
+.filter-tab.active  { background:var(--purple); color:white; }
+
+@@media print {
+  .admin-sidebar, .admin-topbar > div:last-child, .filter-tab { display:none !important; }
+  .admin-main { padding:0 !important; }
+}
+</style>
+}

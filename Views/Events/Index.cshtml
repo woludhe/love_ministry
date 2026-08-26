@@ -1,0 +1,254 @@
+@model List<ChurchMinistry.Models.ChurchEvent>
+@{
+    ViewData["Title"] = "Events & Calendar";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+    var myRegMap = ViewBag.MyRegMap as Dictionary<int, ChurchMinistry.Models.EventRegistration?>
+                   ?? new Dictionary<int, ChurchMinistry.Models.EventRegistration?>();
+}
+@using ChurchMinistry.Models
+
+<section class="page-header">
+    <h1><i class="fas fa-calendar"></i> Events &amp; Calendar</h1>
+    <p>Upcoming services, conferences and community gatherings</p>
+</section>
+
+<div class="container" style="max-width:1100px;margin:2rem auto;padding:0 1.5rem">
+
+    @if (!Model.Any())
+    {
+        <div style="text-align:center;padding:4rem;color:var(--text-s)">
+            <i class="fas fa-calendar fa-3x" style="color:var(--border);display:block;margin-bottom:1rem"></i>
+            <p>No upcoming events. Check back soon!</p>
+        </div>
+    }
+
+    <div class="events-list large">
+    @foreach (var ev in Model)
+    {
+        bool isPaid       = ev.TicketPrice.HasValue && ev.TicketPrice > 0;
+        bool isPast       = ev.StartDate < DateTime.UtcNow;
+        int  confirmed    = ev.Registrations.Count(r =>
+            r.PaymentStatus == PaymentStatus.Free ||
+            r.PaymentStatus == PaymentStatus.Successful ||
+            r.AmountPaid > 0);
+        int? spotsLeft    = ev.MaxCapacity.HasValue
+            ? ev.MaxCapacity.Value - confirmed : (int?)null;
+        bool isSoldOut    = spotsLeft.HasValue && spotsLeft <= 0;
+
+        myRegMap.TryGetValue(ev.Id, out var myReg);
+        bool isRegistered = myReg != null &&
+            myReg.PaymentStatus != PaymentStatus.Failed;
+        bool hasPending   = myReg?.PaymentStatus == PaymentStatus.Pending
+                         && myReg?.AmountPaid < myReg?.TotalAmount;
+
+        <div class="event-card @(isPast ? "event-card-past" : "")">
+            @if (!string.IsNullOrEmpty(ev.ImageUrl))
+            {
+                <div class="event-card-img-wrap">
+                    <img src="@ev.ImageUrl" alt="@ev.Title" class="event-card-img" />
+                    @if (isPast)
+                    { <div class="event-past-overlay">Past Event</div> }
+                </div>
+            }
+
+            <div class="event-card-body">
+                @* {{-- Date badge --}} *@
+                <div class="event-date-badge">
+                    <span class="day">@ev.StartDate.Day</span>
+                    <span class="month">@ev.StartDate.ToString("MMM")</span>
+                    <span class="year">@ev.StartDate.Year</span>
+                </div>
+
+                <div class="event-card-content">
+                    @* {{-- Title & badges --}} *@
+                    <div class="event-card-title-row">
+                        <h2 class="event-card-title">
+                            <a asp-action="Details" asp-route-id="@ev.Id">@ev.Title</a>
+                        </h2>
+                        <div class="event-badge-row">
+                            @if (isPaid)
+                            {
+                                <span class="event-badge event-badge-paid">
+                                    <i class="fas fa-ticket-alt"></i>
+                                    UGX @ev.TicketPrice!.Value.ToString("N0")
+                                </span>
+                            }
+                            else
+                            {
+                                <span class="event-badge event-badge-free">
+                                    <i class="fas fa-check-circle"></i> Free
+                                </span>
+                            }
+                            @if (ev.IsAllDay)
+                            {
+                                <span class="event-badge event-badge-allday">All Day</span>
+                            }
+                            @if (ev.AllowPartialPayment)
+                            {
+                                <span class="event-badge event-badge-partial">
+                                    <i class="fas fa-coins"></i> Partial Pay
+                                </span>
+                            }
+                            @if (isSoldOut)
+                            {
+                                <span class="event-badge event-badge-soldout">Sold Out</span>
+                            }
+                        </div>
+                    </div>
+
+                    @* {{-- Meta --}} *@
+                    <div class="event-card-meta-row">
+                        @if (!ev.IsAllDay)
+                        {
+                            <span>
+                                <i class="fas fa-clock"></i>
+                                @ev.StartDate.ToString("h:mm tt") – @ev.EndDate.ToString("h:mm tt")
+                            </span>
+                        }
+                        @if (!string.IsNullOrEmpty(ev.Location))
+                        {
+                            <span>
+                                <i class="fas fa-map-marker-alt"></i> @ev.Location
+                            </span>
+                        }
+                        @* {{-- Registration count --}} *@
+                        <span class="event-reg-count">
+                            <i class="fas fa-users"></i>
+                            @confirmed @(ev.MaxCapacity.HasValue ? $"/ {ev.MaxCapacity}" : "") registered
+                            @if (spotsLeft.HasValue && !isSoldOut && spotsLeft <= 10)
+                            {
+                                <span class="spots-urgent">· Only @spotsLeft left!</span>
+                            }
+                        </span>
+                    </div>
+
+                    @* {{-- Description snippet --}} *@
+                    @if (!string.IsNullOrEmpty(ev.Description))
+                    {
+                        <p class="event-card-desc">
+                            @(ev.Description.Length > 120
+                                ? ev.Description.Substring(0, 120) + "…"
+                                : ev.Description)
+                        </p>
+                    }
+
+                    @* {{-- Registration status / CTA --}} *@
+                    <div class="event-card-footer">
+                        @if (isRegistered)
+                        {
+                            <div class="event-reg-status">
+                                @if (myReg!.IsFullyPaid || myReg.PaymentStatus == PaymentStatus.Free)
+                                {
+                                    <span class="reg-status-badge reg-confirmed">
+                                        <i class="fas fa-check-circle"></i> You're registered
+                                    </span>
+                                }
+                                else if (hasPending)
+                                {
+                                    <span class="reg-status-badge reg-partial">
+                                        <i class="fas fa-clock"></i>
+                                        Partial - UGX @myReg.AmountPaid.ToString("N0") paid,
+                                        UGX @myReg.BalanceDue.ToString("N0") due
+                                    </span>
+                                    <a asp-action="Pay" asp-route-id="@ev.Id"
+                                       class="btn btn-primary btn-sm">
+                                        <i class="fas fa-credit-card"></i> Pay Balance
+                                    </a>
+                                }
+                            </div>
+                        }
+                        else if (!isPast)
+                        {
+                            <a asp-action="Details" asp-route-id="@ev.Id"
+                               class="btn @(isSoldOut ? "btn-outline" : "btn-primary") btn-sm">
+                                @if (isSoldOut)
+                                { <text><i class="fas fa-times"></i> Sold Out</text> }
+                                else if (isPaid)
+                                { <text><i class="fas fa-ticket-alt"></i> Get Ticket</text> }
+                                else if (ev.RequiresRegistration)
+                                { <text><i class="fas fa-user-plus"></i> Register</text> }
+                                else
+                                { <text><i class="fas fa-info-circle"></i> Details</text> }
+                            </a>
+                        }
+                        else
+                        {
+                            <a asp-action="Details" asp-route-id="@ev.Id"
+                               class="btn btn-outline btn-sm">
+                                <i class="fas fa-info-circle"></i> View Details
+                            </a>
+                        }
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
+    </div>
+</div>
+
+@section Scripts {
+<style>
+.events-list.large    { display:flex; flex-direction:column; gap:1.25rem; }
+
+.event-card           { background:var(--white); border:1px solid var(--border);
+                        border-radius:var(--radius); overflow:hidden;
+                        box-shadow:var(--shadow); transition:box-shadow .2s; }
+.event-card:hover     { box-shadow:var(--shadow-l); }
+.event-card-past      { opacity:.72; }
+
+.event-card-img-wrap  { position:relative; height:200px; overflow:hidden; }
+.event-card-img       { width:100%; height:100%; object-fit:cover; }
+.event-past-overlay   { position:absolute; inset:0; background:rgba(0,0,0,.45);
+                        display:flex; align-items:center; justify-content:center;
+                        color:white; font-weight:700; font-size:.95rem;
+                        letter-spacing:.06em; }
+
+.event-card-body      { display:flex; gap:1.25rem; padding:1.25rem; }
+.event-date-badge     { text-align:center; min-width:58px; flex-shrink:0; }
+.event-date-badge .day  { display:block; font-size:2rem; font-weight:800;
+                          color:var(--purple); line-height:1; }
+.event-date-badge .month{ display:block; font-size:.8rem; text-transform:uppercase;
+                          color:var(--text-s); letter-spacing:.05em; }
+.event-date-badge .year { display:block; font-size:.72rem; color:var(--border); }
+
+.event-card-content   { flex:1; min-width:0; }
+.event-card-title-row { display:flex; align-items:flex-start; justify-content:space-between;
+                        gap:.75rem; flex-wrap:wrap; margin-bottom:.5rem; }
+.event-card-title     { font-size:1.1rem; font-weight:800; margin:0; }
+.event-card-title a   { color:var(--text); }
+.event-card-title a:hover { color:var(--purple); }
+
+.event-badge-row      { display:flex; gap:.35rem; flex-wrap:wrap; flex-shrink:0; }
+.event-badge          { display:inline-flex; align-items:center; gap:.3rem;
+                        padding:.2rem .6rem; border-radius:100px;
+                        font-size:.72rem; font-weight:700; white-space:nowrap; }
+.event-badge-paid     { background:#ede9fe; color:#5b21b6; }
+.event-badge-free     { background:#d1fae5; color:#065f46; }
+.event-badge-allday   { background:#dbeafe; color:#1e40af; }
+.event-badge-partial  { background:#fef3c7; color:#92400e; }
+.event-badge-soldout  { background:#fee2e2; color:#991b1b; }
+
+.event-card-meta-row  { display:flex; gap:.75rem 1.5rem; flex-wrap:wrap;
+                        font-size:.82rem; color:var(--text-s); margin-bottom:.6rem; }
+.event-card-meta-row i{ color:var(--purple); }
+.event-reg-count      { font-weight:600; }
+.spots-urgent         { color:var(--coral); font-weight:700; }
+
+.event-card-desc      { font-size:.88rem; color:var(--text-s); line-height:1.6;
+                        margin-bottom:.75rem; }
+.event-card-footer    { display:flex; align-items:center; gap:.75rem; flex-wrap:wrap; }
+
+/* Registration status badges */
+.event-reg-status     { display:flex; align-items:center; gap:.6rem; flex-wrap:wrap; }
+.reg-status-badge     { display:inline-flex; align-items:center; gap:.35rem;
+                        padding:.3rem .8rem; border-radius:100px; font-size:.78rem;
+                        font-weight:700; }
+.reg-confirmed        { background:#d1fae5; color:#065f46; }
+.reg-partial          { background:#fef3c7; color:#92400e; }
+
+@@media (max-width:640px) {
+  .event-card-body    { flex-direction:column; }
+  .event-card-title-row { flex-direction:column; }
+}
+</style>
+}

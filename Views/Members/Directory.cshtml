@@ -1,0 +1,27 @@
+@model List<ChurchMinistry.Models.Member>
+@{
+    ViewData["Title"] = "Member Directory"; Layout = "~/Views/Shared/_MemberDashboard_Layout.cshtml";
+}
+<section class="page-header"><h1><i class="fas fa-address-book"></i> Member Directory</h1></section>
+<div class="container">
+  <form method="get" class="filter-bar">
+    <input name="search" placeholder="Search members..." class="form-control" value="@Context.Request.Query["search"]" />
+    <select name="group" class="form-control">
+      <option value="">All Groups</option>
+      @foreach (ChurchMinistry.Models.MinistryGroup g in (ViewBag.Groups ?? new List<ChurchMinistry.Models.MinistryGroup>())) {
+        <option value="@g.Id">@g.Name</option>
+      }
+    </select>
+    <button class="btn btn-primary">Search</button>
+  </form>
+  <div class="directory-grid">
+    @foreach (var m in Model) {
+      <div class="directory-card">
+        <img src="@(m.ProfilePhoto ?? "/images/avatar-default.png")" class="directory-photo" />
+        <h3>@m.FullName</h3>
+        <p class="tag">@m.MinistryGroup?.Name</p>
+        <p class="meta">@m.City, @m.Country</p>
+      </div>
+    }
+  </div>
+</div>

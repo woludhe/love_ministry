@@ -1,0 +1,54 @@
+@{
+    ViewData["Title"] = "Community Forum";
+    @if (User.Identity?.IsAuthenticated == true)
+    {
+        Layout = "~/Views/Shared/_MemberDashboard_Layout.cshtml";
+    }
+    else
+    {
+        Layout = "~/Views/Shared/_Layout.cshtml";
+    }
+}
+@using ChurchMinistry.Models
+<section class="page-header">
+    <h1><i class="fas fa-comments"></i> Community Forum</h1>
+    <a asp-action="NewPost" class="btn btn-dark"><i class="fas fa-plus"></i> New Post</a>
+</section>
+<div class="forum-page container">
+    <div class="category-filter">
+        <a href="?" class="pill @(string.IsNullOrEmpty(Context.Request.Query["category"]) ? "active" : "")">All</a>
+        @foreach (var cat in Enum.GetValues<ForumCategory>())
+        {
+            <a href="?category=@cat" class="pill @(Context.Request.Query["category"].ToString() == cat.ToString() ? "active" : "")">@cat</a>
+        }
+    </div>
+    <div class="forum-list">
+        @foreach (ForumPost post in (ViewBag.Posts ?? new List<ForumPost>()))
+        {
+            <div class="forum-item @(post.IsPinned ? "pinned" : "")">
+                @if (post.IsPinned)
+                {
+                    <span class="pin-badge"><i class="fas fa-thumbtack"></i> Pinned</span>
+                }
+                @if (post.IsPastorQuestion)
+                {
+                    <span class="pastor-badge"><i class="fas fa-church"></i> Pastor Q&amp;A</span>
+                }
+                <div class="forum-item-main">
+                    <h3><a asp-action="Post" asp-route-id="@post.Id">@post.Title</a></h3>
+                    <p class="forum-meta">
+                        <img src="@(post.Member.ProfilePhoto ?? "/images/avatar-default.png")" class="avatar-xs" />
+                        @post.Member.FullName &nbsp;·&nbsp; @post.CreatedAt.ToString("dd MMM yyyy") &nbsp;·&nbsp;
+                        <i class="fas fa-comments"></i> @post.Replies.Count replies &nbsp;·&nbsp;
+                        <i class="fas fa-eye"></i> @post.ViewCount views
+                    </p>
+                </div>
+                <span class="cat-badge">@post.Category</span>
+            </div>
+        }
+        @if (((List<ForumPost>)(ViewBag.Posts ?? new List<ForumPost>())).Count == 0)
+        {
+            <div style="text-align:center;padding:3rem"><p>No posts yet. Be the first to start a discussion!</p><a asp-action="NewPost" class="btn btn-primary">Create First Post</a></div>
+        }
+    </div>
+</div>

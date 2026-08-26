@@ -1,0 +1,44 @@
+@{
+    ViewData["Title"] = "Reports"; Layout = "~/Views/Shared/_AdminDashboard_Layout.cshtml";
+}
+
+<div class="admin-main">
+    <div class="admin-topbar"><h1>Reports & Analytics</h1></div>
+    <div class="charts-row">
+        <div class="chart-card">
+            <h3>Monthly Giving (@DateTime.Now.Year)</h3>
+            <canvas id="monthlyGivingChart" height="250"></canvas>
+        </div>
+    </div>
+    <div class="table-card" style="margin-top:2rem">
+        <h3>Monthly Giving Summary</h3>
+        <table class="data-table">
+            <thead><tr><th>Month</th><th>Total (UGX)</th></tr></thead>
+            <tbody>
+                @{
+                    var months = ViewBag.MonthlyGiving as List<dynamic> ?? new List<dynamic>();
+                    var monthNames = new[] { "", "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec" };
+                    foreach (var m in months)
+                    {
+                        <tr><td>@monthNames[(int)m.Month]</td><td>@((decimal)m.Total).ToString("N0")</td></tr>
+                    }
+                }
+            </tbody>
+        </table>
+    </div>
+</div>
+@section Scripts {
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <script>
+        const monthlyData = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(ViewBag.MonthlyGiving));
+        const monthNames = ["", "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+        new Chart(document.getElementById('monthlyGivingChart'), {
+            type: 'bar',
+            data: {
+                labels: (monthlyData || []).map(m => monthNames[m.Month]),
+                datasets: [{ label: 'UGX Giving', data: (monthlyData || []).map(m => m.Total), backgroundColor: '#6366f1', borderRadius: 6 }]
+            },
+            options: { responsive: true, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true } } }
+        });
+    </script>
+}

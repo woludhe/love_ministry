@@ -1,0 +1,17 @@
+@model List<ChurchMinistry.Models.Newsletter>
+@{
+    ViewData["Title"] = "Newsletters"; Layout = "~/Views/Shared/_AdminDashboard_Layout.cshtml";
+}
+
+<div class="admin-main">
+    <div class="admin-topbar"><h1>Newsletters</h1><a asp-action="ComposeNewsletter" class="btn btn-primary btn-sm"><i class="fas fa-plus"></i> Compose</a></div>
+    <table class="data-table">
+        <thead><tr><th>Subject</th><th>Status</th><th>Sent</th><th>Recipients</th></tr></thead>
+        <tbody>
+            @foreach (var n in Model)
+            {
+                <tr><td>@n.Subject</td><td><span class="status-badge">@n.Status</span></td><td>@n.SentAt?.ToString("dd MMM yyyy")</td><td>@n.RecipientsCount</td></tr>
+            }
+        </tbody>
+    </table>
+</div>

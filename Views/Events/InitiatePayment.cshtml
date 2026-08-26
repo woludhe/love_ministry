@@ -1,0 +1,211 @@
+@{
+    ViewData["Title"] = $"Pay for {(ViewBag.Event as ChurchMinistry.Models.ChurchEvent)?.Title}";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+    var ev = ViewBag.Event as ChurchMinistry.Models.ChurchEvent;
+}
+
+<section class="page-header">
+    <h1><i class="fas fa-ticket-alt"></i> Event Registration</h1>
+    <p>Complete your payment to secure your spot</p>
+</section>
+
+<div class="give-page" style="max-width:900px;margin:2rem auto;padding:0 1.5rem;
+     display:grid;grid-template-columns:1fr 340px;gap:2rem">
+
+    <div class="give-form-card">
+        <h2 style="font-size:1.1rem;font-weight:700;margin-bottom:1.5rem">
+            <i class="fas fa-credit-card" style="color:var(--purple)"></i>
+            Choose Payment Method
+        </h2>
+
+        @* {{-- Payment method selector --}} *@
+        <div class="form-group">
+            <label>Payment Method</label>
+            <div class="payment-methods">
+                <label class="method-card" id="mtn-card">
+                    <input type="radio" name="paymentMethod" value="MTNMobileMoney" checked />
+                    <div class="method-inner">
+                        <span class="method-icon mtn-icon">MTN</span>
+                        <span>MTN Mobile Money</span>
+                        <small>Uganda</small>
+                    </div>
+                </label>
+                <label class="method-card">
+                    <input type="radio" name="paymentMethod" value="AirtelMoney" />
+                    <div class="method-inner">
+                        <span class="method-icon airtel-icon">AIR</span>
+                        <span>Airtel Money</span>
+                        <small>Uganda</small>
+                    </div>
+                </label>
+                <label class="method-card">
+                    <input type="radio" name="paymentMethod" value="MPesa" />
+                    <div class="method-inner">
+                        <span class="method-icon mpesa-icon">M-P</span>
+                        <span>M-Pesa</span>
+                        <small>Kenya</small>
+                    </div>
+                </label>
+                <label class="method-card">
+                    <input type="radio" name="paymentMethod" value="Card" />
+                    <div class="method-inner">
+                        <span class="method-icon visa-icon">VISA</span>
+                        <span>Card</span>
+                        <small>International</small>
+                    </div>
+                </label>
+            </div>
+        </div>
+
+        @* {{-- Phone number (mobile money) --}} *@
+        <div class="form-group" id="phoneGroup">
+            <label>Mobile Money Phone Number</label>
+            <div class="phone-input">
+                <select id="countryCode" class="form-control country-code">
+                    <option value="+256">🇺🇬 +256</option>
+                    <option value="+254">🇰🇪 +254</option>
+                </select>
+                <input type="tel" id="phoneInput" class="form-control"
+                       placeholder="7XX XXX XXX" />
+            </div>
+            <small>A payment prompt will be sent to your phone</small>
+        </div>
+
+        @* {{-- Pay button --}} *@
+        <button id="payBtn" onclick="initiatePayment()"
+                class="btn btn-primary btn-full" style="padding:.85rem;margin-top:.5rem">
+            <i class="fas fa-lock"></i>
+            Pay UGX @ViewBag.Amount?.ToString("N0") - Secure Checkout
+        </button>
+        <p class="secure-note">
+            <i class="fas fa-shield-alt"></i>
+            Secured by Flutterwave. Your payment is encrypted.
+        </p>
+    </div>
+
+    @* {{-- Summary sidebar --}} *@
+    <div>
+        <div class="sidebar-card" style="position:sticky;top:80px">
+            <h3 style="font-size:.95rem;font-weight:700;margin-bottom:1rem">
+                Order Summary
+            </h3>
+            @if (!string.IsNullOrEmpty(ev?.ImageUrl))
+            {
+                <img src="@ev.ImageUrl" alt="@ev?.Title"
+                     style="width:100%;border-radius:8px;margin-bottom:1rem;object-fit:cover;max-height:140px" />
+            }
+            <div style="display:flex;flex-direction:column;gap:.5rem;font-size:.88rem">
+                <div class="summary-row">
+                    <span style="color:var(--text-s)">Event</span>
+                    <strong>@ev?.Title</strong>
+                </div>
+                <div class="summary-row">
+                    <span style="color:var(--text-s)">Date</span>
+                    <span>@ev?.StartDate.ToString("dd MMM yyyy")</span>
+                </div>
+                <div class="summary-row">
+                    <span style="color:var(--text-s)">Time</span>
+                    <span>@ev?.StartDate.ToString("h:mm tt")</span>
+                </div>
+                @if (!string.IsNullOrEmpty(ev?.Location))
+                {
+                    <div class="summary-row">
+                        <span style="color:var(--text-s)">Location</span>
+                        <span>@ev.Location</span>
+                    </div>
+                }
+                <div class="summary-row" style="border-top:1.5px solid var(--border);
+                     padding-top:.6rem;margin-top:.3rem">
+                    <strong>Total</strong>
+                    <strong style="color:var(--purple);font-size:1.05rem">
+                        UGX @ViewBag.Amount?.ToString("N0")
+                    </strong>
+                </div>
+            </div>
+            <a asp-action="Details" asp-route-id="@ev?.Id"
+               class="btn btn-outline btn-full btn-sm" style="margin-top:1rem">
+                <i class="fas fa-arrow-left"></i> Back to Event
+            </a>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+<script src="https://checkout.flutterwave.com/v3.js"></script>
+<script>
+const TX_REF   = '@ViewBag.TxRef';
+const PUB_KEY  = '@ViewBag.PubKey';
+const AMOUNT   = @ViewBag.Amount;
+const EMAIL    = '@ViewBag.Email';
+const NAME     = '@ViewBag.Name';
+const PHONE    = '@ViewBag.Phone';
+const EVENT_TITLE = '@ev?.Title?.Replace("'", "\\'")';
+const RETURN_URL  = '@(Url.Action("PaymentReturn", "Events", null, Context.Request.Scheme))';
+
+const methodRadios = document.querySelectorAll('[name="paymentMethod"]');
+const phoneGroup   = document.getElementById('phoneGroup');
+const countryCode  = document.getElementById('countryCode');
+
+methodRadios.forEach(r => r.addEventListener('change', () => {
+    const v = document.querySelector('[name="paymentMethod"]:checked')?.value;
+    phoneGroup.style.display = v === 'Card' ? 'none' : 'block';
+    countryCode.value        = v === 'MPesa' ? '+254' : '+256';
+
+    document.querySelectorAll('.method-card').forEach(c => c.classList.remove('selected'));
+    r.closest('.method-card').classList.add('selected');
+}));
+
+function initiatePayment() {
+    const method = document.querySelector('[name="paymentMethod"]:checked')?.value;
+    const phone  = (countryCode.value.replace('+', '') +
+                    document.getElementById('phoneInput').value.replace(/^0/, '')).trim();
+
+    if (method !== 'Card' && !phone) {
+        alert('Please enter your mobile money phone number.');
+        return;
+    }
+
+    const btn = document.getElementById('payBtn');
+    btn.disabled     = true;
+    btn.innerHTML    = '<i class="fas fa-spinner fa-spin"></i> Processing…';
+
+    FlutterwaveCheckout({
+        public_key:  PUB_KEY,
+        tx_ref:      TX_REF,
+        amount:      AMOUNT,
+        currency:    'UGX',
+        payment_options: method === 'Card' ? 'card' : 'mobilemoney',
+        customer: {
+            email:        EMAIL,
+            name:         NAME,
+            phone_number: phone
+        },
+        meta: {
+            event_title: EVENT_TITLE,
+            tx_ref:      TX_REF
+        },
+        customizations: {
+            title:       EVENT_TITLE,
+            description: 'Event ticket payment',
+            logo:        '/images/logo.png'
+        },
+        redirect_url: RETURN_URL,
+        callback: function (data) {
+            if (data.status === 'successful' || data.status === 'completed') {
+                window.location.href =
+                    `/Events/PaymentReturn?status=${data.status}` +
+                    `&tx_ref=${TX_REF}&transaction_id=${data.transaction_id}`;
+            } else {
+                btn.disabled  = false;
+                btn.innerHTML = '<i class="fas fa-lock"></i> Pay - UGX @ViewBag.Amount?.ToString("N0")';
+                alert('Payment was not completed. Please try again.');
+            }
+        },
+        onclose: function () {
+            btn.disabled  = false;
+            btn.innerHTML = '<i class="fas fa-lock"></i> Pay - UGX @ViewBag.Amount?.ToString("N0")';
+        }
+    });
+}
+</script>
+}

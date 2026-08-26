@@ -1,0 +1,41 @@
+@{
+    ViewData["Title"] = "Manage Members"; Layout = "~/Views/Shared/_AdminDashboard_Layout.cshtml";
+}
+
+<div class="admin-main">
+    <div class="admin-topbar">
+        <h1>Members (@ViewBag.Total)</h1>
+        <a asp-controller="Account" asp-action="Register" class="btn btn-primary btn-sm"><i class="fas fa-plus"></i> Add Member</a>
+    </div>
+    <form method="get" class="filter-bar">
+        <input name="search" placeholder="Search name or email..." class="form-control" value="@Context.Request.Query["search"]" />
+        <select name="status" class="form-control">
+            <option value="">All Statuses</option>
+            @foreach (var s in Enum.GetValues<ChurchMinistry.Models.MemberStatus>())
+            {
+                <option>@s</option>
+            }
+        </select>
+        <button class="btn btn-primary">Filter</button>
+    </form>
+    <table class="data-table">
+        <thead><tr><th>Photo</th><th>Name</th><th>Email</th><th>Phone</th><th>Group</th><th>Joined</th><th>Status</th><th>Actions</th></tr></thead>
+        <tbody>
+            @foreach (ChurchMinistry.Models.Member m in (ViewBag.Members ?? new List<ChurchMinistry.Models.Member>()))
+            {
+                <tr>
+                    <td><img src="@(m.ProfilePhoto ?? "/images/avatar-default.png")" class="avatar-xs" /></td>
+                    <td>@m.FullName</td>
+                    <td>@m.Email</td>
+                    <td>@m.Phone</td>
+                    <td>@m.MinistryGroup?.Name</td>
+                    <td>@m.JoinDate.ToString("dd MMM yyyy")</td>
+                    <td><span class="status-badge status-@m.Status.ToString().ToLower()">@m.Status</span></td>
+                    <td>
+                        <a asp-controller="Members" asp-action="Profile" asp-route-id="@m.Id" class="btn btn-outline btn-xs">Edit</a>
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+</div>

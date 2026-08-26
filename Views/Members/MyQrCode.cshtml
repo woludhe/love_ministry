@@ -1,0 +1,16 @@
+@model ChurchMinistry.Models.Member
+@{
+    ViewData["Title"] = "My QR Code"; Layout = "~/Views/Shared/_MemberDashboard_Layout.cshtml";
+}
+<section class="page-header"><h1>My Check-in QR Code</h1><p>Show this at the entrance for attendance check-in</p></section>
+<div class="qr-page">
+  <div class="qr-card">
+    <h2>@Model.FullName</h2>
+    <p class="meta">Member since @Model.JoinDate.ToString("MMMM yyyy")</p>
+    @if (!string.IsNullOrEmpty(Model.QrCode)) {
+      <img src="data:image/png;base64,@Model.QrCode" alt="QR Code" class="qr-image" />
+    }
+    <p><strong>Member ID: #@Model.Id</strong></p>
+    <button onclick="window.print()" class="btn btn-outline"><i class="fas fa-print"></i> Print QR Code</button>
+  </div>
+</div>

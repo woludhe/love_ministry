@@ -1,0 +1,121 @@
+@model ChurchMinistry.Models.PrayerRequest
+@{
+    ViewData["Title"] = "Mark Prayer Answered";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+}
+
+<section class="page-header" style="background:linear-gradient(135deg,#065f46,#059669)">
+    <h1><i class="fas fa-check-circle"></i> Mark Prayer as Answered</h1>
+    <p>Give thanks to God for answering your prayer</p>
+</section>
+
+<div class="form-page" style="max-width:640px">
+
+    <div class="answered-original-card">
+        <div class="answered-original-label">
+            <i class="fas fa-hands-praying"></i> Your Prayer Request
+        </div>
+        <div style="display:flex;gap:.5rem;margin-bottom:.6rem">
+            <span class="prayer-tag">@Model.Category</span>
+            <span class="meta">· Submitted @Model.CreatedAt.ToString("dd MMM yyyy")</span>
+        </div>
+        <p style="font-size:.92rem;line-height:1.7">@Model.Request</p>
+        <p class="meta" style="margin-top:.5rem">
+            <i class="fas fa-hands-praying"></i> @Model.PrayerCount people prayed for this
+        </p>
+    </div>
+
+    <form asp-action="MarkAnswered" method="post">
+        <input type="hidden" name="id" value="@Model.Id" />
+
+        <div class="form-group">
+            <label style="font-weight:700;font-size:.95rem">
+                <i class="fas fa-star" style="color:var(--amber)"></i>
+                How did God answer this prayer?
+            </label>
+            <textarea name="testimony" class="form-control" rows="6" required
+                      placeholder="Share what God did... Your testimony encourages others to believe!"></textarea>
+        </div>
+
+        <div class="share-community-toggle">
+            <label class="share-toggle-label">
+                <input type="checkbox" name="shareInCommunity" value="true"
+                       id="shareToggle" onchange="toggleSharePreview(this)" />
+                <div class="share-toggle-content">
+                    <div class="share-toggle-icon"><i class="fas fa-bullhorn"></i></div>
+                    <div>
+                        <strong>Share testimony in Community</strong>
+                        <p>Post this as a testimony in the forum so others can rejoice with you</p>
+                    </div>
+                    <div class="share-toggle-check" id="shareCheck">
+                        <i class="fas fa-circle"></i>
+                    </div>
+                </div>
+            </label>
+        </div>
+
+        <div id="sharePreview" class="share-preview" style="display:none">
+            <div class="share-preview-header">
+                <i class="fas fa-eye"></i> This will be posted in Community as:
+            </div>
+            <div class="share-preview-body">
+                <strong>Prayer Answered: @Model.Category 🙌</strong>
+                <p style="font-size:.82rem;color:var(--text-s);margin-top:.3rem">
+                    Category: Testimony · Visible to all members
+                </p>
+            </div>
+        </div>
+
+        <div style="display:flex;gap:.75rem;margin-top:1.5rem">
+            <button type="submit" class="btn btn-primary">
+                <i class="fas fa-check-circle"></i> Confirm & Save
+            </button>
+            <a asp-action="MyRequests" class="btn btn-outline">Cancel</a>
+        </div>
+    </form>
+</div>
+
+@section Scripts {
+<script>
+function toggleSharePreview(cb) {
+    document.getElementById('sharePreview').style.display = cb.checked ? 'block' : 'none';
+    document.getElementById('shareCheck').innerHTML = cb.checked
+        ? '<i class="fas fa-check-circle" style="color:var(--green)"></i>'
+        : '<i class="fas fa-circle" style="color:var(--border)"></i>';
+}
+</script>
+<style>
+.answered-original-card { background: #f0fdf4; border: 1.5px solid #a7f3d0;
+                          border-radius: var(--radius); padding: 1.25rem;
+                          margin-bottom: 1.75rem; }
+.answered-original-label { font-size: .78rem; font-weight: 700; color: #065f46;
+                            text-transform: uppercase; letter-spacing: .05em;
+                            margin-bottom: .5rem; display: flex;
+                            align-items: center; gap: .35rem; }
+
+.share-community-toggle  { margin: 1.25rem 0; }
+.share-toggle-label      { cursor: pointer; display: block; }
+.share-toggle-label input { display: none; }
+.share-toggle-content    { display: flex; align-items: center; gap: 1rem;
+                           background: var(--white); border: 1.5px solid var(--border);
+                           border-radius: var(--radius); padding: 1rem 1.25rem;
+                           transition: border-color .15s; }
+.share-toggle-label:has(input:checked) .share-toggle-content
+                         { border-color: var(--purple); background: var(--purple-l); }
+.share-toggle-icon       { width: 40px; height: 40px; border-radius: 10px;
+                           background: var(--purple-l); color: var(--purple);
+                           display: flex; align-items: center; justify-content: center;
+                           font-size: 1.1rem; flex-shrink: 0; }
+.share-toggle-content strong { display: block; font-size: .9rem; font-weight: 700; }
+.share-toggle-content p  { font-size: .78rem; color: var(--text-s); margin: .1rem 0 0; }
+.share-toggle-check      { margin-left: auto; font-size: 1.2rem; color: var(--border); flex-shrink: 0; }
+
+.share-preview           { background: #fafafa; border: 1px solid var(--border);
+                           border-radius: 10px; overflow: hidden; margin-top: -.5rem;
+                           margin-bottom: 1rem; }
+.share-preview-header    { background: var(--purple-l); color: var(--purple);
+                           font-size: .78rem; font-weight: 700; padding: .5rem .9rem;
+                           display: flex; align-items: center; gap: .4rem; }
+.share-preview-body      { padding: .75rem .9rem; font-size: .88rem; }
+</style>
+}

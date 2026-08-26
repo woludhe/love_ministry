@@ -1,0 +1,470 @@
+@model ChurchMinistry.ViewModels.HomeIndexViewModel
+@inject Microsoft.Extensions.Configuration.IConfiguration Config
+@{
+    ViewData["Title"] = "Home - Apostle Enock Makoko";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+}
+@using ChurchMinistry.Models
+
+<!-- ═══════════════════════════════════════════
+     HERO - sliding background images
+═══════════════════════════════════════════ -->
+<section class="hero" id="heroSection">
+
+    @* {{-- Slide layers --}} *@
+    <div class="hero-slides">
+        <div class="hero-slide active" style="background-image:url('/images/hero/slide1.jpg')"></div>
+        <div class="hero-slide" style="background-image:url('/images/hero/slide2.jpg')"></div>
+        <div class="hero-slide" style="background-image:url('/images/hero/slide3.jpg')"></div>
+        <div class="hero-slide" style="background-image:url('/images/hero/slide4.jpg')"></div>
+    </div>
+    @* {{-- Dark gradient so text stays readable over any photo --}} *@
+    <div class="hero-overlay"></div>
+
+    @* {{-- Prev / Next arrows --}} *@
+    <button class="hero-arrow hero-prev" onclick="heroShift(-1)" aria-label="Previous slide">
+        <i class="fas fa-chevron-left"></i>
+    </button>
+    <button class="hero-arrow hero-next" onclick="heroShift(1)" aria-label="Next slide">
+        <i class="fas fa-chevron-right"></i>
+    </button>
+
+    @* {{-- Dot indicators --}} *@
+    <div class="hero-dots" id="heroDots"></div>
+
+    @* {{-- Content --}} *@
+    <div class="hero-content">
+        <span class="hero-badge">Welcome Home</span>
+        <h1>Building Lives,<br>Transforming <span class="highlight">Communities</span></h1>
+        <p>Join our family of believers. Experience the love of God through worship, fellowship and service.</p>
+        <div class="hero-actions">
+            <a asp-controller="Account" asp-action="Register" class="btn btn-primary">Join Our Family</a>
+            <a asp-controller="Media" asp-action="Live" class="btn btn-outline hero-outline-btn">
+                <span class="live-dot"></span> Watch Live
+            </a>
+        </div>
+        @* <div class="hero-stats">
+        <div class="stat"><strong>@(Model?.TotalMembers ?? 0)+</strong><span>Members</span></div>
+        <div class="stat"><strong>15+</strong><span>Years</span></div>
+        <div class="stat"><strong>12</strong><span>Ministries</span></div>
+        </div> *@
+    </div>
+
+    @* {{-- Side card --}} *@
+    <div class="hero-visual">
+        <div class="hero-card glass-card">
+            @if (Model?.LiveSermon != null)
+            {
+                <div class="live-badge"><span class="live-dot"></span> LIVE NOW</div>
+                <p class="live-title">@Model.LiveSermon.Title</p>
+                <a asp-controller="Media" asp-action="Live" class="btn btn-primary btn-sm">Watch Now</a>
+            }
+            else
+            {
+                <div class="next-service">
+                    <i class="fas fa-church fa-2x"></i>
+                    @if (Model?.NextEvent != null)
+                    {
+                        <span><strong>@Model.NextEvent.Title</strong></span>
+                        <span><i class="fas fa-calendar"></i> @Model.NextEvent.StartDate.ToString("ddd, dd MMM yyyy")</span>
+                        <span><i class="fas fa-clock"></i> @Model.NextEvent.StartDate.ToString("h:mm tt")</span>
+                        @if (!string.IsNullOrEmpty(Model.NextEvent.Location))
+                        {
+                            <span><i class="fas fa-map-marker-alt"></i> @Model.NextEvent.Location</span>
+                        }
+                        <a asp-controller="Events" asp-action="Details" asp-route-id="@Model.NextEvent.Id"
+                           class="btn btn-outline hero-outline-btn btn-sm" style="margin-top:.75rem">
+                            View Details
+                        </a>
+                    }
+                    else
+                    {
+                        <span><strong>Next Service</strong></span>
+                        <span><i class="fas fa-calendar"></i> Every Sunday</span>
+                        <span><i class="fas fa-clock"></i> 8:00 AM &amp; 10:30 AM</span>
+                        <span><i class="fas fa-map-marker-alt"></i> @Config["Church:Address"]</span>
+                    }
+                </div>
+            }
+        </div>
+    </div>
+
+</section>
+
+<!-- ═══════════════════════════════════════════
+     REST OF PAGE (unchanged)
+═══════════════════════════════════════════ -->
+
+<section class="section">
+    <div class="section-header">
+        <h2>Recent Sermons</h2>
+        <a asp-controller="Media" asp-action="Index" class="btn btn-outline btn-sm">View All</a>
+    </div>
+    <div class="cards-grid">
+        @foreach (var sermon in (Model?.RecentSermons ?? new List<Sermon>()))
+        {
+            <div class="card sermon-card">
+                @if (!string.IsNullOrEmpty(sermon.ThumbnailUrl))
+                {
+                    <img src="@sermon.ThumbnailUrl" alt="@sermon.Title" class="card-thumb" />
+                }
+                else
+                {
+                    <div class="card-thumb-placeholder"><i class="fas fa-play-circle fa-3x"></i></div>
+                }
+                <div class="card-body">
+                    <span class="tag">@sermon.SeriesName</span>
+                    <h3>@sermon.Title</h3>
+                    <p class="meta">
+                        <i class="fas fa-user"></i> @sermon.Speaker &nbsp;
+                        <i class="fas fa-calendar"></i> @sermon.SermonDate.ToString("dd MMM yyyy")
+                    </p>
+                    <div class="card-actions">
+                        <a asp-controller="Media" asp-action="Watch" asp-route-id="@sermon.Id" class="btn btn-primary btn-sm">
+                            <i class="fas fa-play"></i> Watch
+                        </a>
+                        @if (!string.IsNullOrEmpty(sermon.AudioUrl))
+                        {
+                            <a href="@sermon.AudioUrl" class="btn btn-outline btn-sm">
+                                <i class="fas fa-headphones"></i> Listen
+                            </a>
+                        }
+                    </div>
+                </div>
+            </div>
+        }
+    </div>
+</section>
+
+<section class="give-section">
+    <div class="give-content">
+        <div class="give-text">
+            <h2>Give &amp; Support the Ministry</h2>
+            <p>Your giving makes a difference. Support our missions, community outreach and church operations.</p>
+            <div class="payment-badges">
+                <span class="badge mtn">MTN MoMo</span>
+                <span class="badge airtel">Airtel Money</span>
+                <span class="badge mpesa">M-Pesa</span>
+                <span class="badge visa">VISA</span>
+                <span class="badge mc">Mastercard</span>
+            </div>
+            <a asp-controller="Giving" asp-action="Give" class="btn btn-primary">Give Now</a>
+        </div>
+        <div class="give-verse">
+            <blockquote>
+                "Each of you should give what you have decided in your heart to give, not reluctantly or under compulsion, for God loves a cheerful giver."
+                <cite>2 Corinthians 9:7</cite>
+            </blockquote>
+        </div>
+    </div>
+</section>
+
+@if (Model.UpcomingEvents.Any())
+{
+    <section class="section">
+        <div class="section-header">
+            <h2>Upcoming Events</h2>
+            <a asp-controller="Events" asp-action="Index" class="btn btn-outline btn-sm">See Calendar</a>
+        </div>
+        <div class="events-list-row">
+            @foreach (var ev in Model.UpcomingEvents)
+            {
+                <div class="event-item">
+                    <div class="event-date">
+                        <span class="day">@ev.StartDate.Day</span>
+                        <span class="month">@ev.StartDate.ToString("MMM")</span>
+                    </div>
+                    <div class="event-info">
+                        <h3>@ev.Title</h3>
+                        <p>
+                            <i class="fas fa-clock"></i> @ev.StartDate.ToString("h:mm tt")
+                            @if (!string.IsNullOrEmpty(ev.Location))
+                            {
+                                <span>&nbsp;<i class="fas fa-map-marker-alt"></i> @ev.Location</span>
+                            }
+                        </p>
+                    </div>
+                    <a asp-controller="Events" asp-action="Details" asp-route-id="@ev.Id"
+                       class="btn btn-outline btn-sm">Details</a>
+                </div>
+            }
+        </div>
+    </section>
+}
+
+@* <section class="section prayer-section">
+    <div class="section-header">
+        <h2>Prayer Wall</h2>
+        <a asp-controller="Prayer" asp-action="Index" class="btn btn-outline btn-sm">Full Prayer Wall</a>
+    </div>
+    <div class="prayer-grid">
+        @foreach (var pr in (Model?.PrayerWall ?? new List<PrayerRequest>()))
+        {
+            <div class="prayer-card">
+                <span class="prayer-tag">@pr.Category</span>
+                <p>@pr.Request.Substring(0, Math.Min(pr.Request.Length, 120))@(pr.Request.Length > 120 ? "..." : "")</p>
+                <div class="prayer-footer">
+                    <span><i class="fas fa-hands-praying"></i> @pr.PrayerCount praying</span>
+                    <form asp-controller="Prayer" asp-action="Pray" method="post">
+                        <input type="hidden" name="id" value="@pr.Id" />
+                        <button type="submit" class="btn-pray">Pray</button>
+                    </form>
+                </div>
+            </div>
+        }
+    </div>
+    <div class="prayer-cta">
+        <a asp-controller="Prayer" asp-action="Submit" class="btn btn-primary">
+            <i class="fas fa-hands-praying"></i> Submit Prayer Request
+        </a>
+    </div>
+</section> *@
+
+@section Scripts {
+    <style>
+        /* ── Hero layout ─────────────────────────────────────────── */
+        .hero {
+            position: relative;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 3rem;
+            align-items: center;
+            min-height: 92vh;
+            padding: 5rem 4rem 5rem 4rem;
+            overflow: hidden;
+            isolation: isolate; /* creates stacking context */
+            background-image: url('/images/hero/slide1.jpg');
+        }
+
+        /* ── Slide layers ────────────────────────────────────────── */
+        .hero-slides {
+            position: absolute;
+            inset: 0;
+            z-index: -2;
+        }
+
+        .hero-slide {
+            position: absolute;
+            inset: 0;
+            background-size: cover;
+            background-position: center;
+            opacity: 0;
+            transition: opacity 1.4s cubic-bezier(.4,0,.2,1);
+            will-change: opacity;
+        }
+
+            .hero-slide.active {
+                opacity: 1;
+            }
+
+        /* ── Overlay gradient ────────────────────────────────────── */
+        .hero-overlay {
+            position: absolute;
+            inset: 0;
+            z-index: -1;
+            /* background: linear-gradient( 125deg, rgba(10,8,35,.82) 0%, rgba(30,27,75,.72) 45%, rgba(10,8,35,.78) 100% ); */
+            background: linear-gradient( 125deg, rgba(10,8,35,.82) 0%, rgba(0,0,0,0) 45%, rgba(10,8,35,.78) 100% );
+        }
+
+        /* ── Text colours over photos ───────────────────────────── */
+        .hero h1 {
+            color: #ffffff;
+            text-shadow: 0 2px 18px rgba(0,0,0,.5);
+        }
+
+        .hero p {
+            color: rgba(255,255,255,.88);
+        }
+
+        .hero .highlight {
+            color: #c4b5fd;
+        }
+
+        .hero-badge {
+            background: rgba(255,255,255,.12);
+            color: #fff;
+            border: 1px solid rgba(255,255,255,.28);
+            backdrop-filter: blur(8px);
+        }
+
+        .hero .stat strong {
+            color: #c4b5fd;
+        }
+
+        .hero .stat span {
+            color: rgba(255,255,255,.72);
+        }
+
+        .hero-outline-btn {
+            color: white !important;
+            border-color: rgba(255,255,255,.45) !important;
+            background: rgba(255,255,255,.08) !important;
+        }
+
+            .hero-outline-btn:hover {
+                background: rgba(255,255,255,.18) !important;
+            }
+
+        /* ── Glass card ─────────────────────────────────────────── */
+        .glass-card {
+            background: rgba(255,255,255,.10) !important;
+            backdrop-filter: blur(18px) saturate(160%);
+            -webkit-backdrop-filter: blur(18px) saturate(160%);
+            border: 1px solid rgba(255,255,255,.22) !important;
+            box-shadow: 0 8px 32px rgba(0,0,0,.35) !important;
+            color: #fff !important;
+        }
+
+            .glass-card .next-service {
+                color: rgba(255,255,255,.88);
+            }
+
+                .glass-card .next-service i {
+                    color: #c4b5fd;
+                }
+
+            .glass-card p {
+                color: rgba(255,255,255,.82);
+            }
+
+            .glass-card strong {
+                color: #fff;
+            }
+
+        /* ── Arrows ─────────────────────────────────────────────── */
+        .hero-arrow {
+            position: absolute;
+            top: 50%;
+            transform: translateY(-50%);
+            z-index: 10;
+            width: 46px;
+            height: 46px;
+            border-radius: 50%;
+            border: 1.5px solid rgba(255,255,255,.32);
+            background: rgba(0,0,0,.28);
+            backdrop-filter: blur(8px);
+            color: white;
+            font-size: .95rem;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all .2s;
+        }
+
+            .hero-arrow:hover {
+                background: rgba(0,0,0,.58);
+                border-color: rgba(255,255,255,.75);
+                transform: translateY(-50%) scale(1.08);
+            }
+
+        .hero-prev {
+            left: 1.5rem;
+        }
+
+        .hero-next {
+            right: 1.5rem;
+        }
+
+        /* ── Dots ───────────────────────────────────────────────── */
+        .hero-dots {
+            position: absolute;
+            bottom: 1.6rem;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: .45rem;
+            z-index: 10;
+        }
+
+        .hero-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            border: none;
+            background: rgba(255,255,255,.38);
+            cursor: pointer;
+            padding: 0;
+            transition: all .3s;
+        }
+
+            .hero-dot.active {
+                background: #fff;
+                width: 24px;
+                border-radius: 100px;
+            }
+
+        /* ── Responsive ─────────────────────────────────────────── */
+        @@media (max-width: 1024px) {
+            .hero {
+                grid-template-columns: 1fr;
+                text-align: center;
+                padding: 5rem 1.5rem 4rem;
+                min-height: 70vh;
+            }
+
+            .hero-visual {
+                display: none;
+            }
+
+            .hero-actions {
+                justify-content: center;
+            }
+
+            .hero-stats {
+                justify-content: center;
+            }
+
+            .hero-prev, .hero-next {
+                display: none;
+            }
+        }
+    </style>
+
+    <script>
+        (function () {
+            const INTERVAL = 6000;
+            const slides = Array.from(document.querySelectorAll('.hero-slide'));
+            const dotsEl = document.getElementById('heroDots');
+            let current = 0;
+            let timer;
+
+            // Build dots dynamically to match slide count
+            slides.forEach((_, i) => {
+                const btn = document.createElement('button');
+                btn.className = 'hero-dot' + (i === 0 ? ' active' : '');
+                btn.setAttribute('aria-label', 'Slide ' + (i + 1));
+                btn.addEventListener('click', () => { resetTimer(); goTo(i); });
+                dotsEl.appendChild(btn);
+            });
+
+            function goTo(index) {
+                slides[current].classList.remove('active');
+                dotsEl.children[current].classList.remove('active');
+                current = (index + slides.length) % slides.length;
+                slides[current].classList.add('active');
+                dotsEl.children[current].classList.add('active');
+            }
+
+            window.heroShift = function (dir) { resetTimer(); goTo(current + dir); };
+
+            function startTimer() { timer = setInterval(() => goTo(current + 1), INTERVAL); }
+            function resetTimer() { clearInterval(timer); startTimer(); }
+
+            // Pause on hover
+            const hero = document.getElementById('heroSection');
+            hero.addEventListener('mouseenter', () => clearInterval(timer));
+            hero.addEventListener('mouseleave', startTimer);
+
+            // Touch swipe
+            let tx = 0;
+            hero.addEventListener('touchstart', e => tx = e.touches[0].clientX, { passive: true });
+            hero.addEventListener('touchend', e => {
+                const d = tx - e.changedTouches[0].clientX;
+                if (Math.abs(d) > 50) { resetTimer(); goTo(current + (d > 0 ? 1 : -1)); }
+            }, { passive: true });
+
+            startTimer();
+        })();
+    </script>
+}

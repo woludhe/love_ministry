@@ -1,0 +1,106 @@
+@model ChurchMinistry.ViewModels.CreateMeetingViewModel
+@{ ViewData["Title"] = "Schedule Meeting"; Layout = "~/Views/Shared/_Layout.cshtml"; }
+
+<section class="page-header">
+  <h1><i class="fas fa-calendar-plus"></i> Schedule a Meeting</h1>
+  <p>Set up a prayer session, Bible study or worship gathering</p>
+</section>
+
+<div class="form-page">
+  <form asp-action="Create" method="post">
+    <div asp-validation-summary="All" class="validation-summary"></div>
+    <div class="validation-summary-valid" style="display:none"></div>
+
+    <div class="form-group">
+      <label asp-for="Title">Meeting Title</label>
+      <input asp-for="Title" class="form-control" placeholder="e.g. Wednesday Evening Prayer" />
+      <span asp-validation-for="Title" class="field-error"></span>
+    </div>
+
+    <div class="form-row">
+      <div class="form-group">
+        <label asp-for="MeetingType">Meeting Type</label>
+        <select asp-for="MeetingType" class="form-control"
+                asp-items="Html.GetEnumSelectList<ChurchMinistry.Models.MeetingType>()"></select>
+      </div>
+      <div class="form-group">
+        <label asp-for="ScheduledAt">Date & Time</label>
+        <input asp-for="ScheduledAt" class="form-control" type="datetime-local" />
+      </div>
+    </div>
+
+    <div class="form-group">
+      <label asp-for="Description">Description (optional)</label>
+      <textarea asp-for="Description" class="form-control" rows="3"
+                placeholder="What will you be studying or praying about?"></textarea>
+    </div>
+
+    <div class="form-row">
+      <div class="form-group">
+        <label asp-for="MaxParticipants">Max Participants</label>
+        <input asp-for="MaxParticipants" class="form-control" type="number" min="2" max="200" />
+      </div>
+      <div class="form-group">
+        <label asp-for="PassCode">Passcode (optional)</label>
+        <input asp-for="PassCode" class="form-control" placeholder="Leave blank for open meeting" />
+      </div>
+    </div>
+
+    <div class="form-options-grid">
+      <label class="option-toggle">
+        <input asp-for="WaitingRoomEnabled" type="checkbox" />
+        <div class="option-content">
+          <i class="fas fa-door-open"></i>
+          <span>Waiting Room</span>
+          <small>Admit participants manually</small>
+        </div>
+      </label>
+      <label class="option-toggle">
+        <input asp-for="ChatEnabled" type="checkbox" />
+        <div class="option-content">
+          <i class="fas fa-comments"></i>
+          <span>Meeting Chat</span>
+          <small>Allow in-meeting messages</small>
+        </div>
+      </label>
+      <label class="option-toggle">
+        <input asp-for="IsPublic" type="checkbox" />
+        <div class="option-content">
+          <i class="fas fa-globe"></i>
+          <span>Public Meeting</span>
+          <small>Visible to all members</small>
+        </div>
+      </label>
+      <label class="option-toggle">
+        <input asp-for="IsRecurring" type="checkbox" id="recurringCheck"
+               onchange="document.getElementById('recurringOpts').style.display=this.checked?'grid':'none'" />
+        <div class="option-content">
+          <i class="fas fa-rotate"></i>
+          <span>Recurring</span>
+          <small>Repeat weekly</small>
+        </div>
+      </label>
+    </div>
+
+    <div id="recurringOpts" class="form-row" style="display:none">
+      <div class="form-group">
+        <label>Day of Week</label>
+        <select asp-for="RecurringDay" class="form-control">
+          <option>Sunday</option><option>Monday</option><option>Tuesday</option>
+          <option>Wednesday</option><option>Thursday</option><option>Friday</option><option>Saturday</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Time</label>
+        <input asp-for="RecurringTime" class="form-control" type="time" />
+      </div>
+    </div>
+
+    <div style="display:flex;gap:1rem;margin-top:1.5rem">
+      <button type="submit" class="btn-meet btn-meet-primary">
+        <i class="fas fa-calendar-check"></i> Schedule Meeting
+      </button>
+      <a asp-action="Index" class="btn-meet btn-meet-ghost">Cancel</a>
+    </div>
+  </form>
+</div>

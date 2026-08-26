@@ -1,0 +1,401 @@
+@model ChurchMinistry.ViewModels.GivingViewModel
+@using ChurchMinistry.Models
+@{
+    ViewData["Title"] = "Give";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+    var methods  = ViewBag.PaymentMethods as List<PaymentMethodConfig> ?? new();
+    var selected = ViewBag.SelectedMethod as PaymentMethodConfig;
+    var memberName  = ViewBag.MemberName  as string ?? "";
+    var memberEmail = ViewBag.MemberEmail as string ?? "";
+}
+
+<div class="gv-page">
+    <div class="gv-hero">
+        <div class="gv-hero-inner">
+            <div class="gv-hero-icon"><i class="fas fa-hand-holding-heart"></i></div>
+            <h1>Give</h1>
+            <p>"Give, and it will be given to you — good measure, pressed down, shaken together, running over." <span>Luke 6:38</span></p>
+        </div>
+    </div>
+
+    <div class="gv-body">
+
+        @if (TempData["Error"] != null)
+        {
+            <div class="gv-alert gv-alert-danger">
+                <i class="fas fa-exclamation-circle"></i> @TempData["Error"]
+            </div>
+        }
+
+        @if (!methods.Any())
+        {
+            <div class="gv-empty">
+                <i class="fas fa-info-circle fa-2x"></i>
+                <h3>No payment methods available</h3>
+                <p>Please check back later or contact the church office.</p>
+            </div>
+        }
+        else
+        {
+            @* Safe JSON island — Razor serializes here, JS reads it *@
+            <script id="methodsData" type="application/json">
+                @Html.Raw(ViewBag.MethodsJson as string ?? "[]")
+            </script>
+
+            <form method="post" asp-action="Give" id="giveForm">
+                @Html.AntiForgeryToken()
+                <input type="hidden" asp-for="MethodCode" id="methodCode" />
+                <input type="hidden" asp-for="Currency"   id="currencyField" />
+
+                <div class="gv-layout">
+
+                    @* ── Left: Payment method selector ── *@
+                    <div class="gv-col gv-col-methods">
+                        <h2 class="gv-section-title">Choose Payment Method</h2>
+
+                        <div class="gv-methods" id="methodList">
+                            @foreach (var m in methods)
+                            {
+                                <button type="button"
+                                        class="gv-method-btn @(selected?.Code == m.Code ? "active" : "")"
+                                        data-code="@m.Code"
+                                        data-name="@m.Name"
+                                        data-currency="@m.Currency"
+                                        data-symbol="@m.CurrencySymbol"
+                                        data-type="@m.IntegrationType.ToString().ToLower()"
+                                        data-amounts="@m.DefaultAmounts"
+                                        onclick="selectMethod(this)">
+                                    <span class="gv-method-badge" style="background:@m.BadgeColor">
+                                        @m.BadgeLabel
+                                    </span>
+                                    <div class="gv-method-info">
+                                        <span class="gv-method-name">@m.Name</span>
+                                        <span class="gv-method-currency">@m.Currency · @m.CurrencySymbol</span>
+                                    </div>
+                                    <i class="fas fa-chevron-right gv-method-arrow"></i>
+                                </button>
+                            }
+                        </div>
+                    </div>
+
+                    @* ── Right: Amount + type + details ── *@
+                    <div class="gv-col gv-col-form">
+                        <h2 class="gv-section-title">Giving Details</h2>
+
+                        @* Quick amounts *@
+                        <div class="gv-field">
+                            <label class="gv-label">Quick Amount</label>
+                            <div class="gv-amounts" id="quickAmounts">
+                                @* Rendered by JS on method select *@
+                            </div>
+                        </div>
+
+                        @* Custom amount *@
+                        <div class="gv-field">
+                            <label class="gv-label" for="amountInput">
+                                Amount <span id="currencyLabel">(@(selected?.CurrencySymbol ?? ""))</span>
+                                <span class="gv-req">*</span>
+                            </label>
+                            <div class="gv-amount-input-wrap">
+                                <span class="gv-currency-prefix" id="currencyPrefix">
+                                    @(selected?.CurrencySymbol ?? "")
+                                </span>
+                                <input asp-for="Amount" type="number" id="amountInput"
+                                       class="gv-input gv-amount-input"
+                                       placeholder="Enter amount" min="1000" step="100" required />
+                            </div>
+                            <span asp-validation-for="Amount" class="gv-error"></span>
+                        </div>
+
+                        @* Giving type *@
+                        <div class="gv-field">
+                            <label class="gv-label">Giving Type <span class="gv-req">*</span></label>
+                            <div class="gv-type-grid">
+                                @foreach (var type in Enum.GetValues<GivingType>())
+                                {
+                                    var icons = new Dictionary<GivingType, string>
+                                    {
+                                        [GivingType.Tithe]    = "fa-percentage",
+                                        [GivingType.Offering] = "fa-hand-holding-heart",
+                                        [GivingType.Seed]     = "fa-seedling",
+                                        [GivingType.Pledge]   = "fa-handshake",
+                                        [GivingType.Welfare]  = "fa-heart",
+                                        [GivingType.Missions]  = "fa-globe-africa",
+                                    };
+                                    var icon = icons.TryGetValue(type, out var ic) ? ic : "fa-gift";
+                                    <label class="gv-type-opt @(Model.GivingType == type ? "active" : "")">
+                                        <input type="radio" asp-for="GivingType" value="@type"
+                                               onchange="this.closest('.gv-type-grid').querySelectorAll('.gv-type-opt').forEach(e=>e.classList.remove('active'));this.closest('.gv-type-opt').classList.add('active')" />
+                                        <i class="fas @icon"></i>
+                                        <span>@type</span>
+                                    </label>
+                                }
+                            </div>
+                            <span asp-validation-for="GivingType" class="gv-error"></span>
+                        </div>
+
+                        @* Phone (mobile money only) *@
+                        <div class="gv-field" id="phoneField" style="display:none">
+                            <label class="gv-label">Phone Number</label>
+                            <input asp-for="PhoneNumber" class="gv-input"
+                                   placeholder="e.g. 0771234567" type="tel" id="phoneInput" />
+                            <span class="gv-hint">The number registered with your mobile money.</span>
+                        </div>
+
+                        @* Notes *@
+                        <div class="gv-field">
+                            <label class="gv-label">Note <span class="gv-hint">(optional)</span></label>
+                            <input asp-for="Notes" class="gv-input" placeholder="e.g. For building fund" />
+                        </div>
+
+                        @* Recurring *@
+                        <div class="gv-field">
+                            <label class="gv-check-label">
+                                <input asp-for="IsRecurring" type="checkbox" class="gv-checkbox"
+                                       onchange="document.getElementById('recurringRow').style.display=this.checked?'block':'none'" />
+                                Make this a recurring gift
+                            </label>
+                        </div>
+                        <div id="recurringRow" style="display:none" class="gv-field">
+                            <label class="gv-label">Repeat every</label>
+                            <select asp-for="RecurringInterval" class="gv-input">
+                                <option value="monthly">Month</option>
+                                <option value="weekly">Week</option>
+                                <option value="quarterly">Quarter</option>
+                            </select>
+                        </div>
+
+                        @* Instructions preview (manual only) *@
+                        <div class="gv-instructions" id="instructionsPanel" style="display:none">
+                            <div class="gv-instructions-header">
+                                <i class="fas fa-info-circle"></i>
+                                <span>Payment Instructions</span>
+                            </div>
+                            <p class="gv-instructions-text" id="instructionsText"></p>
+                            <img id="instructionsImage" style="display:none"
+                                 class="gv-instructions-img" alt="Payment instructions" />
+                        </div>
+
+                        @* Submit *@
+                        <button type="submit" class="gv-submit-btn" id="submitBtn">
+                            <i class="fas fa-heart"></i>
+                            <span id="submitLabel">Give Now</span>
+                        </button>
+
+                        <p class="gv-secure-note">
+                            <i class="fas fa-lock"></i> Secured by Flutterwave &amp; SSL
+                        </p>
+                    </div>
+                </div>
+            </form>
+        }
+    </div>
+</div>
+
+@section Scripts {
+    <script>
+
+        // ── Method config from Razor ──────────────────────────────
+        // Payment methods data — serialized from server, no Razor/JS mixing
+        const _raw = document.getElementById('methodsData')?.textContent ?? '[]';
+        const METHODS_LIST = JSON.parse(_raw);
+        // Build a lookup map by code for fast access
+        const METHODS_DATA = Object.fromEntries(METHODS_LIST.map(m => [m.code, m]));
+
+        // ── Select a method ───────────────────────────────────────
+        function selectMethod(btn) {
+            // Update active class
+            document.querySelectorAll('.gv-method-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+
+            const code = btn.dataset.code;
+            const cfg = METHODS_DATA[code];
+            if (!cfg) return;
+
+            // Update hidden fields
+            document.getElementById('methodCode').value = code;
+            document.getElementById('currencyField').value = cfg.currency;
+
+            // Update currency display
+            document.getElementById('currencyPrefix').textContent = cfg.currencySymbol;
+            document.getElementById('currencyLabel').textContent = `(${cfg.currencySymbol})`;
+
+            // Render quick amounts
+            renderAmounts(cfg.amounts, cfg.currencySymbol);
+
+            // Phone field — show for mobile money methods
+            const isMobile = code === 'mtn' || code === 'airtel' || code === 'mpesa';
+            document.getElementById('phoneField').style.display = isMobile ? 'block' : 'none';
+            document.getElementById('phoneInput').required = isMobile;
+
+            // Instructions panel
+            const panel = document.getElementById('instructionsPanel');
+            if (cfg.integrationType === 'manual' && cfg.instructionsText) {
+                document.getElementById('instructionsText').textContent = cfg.instructionsText;
+                const img = document.getElementById('instructionsImage');
+                if (cfg.instructionsImage) {
+                    img.src = cfg.instructionsImage;
+                    img.style.display = 'block';
+                } else {
+                    img.style.display = 'none';
+                }
+                panel.style.display = 'block';
+            } else {
+                panel.style.display = 'none';
+            }
+
+            // Submit button label
+            document.getElementById('submitLabel').textContent =
+                cfg.integrationType === 'flutterwave' ? 'Pay with Card' : 'Continue to Pay';
+        }
+
+        function renderAmounts(amounts, symbol) {
+            const container = document.getElementById('quickAmounts');
+            container.innerHTML = (amounts || []).map(amt =>
+                `<button type="button" class="gv-amt-btn" onclick="pickAmount(${amt}, this)">
+                    ${symbol} ${parseInt(amt).toLocaleString()}
+                 </button>`
+            ).join('');
+        }
+
+        function pickAmount(val, btn) {
+            document.querySelectorAll('.gv-amt-btn').forEach(b => b.classList.remove('selected'));
+            btn.classList.add('selected');
+            document.getElementById('amountInput').value = val;
+        }
+
+        // ── Boot: initialise the pre-selected method ──────────────
+        const preSelected = document.querySelector('.gv-method-btn.active');
+        if (preSelected) selectMethod(preSelected);
+
+        // ── Form submit loading state ─────────────────────────────
+        document.getElementById('giveForm')?.addEventListener('submit', function () {
+            const btn = document.getElementById('submitBtn');
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Processing…';
+        });
+
+    </script>
+}
+<style>
+:root {
+    --gv-purple:#6366f1; --gv-green:#22c55e; --gv-red:#ef4444;
+    --gv-bg:#0f0f13; --gv-card:#18181f; --gv-border:rgba(255,255,255,.08);
+    --gv-text:rgba(255,255,255,.88); --gv-sub:rgba(255,255,255,.45);
+}
+
+/* Hero */
+.gv-page        { background:var(--gv-bg); min-height:100vh; color:var(--gv-text); }
+.gv-hero        { background:linear-gradient(135deg,#1e1b4b 0%,#312e81 50%,#1e1b4b 100%);
+                  padding:3rem 1.5rem 2rem; text-align:center; }
+.gv-hero-inner  { max-width:640px; margin:0 auto; }
+.gv-hero-icon   { width:64px;height:64px;border-radius:50%;background:rgba(255,255,255,.1);
+                  display:flex;align-items:center;justify-content:center;
+                  margin:0 auto 1rem;font-size:1.5rem;color:#a5b4fc; }
+.gv-hero h1     { font-size:2rem;font-weight:800;margin-bottom:.75rem; }
+.gv-hero p      { color:rgba(255,255,255,.65);font-style:italic;font-size:.95rem;line-height:1.7; }
+.gv-hero p span { color:#a5b4fc;font-style:normal;font-weight:600; }
+
+/* Body layout */
+.gv-body        { max-width:1000px;margin:0 auto;padding:2rem 1rem; }
+.gv-layout      { display:grid;grid-template-columns:320px 1fr;gap:1.75rem;align-items:start; }
+.gv-col         { background:var(--gv-card);border:1px solid var(--gv-border);
+                  border-radius:16px;padding:1.5rem; }
+.gv-section-title{ font-size:.88rem;font-weight:700;color:var(--gv-sub);
+                   text-transform:uppercase;letter-spacing:.06em;margin-bottom:1rem; }
+
+/* Method list */
+.gv-methods     { display:flex;flex-direction:column;gap:.5rem; }
+.gv-method-btn  { display:flex;align-items:center;gap:.85rem;width:100%;
+                  background:rgba(255,255,255,.04);border:1.5px solid var(--gv-border);
+                  border-radius:10px;padding:.75rem;cursor:pointer;
+                  text-align:left;color:var(--gv-text);transition:all .15s; }
+.gv-method-btn:hover{ background:rgba(255,255,255,.08);border-color:rgba(99,102,241,.3); }
+.gv-method-btn.active{ background:rgba(99,102,241,.12);border-color:var(--gv-purple);
+                        box-shadow:0 0 0 3px rgba(99,102,241,.1); }
+.gv-method-badge{ width:46px;height:28px;border-radius:6px;display:flex;flex-shrink:0;
+                  align-items:center;justify-content:center;
+                  font-size:.7rem;font-weight:800;color:white; }
+.gv-method-info { flex:1;display:flex;flex-direction:column;gap:.1rem; }
+.gv-method-name { font-size:.88rem;font-weight:600; }
+.gv-method-currency{ font-size:.72rem;color:var(--gv-sub); }
+.gv-method-arrow{ color:var(--gv-sub);font-size:.75rem; }
+.gv-method-btn.active .gv-method-arrow{ color:var(--gv-purple); }
+
+/* Form fields */
+.gv-field       { margin-bottom:1rem; }
+.gv-label       { display:block;font-size:.82rem;font-weight:600;
+                  color:var(--gv-sub);margin-bottom:.4rem; }
+.gv-req         { color:var(--gv-red); }
+.gv-hint        { font-size:.73rem;color:var(--gv-sub); }
+.gv-input       { width:100%;background:rgba(255,255,255,.06);border:1px solid var(--gv-border);
+                  border-radius:9px;padding:.6rem .85rem;color:var(--gv-text);font-size:.9rem;
+                  transition:border .15s; }
+.gv-input:focus { outline:none;border-color:rgba(99,102,241,.5);
+                  box-shadow:0 0 0 3px rgba(99,102,241,.1); }
+.gv-error       { font-size:.75rem;color:#fca5a5;margin-top:.2rem;display:block; }
+.gv-check-label { display:flex;align-items:center;gap:.5rem;cursor:pointer;font-size:.85rem; }
+.gv-checkbox    { width:16px;height:16px;accent-color:var(--gv-purple); }
+
+/* Quick amounts */
+.gv-amounts     { display:grid;grid-template-columns:repeat(4,1fr);gap:.4rem;margin-bottom:.6rem; }
+.gv-amt-btn     { background:rgba(255,255,255,.07);border:1px solid var(--gv-border);
+                  color:rgba(255,255,255,.7);border-radius:8px;padding:.45rem .3rem;
+                  font-size:.78rem;font-weight:700;cursor:pointer;transition:all .15s;
+                  text-align:center; }
+.gv-amt-btn:hover{ background:var(--gv-purple);border-color:var(--gv-purple);color:white; }
+.gv-amt-btn.selected{ background:var(--gv-purple);border-color:var(--gv-purple);color:white; }
+
+/* Amount input */
+.gv-amount-input-wrap{ position:relative; }
+.gv-currency-prefix { position:absolute;left:.85rem;top:50%;transform:translateY(-50%);
+                      color:var(--gv-sub);font-weight:700;font-size:.85rem;pointer-events:none; }
+.gv-amount-input{ padding-left:3rem !important; }
+
+/* Giving type */
+.gv-type-grid   { display:grid;grid-template-columns:repeat(3,1fr);gap:.45rem; }
+.gv-type-opt    { display:flex;flex-direction:column;align-items:center;gap:.3rem;
+                  padding:.65rem .4rem;border:1.5px solid var(--gv-border);
+                  border-radius:10px;cursor:pointer;font-size:.75rem;font-weight:600;
+                  color:var(--gv-sub);transition:all .15s;text-align:center; }
+.gv-type-opt input{ display:none; }
+.gv-type-opt i  { font-size:1.1rem; }
+.gv-type-opt:hover{ border-color:rgba(99,102,241,.3);color:var(--gv-text); }
+.gv-type-opt.active{ border-color:var(--gv-purple);background:rgba(99,102,241,.12);
+                      color:#a5b4fc; }
+
+/* Instructions */
+.gv-instructions{ background:rgba(99,102,241,.08);border:1px solid rgba(99,102,241,.2);
+                  border-radius:10px;padding:1rem;margin-bottom:1rem; }
+.gv-instructions-header{ display:flex;align-items:center;gap:.5rem;
+                          font-size:.82rem;font-weight:700;color:#a5b4fc;margin-bottom:.6rem; }
+.gv-instructions-text{ font-size:.85rem;color:rgba(255,255,255,.7);line-height:1.7;
+                        white-space:pre-line;margin:0; }
+.gv-instructions-img{ max-width:180px;border-radius:10px;margin-top:.75rem;
+                       border:1px solid var(--gv-border); }
+
+/* Submit */
+.gv-submit-btn  { width:100%;padding:.85rem;border-radius:12px;border:none;
+                  background:var(--gv-purple);color:white;font-size:1rem;font-weight:700;
+                  cursor:pointer;display:flex;align-items:center;justify-content:center;
+                  gap:.6rem;transition:all .2s;margin-top:.25rem; }
+.gv-submit-btn:hover{ background:#4f46e5;transform:translateY(-1px);
+                       box-shadow:0 6px 20px rgba(99,102,241,.4); }
+.gv-secure-note { text-align:center;font-size:.73rem;color:var(--gv-sub);margin-top:.75rem; }
+
+/* Alert */
+.gv-alert       { padding:.8rem 1.1rem;border-radius:10px;font-size:.88rem;
+                  margin-bottom:1.25rem;display:flex;align-items:center;gap:.6rem; }
+.gv-alert-danger{ background:rgba(239,68,68,.1);color:#fca5a5;
+                  border:1px solid rgba(239,68,68,.2); }
+.gv-empty       { text-align:center;padding:4rem 1.5rem;color:var(--gv-sub); }
+.gv-empty h3    { font-size:1.15rem;color:var(--gv-text);margin:.75rem 0 .4rem; }
+
+@@media(max-width:720px){
+    .gv-layout    { grid-template-columns:1fr; }
+    .gv-type-grid { grid-template-columns:repeat(2,1fr); }
+    .gv-amounts   { grid-template-columns:repeat(2,1fr); }
+}
+</style>
+
+
