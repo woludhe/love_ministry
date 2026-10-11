@@ -1,5 +1,4 @@
 @model ChurchMinistry.ViewModels.HomeIndexViewModel
-@inject Microsoft.Extensions.Configuration.IConfiguration Config
 @{
     ViewData["Title"] = "Home - Apostle Enock Makoko";
     Layout = "~/Views/Shared/_Layout.cshtml";
@@ -50,22 +49,22 @@
         </div> *@
     </div>
 
-    @* {{-- Side card --}} *@
-    <div class="hero-visual">
-        <div class="hero-card glass-card">
-            @if (Model?.LiveSermon != null)
-            {
-                <div class="live-badge"><span class="live-dot"></span> LIVE NOW</div>
-                <p class="live-title">@Model.LiveSermon.Title</p>
-                <a asp-controller="Media" asp-action="Live" class="btn btn-primary btn-sm">Watch Now</a>
-            }
-            else
-            {
-                <div class="next-service">
-                    <i class="fas fa-church fa-2x"></i>
-                    @if (Model?.NextEvent != null)
-                    {
-                        <span><strong>@Model.NextEvent.Title</strong></span>
+    @* {{-- Side card: live sermon, else the next scheduled event (hidden when neither) --}} *@
+    @if (Model?.LiveSermon != null || Model?.NextEvent != null)
+    {
+        <div class="hero-visual">
+            <div class="hero-card glass-card">
+                @if (Model?.LiveSermon != null)
+                {
+                    <div class="live-badge"><span class="live-dot"></span> LIVE NOW</div>
+                    <p class="live-title">@Model.LiveSermon.Title</p>
+                    <a asp-controller="Media" asp-action="Live" class="btn btn-primary btn-sm">Watch Now</a>
+                }
+                else
+                {
+                    <div class="next-service">
+                        <i class="fas fa-church fa-2x"></i>
+                        <span><strong>@Model!.NextEvent!.Title</strong></span>
                         <span><i class="fas fa-calendar"></i> @Model.NextEvent.StartDate.ToString("ddd, dd MMM yyyy")</span>
                         <span><i class="fas fa-clock"></i> @Model.NextEvent.StartDate.ToString("h:mm tt")</span>
                         @if (!string.IsNullOrEmpty(Model.NextEvent.Location))
@@ -76,18 +75,11 @@
                            class="btn btn-outline hero-outline-btn btn-sm" style="margin-top:.75rem">
                             View Details
                         </a>
-                    }
-                    else
-                    {
-                        <span><strong>Next Service</strong></span>
-                        <span><i class="fas fa-calendar"></i> Every Sunday</span>
-                        <span><i class="fas fa-clock"></i> 8:00 AM &amp; 10:30 AM</span>
-                        <span><i class="fas fa-map-marker-alt"></i> @Config["Church:Address"]</span>
-                    }
-                </div>
-            }
+                    </div>
+                }
+            </div>
         </div>
-    </div>
+    }
 
 </section>
 
@@ -139,7 +131,7 @@
 <section class="give-section">
     <div class="give-content">
         <div class="give-text">
-            <h2>Give &amp; Support the Ministry</h2>
+            <h2>Give &amp; Partner with the Ministry</h2>
             <p>Your giving makes a difference. Support our missions, community outreach and church operations.</p>
             @if (Model.ActivePaymentMethods.Any())
             {
