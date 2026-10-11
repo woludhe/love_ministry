@@ -4,276 +4,235 @@
     string formAction = isEdit ? "/Admin/EditEvent" : "/Admin/AddEvent";
 }
 <div class="member-main">
-<section class="page-header">
-    <h1>
-        <i class="fas fa-calendar-@(isEdit ? "check" : "plus")"></i>
-        @(isEdit ? "Edit Event" : "Add New Event")
-    </h1>
-</section>
+    <section class="page-header">
+        <h1>
+            <i class="fas fa-calendar-@(isEdit ? "check" : "plus")"></i>
+            @(isEdit ? "Edit Event" : "Add New Event")
+        </h1>
+        @if (isEdit)
+        {
+            <p>Update the details for <strong>@Model.Title</strong></p>
+        }
+    </section>
 
     <div class="form-page">
-        @* event-form-page *@
-    <form asp-action="@(isEdit ? "EditEvent" : "AddEvent")" method="post"
-          enctype="multipart/form-data" id="eventForm" novalidate>
+        <form asp-action="@(isEdit ? "EditEvent" : "AddEvent")" method="post"
+              enctype="multipart/form-data" id="eventForm" novalidate>
 
-        @if (isEdit) { <input type="hidden" asp-for="Id" /> }
-        <input type="hidden" asp-for="GalleryJson" id="galleryJsonInput" />
+            @if (isEdit) { <input type="hidden" asp-for="Id" /> }
+            <input type="hidden" asp-for="GalleryJson" id="galleryJsonInput" />
 
-        <div asp-validation-summary="All" class="validation-summary"></div>
+            <div asp-validation-summary="All" class="validation-summary"></div>
 
-        <div class="ef-grid">
-
-            @* {{-- ═══ LEFT - main details ═══ --}} *@
-            <div class="ef-col ef-col-main">
-
-                @* {{-- Title --}} *@
-                <div class="ef-card">
-                    <div class="ef-card-title">Event Details</div>
-                    <div class="form-group">
-                        <label asp-for="Title">
-                            Title <span class="required-star">*</span>
-                        </label>
-                        <input asp-for="Title" class="form-control ef-title-input"
-                               placeholder="e.g. Youth Conference 2025"
-                               maxlength="200" required />
-                        <span asp-validation-for="Title" class="field-error"></span>
-                        <div class="char-count"><span id="titleCount">0</span>/200</div>
-                    </div>
-
-                    @* {{-- Rich description --}} *@
-                    <div class="form-group">
-                        <label asp-for="RichDescription">
-                            Description <span class="required-star">*</span>
-                        </label>
-                        <textarea id="richDesc" asp-for="RichDescription"
-                                  class="form-control" rows="6"
-                                  placeholder="Describe the event…"></textarea>
-                        <span asp-validation-for="RichDescription" class="field-error"></span>
-                        @* {{-- Plain text fallback stored separately for snippets --}} *@
-                        <input type="hidden" asp-for="Description" id="plainDesc" />
-                    </div>
-                </div>
-
-                @* {{-- Date & Time --}} *@
-                <div class="ef-card">
-                    <div class="ef-card-title">Date &amp; Time</div>
-
-                    <div class="form-group">
-                        <label class="ef-toggle-label">
-                            <input asp-for="IsAllDay" type="checkbox" id="allDayCheck"
-                                   onchange="toggleAllDay(this.checked)" />
-                            <span class="ls-toggle"></span>
-                            <span>All Day Event</span>
-                        </label>
-                    </div>
-
-                    <div class="form-row" id="dateTimeRow">
-                        <div class="form-group">
-                            <label asp-for="StartDate">
-                                Start Date &amp; Time <span class="required-star">*</span>
-                            </label>
-                            <input asp-for="StartDate" class="form-control"
-                                   id="startDateInput"
-                                   type="datetime-local" required />
-                            <span asp-validation-for="StartDate" class="field-error"></span>
-                        </div>
-                        <div class="form-group" id="endDateGroup">
-                            <label asp-for="EndDate">
-                                End Date &amp; Time <span class="required-star">*</span>
-                            </label>
-                            <input asp-for="EndDate" class="form-control"
-                                   id="endDateInput"
-                                   type="datetime-local" required />
-                            <span asp-validation-for="EndDate" class="field-error"></span>
-                        </div>
-                    </div>
-
-                    <div class="form-row" id="allDayDateRow" style="display:none">
-                        <div class="form-group">
-                            <label>Start Date <span class="required-star">*</span></label>
-                            <input id="allDayStart" class="form-control" type="date" />
-                        </div>
-                        <div class="form-group">
-                            <label>End Date <span class="required-star">*</span></label>
-                            <input id="allDayEnd" class="form-control" type="date" />
-                        </div>
-                    </div>
-                    <div id="dateError" class="field-error" style="display:none">
-                        End date must be after start date.
-                    </div>
-                </div>
-
-                @* {{-- Location --}} *@
-                <div class="ef-card">
-                    <div class="ef-card-title">Location</div>
-                    <div class="form-group">
-                        <label asp-for="Location">Venue / Location</label>
-                        <input asp-for="Location" class="form-control"
-                               placeholder="e.g. Main Sanctuary, Kampala" />
-                    </div>
-                </div>
-
-                @* {{-- Banner image --}} *@
-                <div class="ef-card">
-                    <div class="ef-card-title">Banner Image</div>
-                    @if (!string.IsNullOrEmpty(Model.ImageUrl))
-                    {
-                        <div class="current-banner">
-                            <img src="@Model.ImageUrl" alt="Current banner"
-                                 id="bannerPreview" />
-                            <p class="meta">Current banner. Upload a new one to replace.</p>
-                        </div>
-                    }
-                    else
-                    {
-                        <div class="banner-placeholder" id="bannerPreview">
-                            <i class="fas fa-image fa-2x" style="color:var(--border)"></i>
-                            <p class="meta">No banner yet</p>
-                        </div>
-                    }
-                    <input type="file" name="bannerImage" accept="image/*"
-                           class="form-control" style="margin-top:.6rem"
-                           onchange="previewBanner(this)" />
-                    <input type="hidden" asp-for="ImageUrl" id="imageUrlHidden" />
-                </div>
-
-                @* {{-- Gallery --}} *@
-                <div class="ef-card">
-                    <div class="ef-card-title">Photo Gallery</div>
-                    <div id="galleryGrid" class="gallery-grid">
-                        @foreach (var img in Model.Gallery)
-                        {
-                            <div class="gallery-item" data-url="@img">
-                                <img src="@img" alt="gallery image" />
-                                <button type="button" class="gallery-remove-btn"
-                                        onclick="removeGalleryImage('@img', this.parentElement)">
-                                    <i class="fas fa-times"></i>
-                                </button>
-                            </div>
-                        }
-                        <label class="gallery-add-btn" for="galleryUpload">
-                            <i class="fas fa-plus"></i>
-                            <span>Add Photo</span>
-                            <input type="file" id="galleryUpload" accept="image/*" multiple hidden
-                                   onchange="handleGalleryUpload(this)" />
-                        </label>
-                    </div>
-                    <p class="meta" style="margin-top:.4rem">
-                        JPG, PNG, WEBP - max 5MB each
-                    </p>
-                </div>
-
+            <div class="form-group">
+                <label asp-for="Title">Title <span class="required-star">*</span></label>
+                <input asp-for="Title" class="form-control"
+                       placeholder="e.g. Youth Conference 2025"
+                       maxlength="200" required />
+                <span asp-validation-for="Title" class="field-error"></span>
+                <div class="char-count"><span id="titleCount">0</span>/200</div>
             </div>
 
-            @* {{-- ═══ RIGHT - settings ═══ --}} *@
-            <div class="ef-col ef-col-side">
+            <div class="form-group">
+                <label asp-for="RichDescription">Description <span class="required-star">*</span></label>
+                <textarea id="richDesc" asp-for="RichDescription"
+                          class="form-control" rows="6"
+                          placeholder="Describe the event…"></textarea>
+                <span asp-validation-for="RichDescription" class="field-error"></span>
+                @* {{-- Plain text fallback stored separately for snippets --}} *@
+                <input type="hidden" asp-for="Description" id="plainDesc" />
+            </div>
 
-                @* {{-- Publish / visibility --}} *@
-                <div class="ef-card">
-                    <div class="ef-card-title">Visibility</div>
-                    <div class="ef-toggle-row">
-                        <div>
-                            <div style="font-weight:600;font-size:.88rem">Public Event</div>
-                            <div class="meta">Visible to all members</div>
-                        </div>
-                        <label class="ef-toggle-wrap">
-                            <input asp-for="IsPublic" type="checkbox" class="ls-toggle-input" />
-                            <span class="ls-toggle"></span>
-                        </label>
-                    </div>
-                    <div class="ef-toggle-row">
-                        <div>
-                            <div style="font-weight:600;font-size:.88rem">Requires Registration</div>
-                            <div class="meta">Show register / pay button</div>
-                        </div>
-                        <label class="ef-toggle-wrap">
-                            <input asp-for="RequiresRegistration" type="checkbox"
-                                   class="ls-toggle-input"
-                                   id="requiresRegCheck"
-                                   onchange="document.getElementById('capacityGroup').style.display=this.checked?'block':'none'" />
-                            <span class="ls-toggle"></span>
-                        </label>
-                    </div>
-                    <div id="capacityGroup"
-                         style="display:@(Model.RequiresRegistration ? "block" : "none");margin-top:.75rem">
-                        <div class="form-group">
-                            <label asp-for="MaxCapacity">Max Capacity</label>
-                            <input asp-for="MaxCapacity" class="form-control"
-                                   type="number" min="1" placeholder="Leave blank for unlimited" />
-                        </div>
-                    </div>
+            <div class="form-group checkbox-group">
+                <label>
+                    <input asp-for="IsAllDay" type="checkbox" id="allDayCheck"
+                           onchange="toggleAllDay(this.checked)" />
+                    All Day Event
+                </label>
+            </div>
+
+            <div class="form-row" id="dateTimeRow">
+                <div class="form-group">
+                    <label asp-for="StartDate">Start Date &amp; Time <span class="required-star">*</span></label>
+                    <input asp-for="StartDate" class="form-control" id="startDateInput"
+                           type="datetime-local" required />
+                    <span asp-validation-for="StartDate" class="field-error"></span>
                 </div>
-
-                @* {{-- Ticket / Payment --}} *@
-                <div class="ef-card">
-                    <div class="ef-card-title">Ticket &amp; Payment</div>
-                    <div class="form-group">
-                        <label asp-for="TicketPrice">
-                            Ticket Price (UGX)
-                            <span class="meta">Leave blank for free</span>
-                        </label>
-                        <input asp-for="TicketPrice" class="form-control"
-                               type="number" step="500" min="0"
-                               placeholder="0 = Free event"
-                               id="ticketPriceInput"
-                               oninput="togglePartialPayment(this.value)" />
-                    </div>
-                    <div id="partialPaymentGroup"
-                         style="display:@(Model.TicketPrice > 0 ? "block" : "none")">
-                        <div class="ef-toggle-row">
-                            <div>
-                                <div style="font-weight:600;font-size:.88rem">Allow Partial Payment</div>
-                                <div class="meta">Members can pay in instalments</div>
-                            </div>
-                            <label class="ef-toggle-wrap">
-                                <input asp-for="AllowPartialPayment" type="checkbox"
-                                       class="ls-toggle-input" id="partialCheck"
-                                       onchange="document.getElementById('minPartialGroup').style.display=this.checked?'block':'none'" />
-                                <span class="ls-toggle"></span>
-                            </label>
-                        </div>
-                        <div id="minPartialGroup"
-                             style="display:@(Model.AllowPartialPayment ? "block" : "none");margin-top:.75rem">
-                            <div class="form-group">
-                                <label asp-for="MinPartialAmount">Minimum First Payment (UGX)</label>
-                                <input asp-for="MinPartialAmount" class="form-control"
-                                       type="number" step="500" min="0"
-                                       placeholder="e.g. 20000" />
-                            </div>
-                        </div>
-                    </div>
+                <div class="form-group" id="endDateGroup">
+                    <label asp-for="EndDate">End Date &amp; Time <span class="required-star">*</span></label>
+                    <input asp-for="EndDate" class="form-control" id="endDateInput"
+                           type="datetime-local" required />
+                    <span asp-validation-for="EndDate" class="field-error"></span>
                 </div>
+            </div>
 
-                @* {{-- Save --}} *@
-                <button type="submit" class="btn btn-primary btn-full"
-                        style="padding:.85rem" id="saveBtn">
-                    <i class="fas fa-save"></i>
-                    @(isEdit ? "Save Changes" : "Create Event")
-                </button>
-                @if (isEdit)
+            <div class="form-row" id="allDayDateRow" style="display:none">
+                <div class="form-group">
+                    <label>Start Date <span class="required-star">*</span></label>
+                    <input id="allDayStart" class="form-control" type="date" />
+                </div>
+                <div class="form-group">
+                    <label>End Date <span class="required-star">*</span></label>
+                    <input id="allDayEnd" class="form-control" type="date" />
+                </div>
+            </div>
+            <div id="dateError" class="field-error" style="display:none">
+                End date must be after start date.
+            </div>
+
+            <div class="form-group">
+                <label asp-for="Location">Venue / Location</label>
+                <input asp-for="Location" class="form-control"
+                       placeholder="e.g. Main Sanctuary, Kampala" />
+            </div>
+
+            <div class="form-row">
+                <div class="form-group">
+                    <label asp-for="TicketPrice">Ticket Price (UGX)</label>
+                    <input asp-for="TicketPrice" class="form-control"
+                           type="number" step="500" min="0"
+                           placeholder="Leave blank or 0 for a free event"
+                           id="ticketPriceInput"
+                           oninput="togglePartialPayment(this.value)" />
+                </div>
+                <div class="form-group" id="capacityGroup"
+                     style="display:@(Model.RequiresRegistration ? "block" : "none")">
+                    <label asp-for="MaxCapacity">Max Capacity</label>
+                    <input asp-for="MaxCapacity" class="form-control"
+                           type="number" min="1" placeholder="Leave blank for unlimited" />
+                </div>
+            </div>
+
+            <div id="partialPaymentGroup"
+                 style="display:@(Model.TicketPrice > 0 ? "block" : "none")">
+                <div class="form-group checkbox-group">
+                    <label>
+                        <input asp-for="AllowPartialPayment" type="checkbox" id="partialCheck"
+                               onchange="document.getElementById('minPartialGroup').style.display=this.checked?'block':'none'" />
+                        Allow Partial Payment
+                    </label>
+                    <small class="meta">Members can pay in instalments</small>
+                </div>
+                <div class="form-group" id="minPartialGroup"
+                     style="display:@(Model.AllowPartialPayment ? "block" : "none")">
+                    <label asp-for="MinPartialAmount">Minimum First Payment (UGX)</label>
+                    <input asp-for="MinPartialAmount" class="form-control"
+                           type="number" step="500" min="0" placeholder="e.g. 20000" />
+                </div>
+            </div>
+
+            @* {{-- Banner image --}} *@
+            <div class="form-group">
+                <label>Banner Image</label>
+                @if (!string.IsNullOrEmpty(Model.ImageUrl))
                 {
-                    <a asp-action="Events" class="btn btn-outline btn-full"
-                       style="margin-top:.5rem">
-                        <i class="fas fa-times"></i> Cancel
-                    </a>
-                    <a asp-controller="Events" asp-action="Details"
-                       asp-route-id="@Model.Id"
-                       class="btn btn-outline btn-full" style="margin-top:.5rem"
-                       target="_blank">
-                        <i class="fas fa-eye"></i> Preview
-                    </a>
+                    <div class="thumbnail-preview">
+                        <img src="@Model.ImageUrl" alt="Current banner" id="bannerPreview" />
+                        <p class="meta" style="margin-top:.4rem">
+                            Current banner. Upload a new image to replace it.
+                        </p>
+                    </div>
                 }
                 else
                 {
-                    <a asp-action="Events" class="btn btn-outline btn-full"
-                       style="margin-top:.5rem">Cancel</a>
+                    <div class="thumbnail-preview placeholder" id="bannerPreview">
+                        <i class="fas fa-image fa-2x" style="color:var(--border)"></i>
+                        <p class="meta">No banner yet</p>
+                    </div>
                 }
-
+                <input type="file" name="bannerImage" accept="image/*"
+                       class="form-control" style="margin-top:.5rem"
+                       onchange="previewBanner(this)" />
+                <input type="hidden" asp-for="ImageUrl" id="imageUrlHidden" />
             </div>
-        </div>
-    </form>
+
+            @* {{-- Gallery --}} *@
+            <div class="form-group">
+                <label>Photo Gallery</label>
+                <div id="galleryGrid" class="gallery-grid">
+                    @foreach (var img in Model.Gallery)
+                    {
+                        <div class="gallery-item" data-url="@img">
+                            <img src="@img" alt="gallery image" />
+                            <button type="button" class="gallery-remove-btn"
+                                    onclick="removeGalleryImage('@img', this.parentElement)">
+                                <i class="fas fa-times"></i>
+                            </button>
+                        </div>
+                    }
+                    <label class="gallery-add-btn" for="galleryUpload">
+                        <i class="fas fa-plus"></i>
+                        <span>Add Photo</span>
+                        <input type="file" id="galleryUpload" accept="image/*" multiple hidden
+                               onchange="handleGalleryUpload(this)" />
+                    </label>
+                </div>
+                <small class="meta">JPG, PNG, WEBP - max 5MB each</small>
+            </div>
+
+            @* {{-- Visibility --}} *@
+            <div class="form-group checkbox-group">
+                <label><input asp-for="IsPublic" type="checkbox" /> Public Event</label>
+                <small class="meta">Visible to all members.</small>
+            </div>
+            <div class="form-group checkbox-group">
+                <label>
+                    <input asp-for="RequiresRegistration" type="checkbox" id="requiresRegCheck"
+                           onchange="document.getElementById('capacityGroup').style.display=this.checked?'block':'none'" />
+                    Requires Registration
+                </label>
+                <small class="meta">Shows the register / pay button.</small>
+            </div>
+
+            <div style="display:flex;gap:.75rem;margin-top:1.5rem;flex-wrap:wrap">
+                <button type="submit" class="btn btn-primary" id="saveBtn">
+                    <i class="fas fa-save"></i> @(isEdit ? "Save Changes" : "Create Event")
+                </button>
+                <a asp-action="Events" class="btn btn-outline">
+                    <i class="fas fa-times"></i> Cancel
+                </a>
+                @if (isEdit)
+                {
+                    <a asp-controller="Events" asp-action="Details" asp-route-id="@Model.Id"
+                       class="btn btn-outline" target="_blank" style="margin-left:auto">
+                        <i class="fas fa-eye"></i> Preview
+                    </a>
+                }
+            </div>
+        </form>
+    </div>
 </div>
-</div>
+@* Partials cannot define sections, so the form styles render inline here *@
+<style>
+.char-count         { font-size: .75rem; color: var(--text-s); text-align: right;
+                      margin-top: .2rem; }
+.required-star      { color: var(--coral); }
+.checkbox-group .meta { display: block; margin: .2rem 0 0; }
+
+/* Banner */
+.thumbnail-preview  { border: 1px solid var(--border); border-radius: 8px; padding: .75rem;
+                      background: #f9fafb; display: inline-block; }
+.thumbnail-preview img { max-width: 280px; max-height: 160px; object-fit: cover;
+                      border-radius: 6px; display: block; }
+.thumbnail-preview.placeholder { text-align: center; padding: 1.5rem 2.5rem; }
+
+/* Gallery */
+.gallery-grid       { display: grid; grid-template-columns: repeat(auto-fill, minmax(100px,1fr));
+                      gap: .6rem; margin-bottom: .4rem; }
+.gallery-item       { position: relative; aspect-ratio: 1; border-radius: 8px; overflow: hidden;
+                      border: 1px solid var(--border); }
+.gallery-item img   { width: 100%; height: 100%; object-fit: cover; }
+.gallery-remove-btn { position: absolute; top: 4px; right: 4px; width: 22px; height: 22px;
+                      background: rgba(239,68,68,.85); color: white; border: none;
+                      border-radius: 50%; font-size: .65rem; cursor: pointer;
+                      display: flex; align-items: center; justify-content: center; }
+.form-group label.gallery-add-btn { display: flex; flex-direction: column; align-items: center;
+                      justify-content: center; aspect-ratio: 1; border-radius: 8px; margin: 0;
+                      border: 2px dashed var(--border); cursor: pointer; gap: .35rem;
+                      font-size: .78rem; font-weight: 500; color: var(--text-s); transition: all .15s; }
+.form-group label.gallery-add-btn:hover { border-color: var(--purple); color: var(--purple); }
+</style>
+
 @section Scripts {
 @* {{-- TinyMCE CDN --}} *@
 <script src="https://cdn.tiny.cloud/1/no-api-key/tinymce/6/tinymce.min.js" referrerpolicy="origin"></script>
@@ -454,49 +413,4 @@ document.getElementById('eventForm').addEventListener('submit', function(e) {
 
 syncGalleryJson(); // init
 </script>
-
-<style>
-.event-form-page    { max-width: 1100px; margin: 2rem auto; padding: 0 1.5rem; }
-.ef-grid            { display: grid; grid-template-columns: 1fr 300px; gap: 1.5rem; }
-.ef-col             { display: flex; flex-direction: column; gap: 1.25rem; }
-
-.ef-card            { background: var(--white); border: 1px solid var(--border);
-                      border-radius: var(--radius); padding: 1.5rem; box-shadow: var(--shadow); }
-.ef-card-title      { font-size: .82rem; font-weight: 700; text-transform: uppercase;
-                      letter-spacing: .06em; color: var(--text-s); margin-bottom: 1rem; }
-.ef-title-input     { font-size: 1.05rem !important; font-weight: 600; }
-.char-count         { font-size: .75rem; color: var(--text-s); text-align: right;
-                      margin-top: .2rem; }
-.required-star      { color: var(--coral); }
-
-.ef-toggle-row      { display: flex; justify-content: space-between; align-items: center;
-                      padding: .6rem 0; border-bottom: 1px solid var(--border); gap: 1rem; }
-.ef-toggle-row:last-of-type { border-bottom: none; }
-.ef-toggle-wrap     { display: inline-flex; cursor: pointer; }
-.ef-toggle-label    { display: flex; align-items: center; gap: .6rem; cursor: pointer; }
-
-/* Gallery */
-.gallery-grid       { display: grid; grid-template-columns: repeat(auto-fill, minmax(100px,1fr));
-                      gap: .6rem; }
-.gallery-item       { position: relative; aspect-ratio: 1; border-radius: 8px; overflow: hidden;
-                      border: 1px solid var(--border); }
-.gallery-item img   { width: 100%; height: 100%; object-fit: cover; }
-.gallery-remove-btn { position: absolute; top: 4px; right: 4px; width: 22px; height: 22px;
-                      background: rgba(239,68,68,.85); color: white; border: none;
-                      border-radius: 50%; font-size: .65rem; cursor: pointer;
-                      display: flex; align-items: center; justify-content: center; }
-.gallery-add-btn    { display: flex; flex-direction: column; align-items: center;
-                      justify-content: center; aspect-ratio: 1; border-radius: 8px;
-                      border: 2px dashed var(--border); cursor: pointer; gap: .35rem;
-                      font-size: .78rem; color: var(--text-s); transition: all .15s; }
-.gallery-add-btn:hover { border-color: var(--purple); color: var(--purple); }
-
-.current-banner img { width: 100%; border-radius: 8px; max-height: 180px; object-fit: cover; }
-.banner-placeholder { background: #f9fafb; border: 2px dashed var(--border); border-radius: 8px;
-                      padding: 2rem; text-align: center; }
-
-@@media (max-width: 900px) {
-  .ef-grid { grid-template-columns: 1fr; }
-}
-</style>
 }
