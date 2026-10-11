@@ -39,7 +39,7 @@ public class MediaController : Controller
                              .ToListAsync();
 
         // Find the live sermon (standard or online meeting)
-        var liveSermon = await _db.Sermons.FirstOrDefaultAsync(s => s.IsLive);
+        var liveSermon = await _db.Sermons.FirstOrDefaultAsync(s => s.IsLive && s.IsPublished);
 
         return View(new SermonIndexViewModel
         {
@@ -58,6 +58,10 @@ public class MediaController : Controller
     {
         var sermon = await _db.Sermons.FindAsync(id);
         if (sermon == null) return NotFound();
+
+        // Inactive sermons are hidden from the public; admins/pastors can still preview them
+        if (!sermon.IsPublished && !(User.IsInRole("Admin") || User.IsInRole("Pastor")))
+            return NotFound();
 
         sermon.ViewCount++;
         await _db.SaveChangesAsync();

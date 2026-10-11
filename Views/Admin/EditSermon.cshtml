@@ -206,16 +206,30 @@
                        style="margin-top:.5rem" onchange="previewThumb(this)" />
             </div>
 
-            <div class="form-row">
-                <div class="form-group checkbox-group">
-                    <label>
-                        <input asp-for="IsPublished" type="checkbox" />
-                        Published (visible to members)
-                    </label>
+            <input type="hidden" asp-for="IsPublished" />
+            <div class="form-group">
+                <label>Status</label>
+                <div class="sermon-status-row">
+                    @if (Model.IsPublished)
+                    {
+                        <span class="status-badge status-active">Active</span>
+                        <span class="meta">Visible to the public.</span>
+                        <button type="button" onclick="toggleActive(@Model.Id, true)" class="btn btn-outline btn-sm">
+                            <i class="fas fa-toggle-off"></i> Deactivate
+                        </button>
+                    }
+                    else
+                    {
+                        <span class="status-badge status-inactive">Inactive</span>
+                        <span class="meta">Hidden from the public@(Model.IsLive ? ", even though it is live" : "").</span>
+                        <button type="button" onclick="toggleActive(@Model.Id, false)" class="btn btn-outline btn-sm">
+                            <i class="fas fa-toggle-on"></i> Activate
+                        </button>
+                    }
                 </div>
             </div>
 
-            <div style="display:flex;gap:.75rem;margin-top:1.5rem">
+            <div style="display:flex;gap:.75rem;margin-top:1.5rem;flex-wrap:wrap">
                 <button type="submit" class="btn btn-primary">
                     <i class="fas fa-save"></i> Save Changes
                 </button>
@@ -226,6 +240,9 @@
                    class="btn btn-outline" target="_blank" style="margin-left:auto">
                     <i class="fas fa-eye"></i> Preview
                 </a>
+                <button type="button" onclick="deleteSermon(@Model.Id)" class="btn btn-outline btn-delete-sermon">
+                    <i class="fas fa-trash"></i> Delete
+                </button>
             </div>
         </form>
     </div>
@@ -233,6 +250,22 @@
 
 @section Scripts {
     <script>
+        async function toggleActive(id, isActive) {
+            const msg = (isActive
+                ? 'Deactivate this sermon? It will be hidden from the public, even if it is live.'
+                : 'Activate this sermon? It will be visible to the public.')
+                + '\n\nAny unsaved changes on this page will be lost.';
+            if (!confirm(msg)) return;
+            await fetch('/Admin/ToggleSermonActive/' + id, { method: 'POST' });
+            location.reload();
+        }
+        async function deleteSermon(id) {
+            if (!confirm('Permanently delete this sermon? This cannot be undone.')) return;
+            const res = await fetch('/Admin/DeleteSermon/' + id, { method: 'POST' });
+            if (!res.ok) { alert('Could not delete the sermon.'); return; }
+            location.href = '/Admin/Sermons';
+        }
+
         const roomData = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(
         (ViewBag.MeetingRooms as List<ChurchMinistry.Models.MeetingRoom> ?? new())
         .Select(r => new
@@ -292,6 +325,26 @@
     </script>
 
     <style>
+        .sermon-status-row {
+            display: flex;
+            align-items: center;
+            gap: .6rem;
+            flex-wrap: wrap;
+        }
+
+            .sermon-status-row .meta {
+                margin: 0;
+            }
+
+        .btn-delete-sermon {
+            color: #dc2626 !important;
+            border-color: #fecaca !important;
+        }
+
+            .btn-delete-sermon:hover {
+                background: #fee2e2 !important;
+            }
+
         .ls-toggle {
             width: 36px;
             height: 20px;

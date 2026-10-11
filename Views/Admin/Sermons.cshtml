@@ -62,8 +62,8 @@
             <select name="published" class="form-control sermon-filter-select"
                     onchange="document.getElementById('searchForm').submit()">
                 <option value="">All</option>
-                <option value="true" selected="@@(published == true ? " selected" : null)">Published</option>
-                <option value="true" selected="@@(published == false ? " selected" : null)">Drafts</option>
+                <option value="true" selected="@(published == true)">Active</option>
+                <option value="false" selected="@(published == false)">Inactive</option>
                 @* <option value="true"  @@(published == true  ? "selected" : "")>Published</option>
                 <option value="false" @@(published == false ? "selected" : "")>Drafts</option> *@
             </select>
@@ -87,6 +87,10 @@
                 <div>
                     <strong>LIVE NOW</strong>
                     <p>@liveSermon.Title @(liveSermon.Speaker != null ? "· " + liveSermon.Speaker : "")</p>
+                    @if (!liveSermon.IsPublished)
+                    {
+                        <small><i class="fas fa-eye-slash"></i> Inactive — hidden from the public until activated</small>
+                    }
                 </div>
             </div>
             <div class="live-now-actions">
@@ -144,7 +148,7 @@
             @if (published.HasValue)
             {
                 <span class="filter-chip">
-                    <i class="fas fa-circle"></i> @(published.Value ? "Published" : "Drafts")
+                    <i class="fas fa-circle"></i> @(published.Value ? "Active" : "Inactive")
                     <a href="@Url.Action("Sermons", new { search, speaker, series })">×</a>
                 </span>
             }
@@ -204,13 +208,13 @@
                                 {
                                     <span class="status-badge" style="background:#fee2e2;color:#991b1b">🔴 Live</span>
                                 }
-                                else if (s.IsPublished)
+                                @if (s.IsPublished)
                                 {
-                                    <span class="status-badge status-active">Published</span>
+                                    <span class="status-badge status-active">Active</span>
                                 }
                                 else
                                 {
-                                    <span class="status-badge status-inactive">Draft</span>
+                                    <span class="status-badge status-inactive">Inactive</span>
                                 }
                             </td>
                             <td>
@@ -235,8 +239,7 @@
                                     <a asp-controller="Media" asp-action="Watch" asp-route-id="@s.Id"
                                        class="btn btn-outline btn-xs" target="_blank" title="Preview">
                                         <i class="fas fa-eye"></i>
-                                    </a>
-                                </div>
+                                    </a>                                </div>
                             </td>
                         </tr>
                     }
@@ -631,6 +634,5 @@
         async function callToggle(id) {
             await fetch('/Admin/ToggleLive/' + id, { method: 'POST' });
             location.reload();
-        }
-    </script>
+        }    </script>
 }

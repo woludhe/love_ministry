@@ -44,7 +44,7 @@ namespace ChurchMinistry.Controllers
                     .Take(3).ToListAsync(),
 
                 LiveSermon = await _db.Sermons
-                    .FirstOrDefaultAsync(s => s.IsLive),
+                    .FirstOrDefaultAsync(s => s.IsLive && s.IsPublished),
 
                 UpcomingEvents = await _db.ChurchEvents
                     .Where(e => e.StartDate >= now && e.IsPublic)
@@ -1398,6 +1398,28 @@ namespace ChurchMinistry.Controllers
 
             await _db.SaveChangesAsync();
             return Json(new { isLive = sermon.IsLive });
+        }
+
+        [HttpPost]
+        public async Task<IActionResult> ToggleSermonActive(int id)
+        {
+            var sermon = await _db.Sermons.FindAsync(id);
+            if (sermon == null) return NotFound();
+
+            sermon.IsPublished = !sermon.IsPublished;
+            await _db.SaveChangesAsync();
+            return Json(new { isActive = sermon.IsPublished });
+        }
+
+        [HttpPost]
+        public async Task<IActionResult> DeleteSermon(int id)
+        {
+            var sermon = await _db.Sermons.FindAsync(id);
+            if (sermon == null) return NotFound();
+
+            _db.Sermons.Remove(sermon);
+            await _db.SaveChangesAsync();
+            return Json(new { deleted = true });
         }
 
         // ── Newsletter ──
