@@ -46,48 +46,55 @@
                 <textarea asp-for="Description" class="form-control" rows="4"></textarea>
             </div>
 
-            <div class="form-row">
-                <div class="form-group">
-                    <label asp-for="VideoUrl">Video URL (YouTube or direct)</label>
-                    <input asp-for="VideoUrl" class="form-control"
-                           placeholder="https://youtube.com/watch?v=..." />
-                </div>
-                <div class="form-group">
-                    <label asp-for="AudioUrl">Audio URL</label>
-                    <input asp-for="AudioUrl" class="form-control" />
-                </div>
-            </div>
-
             <div class="form-group">
                 <label asp-for="Tags">Tags (comma separated)</label>
                 <input asp-for="Tags" class="form-control" placeholder="faith, prayer, healing" />
             </div>
 
             @* {{-- ═══════════════════════════════════════════════════
-            ONLINE MEETING INTEGRATION
-            Toggle between a linked meeting room OR a stream URL
+            DELIVERY MODE
+            Pick one: video, audio, live stream URL or meeting room
             ═══════════════════════════════════════════════════ --}} *@
 
             <div class="form-group">
-                <div style="background:var(--purple-l);border:1px solid #ddd6fe;border-radius:10px;padding:.85rem 1rem;display:flex;align-items:center;justify-content:space-between;gap:1rem">
-                    <div>
-                        <div style="font-size:.9rem;font-weight:700">
-                            <i class="fas fa-video" style="color:var(--purple)"></i>
-                            Stream via Online Meeting Room
-                        </div>
-                        <div class="meta">Link a meeting room so viewers join directly from the live page</div>
-                    </div>
-                    <label style="display:inline-flex;cursor:pointer">
-                        <input asp-for="IsOnlineMeeting" type="checkbox" id="isOnlineMeetingCheck"
-                               style="display:none"
-                               onchange="toggleMeetingMode(this.checked)" />
-                        <span class="ls-toggle" id="meetingToggle"></span>
+                <label>Delivery Mode</label>
+                <div class="delivery-modes">
+                    <label class="delivery-mode-card">
+                        <input type="radio" name="deliveryMode" value="video" checked />
+                        <i class="fas fa-video"></i> Video
+                    </label>
+                    <label class="delivery-mode-card">
+                        <input type="radio" name="deliveryMode" value="audio" />
+                        <i class="fas fa-headphones"></i> Audio
+                    </label>
+                    <label class="delivery-mode-card">
+                        <input type="radio" name="deliveryMode" value="live" />
+                        <i class="fas fa-broadcast-tower"></i> Live Stream URL
+                    </label>
+                    <label class="delivery-mode-card">
+                        <input type="radio" name="deliveryMode" value="meeting" />
+                        <i class="fas fa-users"></i> Online Meeting Room
                     </label>
                 </div>
             </div>
 
+            <div class="delivery-panel" data-mode="video">
+                <div class="form-group">
+                    <label asp-for="VideoUrl">Video URL (YouTube or direct)</label>
+                    <input asp-for="VideoUrl" class="form-control"
+                           placeholder="https://youtube.com/watch?v=..." />
+                </div>
+            </div>
+
+            <div class="delivery-panel" data-mode="audio">
+                <div class="form-group">
+                    <label asp-for="AudioUrl">Audio URL</label>
+                    <input asp-for="AudioUrl" class="form-control" />
+                </div>
+            </div>
+
             @* {{-- Meeting room picker --}} *@
-            <div id="meetingRoomGroup" style="display:@(Model?.IsOnlineMeeting == true ? "block" : "none")">
+            <div id="meetingRoomGroup" class="delivery-panel" data-mode="meeting">
                 <div class="form-group">
                     <label asp-for="MeetingRoomCode">
                         <i class="fas fa-link" style="color:var(--purple)"></i>
@@ -142,7 +149,7 @@
             </div>
 
             @* {{-- Standard live stream URL --}} *@
-            <div id="liveStreamGroup" style="display:@(Model?.IsOnlineMeeting == true ? "none" : "block")">
+            <div id="liveStreamGroup" class="delivery-panel" data-mode="live">
                 <div class="form-group">
                     <label asp-for="LiveStreamUrl">
                         <i class="fas fa-broadcast-tower" style="color:var(--coral)"></i>
@@ -186,12 +193,18 @@
         .Select(r => new { code = r.RoomCode, title = r.Title, status = r.Status.ToString(), type = r.MeetingType.ToString() })
         ));
 
-        function toggleMeetingMode(on) {
-            document.getElementById('meetingRoomGroup').style.display = on ? 'block' : 'none';
-            document.getElementById('liveStreamGroup').style.display = on ? 'none' : 'block';
-            document.getElementById('meetingToggle').style.background = on ? 'var(--purple)' : '';
-            if (!on) document.getElementById('roomPreviewCard').style.display = 'none';
+        // Show only the selected delivery mode's fields; only its main field is required
+        function showDeliveryMode(mode) {
+            document.querySelectorAll('.delivery-panel').forEach(p => {
+                const on = p.dataset.mode === mode;
+                p.style.display = on ? 'block' : 'none';
+                const main = p.querySelector('input.form-control, select.form-control');
+                if (main) main.required = on;
+            });
         }
+        document.querySelectorAll('input[name="deliveryMode"]').forEach(r =>
+            r.addEventListener('change', () => showDeliveryMode(r.value)));
+        showDeliveryMode(document.querySelector('input[name="deliveryMode"]:checked').value);
 
         function updateRoomPreview(sel) {
             const room = roomData.find(r => r.code === sel.value);
@@ -218,45 +231,47 @@
                 r.readAsDataURL(input.files[0]);
             }
         }
-
-        // Sync toggle visual with checkbox state
-        document.getElementById('isOnlineMeetingCheck').addEventListener('change', function () {
-            document.getElementById('meetingToggle').style.background =
-                this.checked ? 'var(--purple)' : 'var(--border)';
-        });
     </script>
     <style>
-        .ls-toggle {
-            width: 36px;
-            height: 20px;
-            background: var(--border);
-            border-radius: 100px;
-            position: relative;
-            transition: background .2s;
-            display: inline-block;
+        .delivery-modes {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: .6rem;
         }
 
-            .ls-toggle::after {
-                content: '';
-                position: absolute;
-                width: 16px;
-                height: 16px;
-                background: white;
-                border-radius: 50%;
-                top: 2px;
-                left: 2px;
-                transition: transform .2s;
-                box-shadow: 0 1px 3px rgba(0,0,0,.2);
+        .delivery-mode-card {
+            display: flex;
+            align-items: center;
+            gap: .5rem;
+            padding: .7rem .9rem;
+            border: 1.5px solid var(--border);
+            border-radius: 10px;
+            font-size: .88rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all .15s;
+        }
+
+            .delivery-mode-card input {
+                display: none;
             }
 
-            input:checked + .ls-toggle,
-            .ls-toggle[style*="var(--purple)"] {
-                background: var(--purple) !important;
+            .delivery-mode-card i {
+                color: var(--text-s);
             }
 
-                input:checked + .ls-toggle::after,
-                .ls-toggle[style*="var(--purple)"]::after {
-                    transform: translateX(16px);
+            .delivery-mode-card:hover {
+                border-color: var(--purple);
+            }
+
+            .delivery-mode-card:has(input:checked) {
+                border-color: var(--purple);
+                background: var(--purple-l);
+                color: var(--purple);
+            }
+
+                .delivery-mode-card:has(input:checked) i {
+                    color: var(--purple);
                 }
     </style>
 }

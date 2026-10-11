@@ -1299,6 +1299,7 @@ namespace ChurchMinistry.Controllers
         public async Task<IActionResult> AddSermon(
             Sermon sermon,
             IFormFile? thumbnail,
+            string? deliveryMode,
             [FromServices] IWebHostEnvironment env)
         {
             if (thumbnail != null)
@@ -1311,8 +1312,7 @@ namespace ChurchMinistry.Controllers
             }
 
             // If linked to an online meeting, clear LiveStreamUrl — the meeting hub handles the stream
-            if (sermon.IsOnlineMeeting && !string.IsNullOrEmpty(sermon.MeetingRoomCode))
-                sermon.LiveStreamUrl = null;
+            ApplyDeliveryMode(sermon, deliveryMode);
 
             _db.Sermons.Add(sermon);
             await _db.SaveChangesAsync();
@@ -1335,6 +1335,7 @@ namespace ChurchMinistry.Controllers
         public async Task<IActionResult> EditSermon(
             Sermon updated,
             IFormFile? thumbnail,
+            string? deliveryMode,
             [FromServices] IWebHostEnvironment env)
         {
             var sermon = await _db.Sermons.FindAsync(updated.Id);
@@ -1359,9 +1360,9 @@ namespace ChurchMinistry.Controllers
             sermon.AudioUrl = updated.AudioUrl;
             sermon.Tags = updated.Tags;
             sermon.IsPublished = updated.IsPublished;
-            sermon.IsOnlineMeeting = updated.IsOnlineMeeting;
-            sermon.MeetingRoomCode = updated.IsOnlineMeeting ? updated.MeetingRoomCode : null;
-            sermon.LiveStreamUrl = updated.IsOnlineMeeting ? null : updated.LiveStreamUrl;
+            sermon.MeetingRoomCode = updated.MeetingRoomCode;
+            sermon.LiveStreamUrl = updated.LiveStreamUrl;
+            ApplyDeliveryMode(sermon, deliveryMode);
 
             await _db.SaveChangesAsync();
             TempData["Success"] = "Sermon updated!";
@@ -1369,6 +1370,19 @@ namespace ChurchMinistry.Controllers
         }
 
         // ── Helper: load meeting rooms for dropdown ─────────────────
+        // A sermon has exactly one delivery mode: video | audio | live | meeting.
+        // Clear the fields that belong to the other modes.
+        private static void ApplyDeliveryMode(Sermon s, string? mode)
+        {
+            mode = mode is "audio" or "live" or "meeting" ? mode : "video";
+
+            if (mode != "video") s.VideoUrl = null;
+            if (mode != "audio") s.AudioUrl = null;
+            if (mode != "live") s.LiveStreamUrl = null;
+            if (mode != "meeting") s.MeetingRoomCode = null;
+            s.IsOnlineMeeting = mode == "meeting";
+        }
+
         private async Task PopulateMeetingRoomsAsync()
         {
             ViewBag.MeetingRooms = await _db.MeetingRooms

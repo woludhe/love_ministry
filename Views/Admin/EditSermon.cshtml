@@ -53,53 +53,63 @@
                 <textarea asp-for="Description" class="form-control" rows="4"></textarea>
             </div>
 
-            <div class="form-row">
-                <div class="form-group">
-                    <label asp-for="VideoUrl">Video URL</label>
-                    <input asp-for="VideoUrl" class="form-control"
-                           placeholder="https://youtube.com/watch?v=..." />
-                </div>
-                <div class="form-group">
-                    <label asp-for="AudioUrl">Audio URL</label>
-                    <input asp-for="AudioUrl" class="form-control" />
-                </div>
-            </div>
-
             <div class="form-group">
                 <label asp-for="Tags">Tags (comma separated)</label>
                 <input asp-for="Tags" class="form-control" placeholder="faith, prayer, healing" />
             </div>
 
             @* {{-- ═══════════════════════════════════════════════════
-            ONLINE MEETING INTEGRATION
+            DELIVERY MODE
+            Pick one: video, audio, live stream URL or meeting room
             ═══════════════════════════════════════════════════ --}} *@
+            @{
+                var deliveryMode = Model.IsOnlineMeeting ? "meeting"
+                    : !string.IsNullOrEmpty(Model.LiveStreamUrl) ? "live"
+                    : !string.IsNullOrEmpty(Model.VideoUrl) ? "video"
+                    : !string.IsNullOrEmpty(Model.AudioUrl) ? "audio"
+                    : "video";
+            }
 
             <div class="form-group">
-                <div style="background:var(--purple-l);border:1px solid #ddd6fe;border-radius:10px;
-                 padding:.85rem 1rem;display:flex;align-items:center;
-                 justify-content:space-between;gap:1rem">
-                    <div>
-                        <div style="font-size:.9rem;font-weight:700">
-                            <i class="fas fa-video" style="color:var(--purple)"></i>
-                            Stream via Online Meeting Room
-                        </div>
-                        <div class="meta">
-                            Link a meeting room so viewers join directly from the live page
-                        </div>
-                    </div>
-                    <label style="display:inline-flex;cursor:pointer">
-                        <input asp-for="IsOnlineMeeting" type="checkbox" id="isOnlineMeetingCheck"
-                               style="display:none" onchange="toggleMeetingMode(this.checked)" />
-                        <span class="ls-toggle" id="meetingToggle"
-                              style="background:@(Model.IsOnlineMeeting ? "var(--purple)" : "var(--border)")">
-                        </span>
+                <label>Delivery Mode</label>
+                <div class="delivery-modes">
+                    <label class="delivery-mode-card">
+                        <input type="radio" name="deliveryMode" value="video" checked="@(deliveryMode == "video")" />
+                        <i class="fas fa-video"></i> Video
                     </label>
+                    <label class="delivery-mode-card">
+                        <input type="radio" name="deliveryMode" value="audio" checked="@(deliveryMode == "audio")" />
+                        <i class="fas fa-headphones"></i> Audio
+                    </label>
+                    <label class="delivery-mode-card">
+                        <input type="radio" name="deliveryMode" value="live" checked="@(deliveryMode == "live")" />
+                        <i class="fas fa-broadcast-tower"></i> Live Stream URL
+                    </label>
+                    <label class="delivery-mode-card">
+                        <input type="radio" name="deliveryMode" value="meeting" checked="@(deliveryMode == "meeting")" />
+                        <i class="fas fa-users"></i> Online Meeting Room
+                    </label>
+                </div>
+                <small class="meta">Saving clears the fields of the other delivery modes.</small>
+            </div>
+
+            <div class="delivery-panel" data-mode="video">
+                <div class="form-group">
+                    <label asp-for="VideoUrl">Video URL</label>
+                    <input asp-for="VideoUrl" class="form-control"
+                           placeholder="https://youtube.com/watch?v=..." />
+                </div>
+            </div>
+
+            <div class="delivery-panel" data-mode="audio">
+                <div class="form-group">
+                    <label asp-for="AudioUrl">Audio URL</label>
+                    <input asp-for="AudioUrl" class="form-control" />
                 </div>
             </div>
 
             @* {{-- Meeting room picker --}} *@
-            <div id="meetingRoomGroup"
-                 style="display:@(Model.IsOnlineMeeting ? "block" : "none")">
+            <div id="meetingRoomGroup" class="delivery-panel" data-mode="meeting">
                 <div class="form-group">
                     <label asp-for="MeetingRoomCode">
                         <i class="fas fa-link" style="color:var(--purple)"></i>
@@ -168,8 +178,7 @@
             </div>
 
             @* {{-- Standard live stream URL --}} *@
-            <div id="liveStreamGroup"
-                 style="display:@(Model.IsOnlineMeeting ? "none" : "block")">
+            <div id="liveStreamGroup" class="delivery-panel" data-mode="live">
                 <div class="form-group">
                     <label asp-for="LiveStreamUrl">
                         <i class="fas fa-broadcast-tower" style="color:var(--coral)"></i>
@@ -277,13 +286,18 @@
         })
         ));
 
-        function toggleMeetingMode(on) {
-            document.getElementById('meetingRoomGroup').style.display = on ? 'block' : 'none';
-            document.getElementById('liveStreamGroup').style.display = on ? 'none' : 'block';
-            document.getElementById('meetingToggle').style.background =
-                on ? 'var(--purple)' : 'var(--border)';
-            if (!on) document.getElementById('roomPreviewCard').style.display = 'none';
+        // Show only the selected delivery mode's fields; only its main field is required
+        function showDeliveryMode(mode) {
+            document.querySelectorAll('.delivery-panel').forEach(p => {
+                const on = p.dataset.mode === mode;
+                p.style.display = on ? 'block' : 'none';
+                const main = p.querySelector('input.form-control, select.form-control');
+                if (main) main.required = on;
+            });
         }
+        document.querySelectorAll('input[name="deliveryMode"]').forEach(r =>
+            r.addEventListener('change', () => showDeliveryMode(r.value)));
+        showDeliveryMode(document.querySelector('input[name="deliveryMode"]:checked').value);
 
         function updateRoomPreview(sel) {
             const room = roomData.find(r => r.code === sel.value);
@@ -345,27 +359,46 @@
                 background: #fee2e2 !important;
             }
 
-        .ls-toggle {
-            width: 36px;
-            height: 20px;
-            border-radius: 100px;
-            position: relative;
-            display: inline-block;
-            transition: background .2s;
+        .delivery-modes {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: .6rem;
         }
 
-            .ls-toggle::after {
-                content: '';
-                position: absolute;
-                width: 16px;
-                height: 16px;
-                background: white;
-                border-radius: 50%;
-                top: 2px;
-                left: 2px;
-                transition: transform .2s;
-                box-shadow: 0 1px 3px rgba(0,0,0,.2);
+        .delivery-mode-card {
+            display: flex;
+            align-items: center;
+            gap: .5rem;
+            padding: .7rem .9rem;
+            border: 1.5px solid var(--border);
+            border-radius: 10px;
+            font-size: .88rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all .15s;
+        }
+
+            .delivery-mode-card input {
+                display: none;
             }
+
+            .delivery-mode-card i {
+                color: var(--text-s);
+            }
+
+            .delivery-mode-card:hover {
+                border-color: var(--purple);
+            }
+
+            .delivery-mode-card:has(input:checked) {
+                border-color: var(--purple);
+                background: var(--purple-l);
+                color: var(--purple);
+            }
+
+                .delivery-mode-card:has(input:checked) i {
+                    color: var(--purple);
+                }
 
         .thumbnail-preview {
             border: 1px solid var(--border);
