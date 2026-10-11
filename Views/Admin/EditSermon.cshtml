@@ -63,11 +63,7 @@
             Pick one: video, audio, live stream URL or meeting room
             ═══════════════════════════════════════════════════ --}} *@
             @{
-                var deliveryMode = Model.IsOnlineMeeting ? "meeting"
-                    : !string.IsNullOrEmpty(Model.LiveStreamUrl) ? "live"
-                    : !string.IsNullOrEmpty(Model.VideoUrl) ? "video"
-                    : !string.IsNullOrEmpty(Model.AudioUrl) ? "audio"
-                    : "video";
+                var deliveryMode = Model.DeliveryMode;
             }
 
             <div class="form-group">
@@ -236,6 +232,14 @@
                         </button>
                     }
                 </div>
+            </div>
+
+            <div class="form-group checkbox-group">
+                <label><input asp-for="TrackAttendance" type="checkbox" /> Track attendance</label>
+                <small class="meta">
+                    Logs who joins on the Live page or meeting room, with location if they allow it.
+                    <a asp-action="SermonAttendance" asp-route-id="@Model.Id">View attendance log</a>
+                </small>
             </div>
 
             <div style="display:flex;gap:.75rem;margin-top:1.5rem;flex-wrap:wrap">

@@ -34,6 +34,7 @@ namespace ChurchMinistry.Data
         public DbSet<EventPayment> EventPayments => Set<EventPayment>();
         public DbSet<PaymentMethodConfig> PaymentMethods => Set<PaymentMethodConfig>();
         public DbSet<MeetingInvitation> MeetingInvitations => Set<MeetingInvitation>();
+        public DbSet<SermonAttendance> SermonAttendances => Set<SermonAttendance>();
 
         protected override void OnModelCreating(ModelBuilder builder)
         {
@@ -155,6 +156,15 @@ namespace ChurchMinistry.Data
                 e.Property(s => s.MarqueeSpeed).HasConversion<string>();
                 e.Property(s => s.GivingPanelPosition).HasConversion<string>();
                 e.HasIndex(s => s.SermonId).IsUnique(); // one LiveSession per sermon
+            });
+
+            builder.Entity<SermonAttendance>(e =>
+            {
+                e.HasOne(a => a.Sermon).WithMany()
+                    .HasForeignKey(a => a.SermonId).OnDelete(DeleteBehavior.Cascade);
+                e.HasOne(a => a.Member).WithMany()
+                    .HasForeignKey(a => a.MemberId).OnDelete(DeleteBehavior.SetNull);
+                e.HasIndex(a => a.ConnectionId);
             });
 
             builder.Entity<LiveBibleVerse>(e =>

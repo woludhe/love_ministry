@@ -391,6 +391,7 @@
      data-member-id="@(Model.CurrentMemberId?.ToString() ?? "")"
      data-waiting-room="@Model.Room.WaitingRoomEnabled.ToString().ToLower()"
      data-sermon-id="@(ViewBag.LiveSermonId as int? ?? 0)"
+     data-track-attendance="@((ViewBag.TrackAttendance as bool? == true).ToString().ToLower())"
      style="display:none"></div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/microsoft-signalr/8.0.0/signalr.min.js"></script>
@@ -402,6 +403,7 @@ const IS_HOST    = data.isHost   === 'true';
 const IS_ADMIN   = data.isAdmin  === 'true';
 const WAITING_ON = data.waitingRoom === 'true';
 const SERMON_ID  = parseInt(data.sermonId) || 0;
+const TRACK_ATTENDANCE = data.trackAttendance === 'true';
 
 let localStream=null, screenStream=null;
 let isMuted=false, isCamOff=false, isHandRaised=false, isScreenSharing=false;
@@ -941,6 +943,14 @@ const liveConn = SERMON_ID > 0
         .withUrl('/liveSessionHub').withAutomaticReconnect().build()
     : null;
 
+// Attendance: send the browser's location if the viewer allows it
+function reportAttendanceLocation() {
+    if (!TRACK_ATTENDANCE || !navigator.geolocation) return;
+    navigator.geolocation.getCurrentPosition(
+        p => liveConn.invoke('ReportLocation', SERMON_ID, p.coords.latitude, p.coords.longitude).catch(() => {}),
+        () => {}, { timeout: 15000, maximumAge: 600000 });
+}
+
 if (liveConn) {
     liveConn.on('VerseChanged', ({reference, verseText, translation}) => {
         document.getElementById('verseText').textContent = `"${verseText}"`;
@@ -969,6 +979,12 @@ if (liveConn) {
     if (liveConn) {
         await liveConn.start();
         await liveConn.invoke('JoinLiveRoom', SERMON_ID);
+        reportAttendanceLocation();
+        // A reconnect gets a new connection id — join again so overlays and attendance continue
+        liveConn.onreconnected(async () => {
+            await liveConn.invoke('JoinLiveRoom', SERMON_ID);
+            reportAttendanceLocation();
+        });
         // Load current verse if one is already active
         try {
             const res = await fetch(`/api/LiveSettings/${SERMON_ID}/State`);

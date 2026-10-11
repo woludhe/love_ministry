@@ -1,44 +1,208 @@
+@using ChurchMinistry.Models
+@using ChurchMinistry.ViewModels
 @{
     ViewData["Title"] = "Reports"; Layout = "~/Views/Shared/_AdminDashboard_Layout.cshtml";
+
+    var rows = ViewBag.MonthlyGivingByMethod as List<MonthlyGivingByMethodRow> ?? new();
+    var monthNames = new[] { "", "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec" };
+
+    // Payment methods in fixed (enum) order; each keeps its colour slot even when others have no data
+    var methodLabels = new Dictionary<PaymentMethod, string>
+    {
+        [PaymentMethod.MTNMobileMoney] = "MTN Mobile Money",
+        [PaymentMethod.AirtelMoney] = "Airtel Money",
+        [PaymentMethod.MPesa] = "M-Pesa",
+        [PaymentMethod.Visa] = "Visa",
+        [PaymentMethod.Mastercard] = "Mastercard",
+        [PaymentMethod.Cash] = "Cash",
+        [PaymentMethod.Bank] = "Bank"
+    };
+    var usedMethods = Enum.GetValues<PaymentMethod>().Where(m => rows.Any(r => r.Method == m)).ToList();
+    var activeMonths = rows.Select(r => r.Month).Distinct().OrderBy(m => m).ToList();
+    decimal Cell(int month, PaymentMethod m) => rows.Where(r => r.Month == month && r.Method == m).Sum(r => r.Total);
+
+    var chartData = new
+    {
+        labels = monthNames.Skip(1).ToArray(),
+        series = usedMethods.Select(m => new
+        {
+            slot = (int)m,   // colour slot follows the method, not its rank
+            label = methodLabels[m],
+            data = Enumerable.Range(1, 12).Select(mo => Cell(mo, m)).ToArray()
+        })
+    };
 }
 
 <div class="admin-main">
     <div class="admin-topbar"><h1>Reports & Analytics</h1></div>
     <div class="charts-row">
-        <div class="chart-card">
-            <h3>Monthly Giving (@DateTime.Now.Year)</h3>
-            <canvas id="monthlyGivingChart" height="250"></canvas>
+        <div class="chart-card giving-chart">
+            <h3>Monthly Giving by Payment Method (@DateTime.Now.Year)</h3>
+            @if (!rows.Any())
+            {
+                <p class="meta">No successful giving recorded this year yet.</p>
+            }
+            else
+            {
+                <div class="giving-legend" id="givingLegend"></div>
+                <div class="giving-canvas-wrap"><canvas id="monthlyGivingChart"></canvas></div>
+            }
         </div>
     </div>
     <div class="table-card" style="margin-top:2rem">
-        <h3>Monthly Giving Summary</h3>
-        <table class="data-table">
-            <thead><tr><th>Month</th><th>Total (UGX)</th></tr></thead>
-            <tbody>
-                @{
-                    var months = ViewBag.MonthlyGiving as List<dynamic> ?? new List<dynamic>();
-                    var monthNames = new[] { "", "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec" };
-                    foreach (var m in months)
-                    {
-                        <tr><td>@monthNames[(int)m.Month]</td><td>@((decimal)m.Total).ToString("N0")</td></tr>
-                    }
-                }
-            </tbody>
-        </table>
+        <h3>Monthly Giving Summary (UGX)</h3>
+        @if (!rows.Any())
+        {
+            <p class="meta">No data.</p>
+        }
+        else
+        {
+            <div style="overflow-x:auto">
+                <table class="data-table giving-table">
+                    <thead>
+                        <tr>
+                            <th>Month</th>
+                            @foreach (var m in usedMethods)
+                            {
+                                <th><span class="giving-swatch" data-slot="@((int)m)"></span>@methodLabels[m]</th>
+                            }
+                            <th>Total</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var mo in activeMonths)
+                        {
+                            <tr>
+                                <td>@monthNames[mo]</td>
+                                @foreach (var m in usedMethods)
+                                {
+                                    var v = Cell(mo, m);
+                                    <td>@(v == 0 ? "—" : v.ToString("N0"))</td>
+                                }
+                                <td><strong>@rows.Where(r => r.Month == mo).Sum(r => r.Total).ToString("N0")</strong></td>
+                            </tr>
+                        }
+                    </tbody>
+                    <tfoot>
+                        <tr>
+                            <td><strong>Year</strong></td>
+                            @foreach (var m in usedMethods)
+                            {
+                                <td><strong>@rows.Where(r => r.Method == m).Sum(r => r.Total).ToString("N0")</strong></td>
+                            }
+                            <td><strong>@rows.Sum(r => r.Total).ToString("N0")</strong></td>
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>
+        }
     </div>
 </div>
 @section Scripts {
+    <style>
+        /* Categorical slots, fixed order (one per payment method) */
+        .giving-chart {
+            --surface-1: #ffffff;
+            --text-secondary: #52514e;
+            --grid: #e7e6e2;
+            --series-0: #2a78d6;  /* MTN Mobile Money */
+            --series-1: #eb6834;  /* Airtel Money */
+            --series-2: #1baf7a;  /* M-Pesa */
+            --series-3: #eda100;  /* Visa */
+            --series-4: #e87ba4;  /* Mastercard */
+            --series-5: #008300;  /* Cash */
+            --series-6: #4a3aa7;  /* Bank */
+        }
+
+        .giving-canvas-wrap { position: relative; height: 300px; }
+
+        .giving-legend { display: flex; flex-wrap: wrap; gap: .4rem 1rem; margin: .25rem 0 1rem; }
+
+        .giving-legend-item {
+            display: inline-flex;
+            align-items: center;
+            gap: .4rem;
+            font-size: .82rem;
+            color: var(--text-secondary);
+        }
+
+        .giving-swatch {
+            display: inline-block;
+            width: 10px;
+            height: 10px;
+            border-radius: 3px;
+            margin-right: .4rem;
+            vertical-align: baseline;
+        }
+
+        .giving-legend .giving-swatch { margin-right: 0; }
+        .giving-table td, .giving-table th { white-space: nowrap; font-variant-numeric: tabular-nums; }
+        .giving-table tfoot td { border-top: 2px solid var(--border); }
+    </style>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
     <script>
-        const monthlyData = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(ViewBag.MonthlyGiving));
-        const monthNames = ["", "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-        new Chart(document.getElementById('monthlyGivingChart'), {
-            type: 'bar',
-            data: {
-                labels: (monthlyData || []).map(m => monthNames[m.Month]),
-                datasets: [{ label: 'UGX Giving', data: (monthlyData || []).map(m => m.Total), backgroundColor: '#6366f1', borderRadius: 6 }]
-            },
-            options: { responsive: true, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true } } }
-        });
+        (function () {
+            const card = document.querySelector('.giving-chart');
+            const css = n => getComputedStyle(card).getPropertyValue(n).trim();
+            const slotColor = s => css('--series-' + s);
+            document.querySelectorAll('.giving-swatch[data-slot]').forEach(el =>
+                el.style.background = slotColor(el.dataset.slot));
+
+            const canvas = document.getElementById('monthlyGivingChart');
+            if (!canvas) return;
+            const d = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(chartData));
+            const ugx = v => 'UGX ' + Number(v).toLocaleString();
+
+            // Legend (always shown for 2+ methods; text stays in text colour, swatch carries identity)
+            document.getElementById('givingLegend').innerHTML = d.series.map(s =>
+                `<span class="giving-legend-item"><span class="giving-swatch" style="background:${slotColor(s.slot)}"></span>${s.label}</span>`
+            ).join('');
+
+            // Round only the top-most non-empty segment of each month's stack
+            const topRadius = ctx => {
+                for (let j = ctx.datasetIndex + 1; j < d.series.length; j++)
+                    if (d.series[j].data[ctx.dataIndex] > 0) return 0;
+                return { topLeft: 4, topRight: 4 };
+            };
+            new Chart(canvas, {
+                type: 'bar',
+                data: {
+                    labels: d.labels,
+                    datasets: d.series.map(s => ({
+                        label: s.label,
+                        data: s.data,
+                        backgroundColor: slotColor(s.slot),
+                        borderColor: css('--surface-1'),   // 2px surface gap between stacked segments
+                        borderWidth: { top: 2, bottom: 0, left: 0, right: 0 },
+                        borderSkipped: false,
+                        borderRadius: topRadius,
+                        maxBarThickness: 24
+                    }))
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: { mode: 'index', intersect: false },
+                    plugins: {
+                        legend: { display: false },   // HTML legend above the chart
+                        tooltip: {
+                            filter: item => item.raw > 0,
+                            callbacks: {
+                                label: c => ` ${c.dataset.label}: ${ugx(c.raw)}`,
+                                footer: items => 'Total: ' + ugx(items.reduce((t, i) => t + i.raw, 0))
+                            }
+                        }
+                    },
+                    scales: {
+                        x: { stacked: true, grid: { display: false },
+                             ticks: { color: css('--text-secondary') } },
+                        y: { stacked: true, beginAtZero: true,
+                             grid: { color: css('--grid') }, border: { display: false },
+                             ticks: { color: css('--text-secondary'),
+                                      callback: v => v >= 1e6 ? (v / 1e6) + 'M' : v >= 1e3 ? (v / 1e3) + 'K' : v } }
+                    }
+                }
+            });
+        })();
     </script>
 }

@@ -110,7 +110,22 @@
                               style="display:none;position:relative;top:auto;right:auto"></span>
                     </a>
                     <a asp-controller="Admin" asp-action="Newsletters"><i class="fas fa-envelope"></i> Newsletter</a>
-                    <a asp-controller="Admin" asp-action="Reports"><i class="fas fa-chart-bar"></i> Reports</a>
+                    @{
+                        var navAction = ViewContext.RouteData.Values["action"]?.ToString();
+                        var inReports = ViewContext.RouteData.Values["controller"]?.ToString() == "Admin"
+                                     && (navAction == "Reports" || navAction == "SermonAttendanceReport");
+                    }
+                    <details class="sidebar-group" open="@inReports">
+                        <summary><i class="fas fa-chart-bar"></i> Reports <i class="fas fa-chevron-down sidebar-caret"></i></summary>
+                        <a asp-controller="Admin" asp-action="Reports"
+                           class="@(inReports && navAction == "Reports" ? "active" : "")">
+                            <i class="fas fa-hand-holding-heart"></i> Giving
+                        </a>
+                        <a asp-controller="Admin" asp-action="SermonAttendanceReport"
+                           class="@(navAction == "SermonAttendanceReport" ? "active" : "")">
+                            <i class="fas fa-user-clock"></i> Sermon Attendance
+                        </a>
+                    </details>
                     <hr />
                     <a asp-controller="Home" asp-action="Index"><i class="fas fa-home"></i> View Site</a>
                 </nav>

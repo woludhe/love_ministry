@@ -81,6 +81,10 @@ app.MapControllerRoute(
     "Admin/EventRegistrations/{id}",
     new { controller = "Admin", action = "EventRegistrations" });
 app.MapControllerRoute(
+    "sermonAttendance",
+    "Admin/SermonAttendance/{id}",
+    new { controller = "Admin", action = "SermonAttendance" });
+app.MapControllerRoute(
     "eventPaymentCallback",
     "Events/PaymentCallback",
     new { controller = "Events", action = "PaymentCallback" });

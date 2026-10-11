@@ -170,4 +170,52 @@ namespace ChurchMinistry.ViewModels
         public string tx_ref { get; set; } = "";
         public string transaction_id { get; set; } = "";
     }
+
+    // ─── Reports: giving ───
+    public class MonthlyGivingByMethodRow
+    {
+        public int Month { get; set; }
+        public PaymentMethod Method { get; set; }
+        public decimal Total { get; set; }
+    }
+
+    // ─── Reports: sermon attendance ───
+    public class SermonAttendanceReportViewModel
+    {
+        // Filters
+        public string Period { get; set; } = "all";      // all | range | month | year
+        public DateTime? From { get; set; }
+        public DateTime? To { get; set; }
+        public string? Month { get; set; }               // "yyyy-MM"
+        public int? Year { get; set; }
+        public int? SermonId { get; set; }
+        public string? Mode { get; set; }                // video | audio | live | meeting
+        public string? Attendee { get; set; }            // member | guest
+        public string? PeriodLabel { get; set; }
+
+        // Filter options
+        public List<Sermon> Sermons { get; set; } = new();
+        public List<int> Years { get; set; } = new();
+
+        // Totals
+        public int Sessions { get; set; }
+        public int UniqueMembers { get; set; }
+        public int GuestSessions { get; set; }
+        public TimeSpan TotalWatchTime { get; set; }
+        public TimeSpan AverageDuration { get; set; }
+        public Dictionary<string, int> SessionsByMode { get; set; } = new();
+        public List<SermonAttendanceSummaryRow> BySermon { get; set; } = new();
+    }
+
+    public class SermonAttendanceSummaryRow
+    {
+        public int SermonId { get; set; }
+        public string Title { get; set; } = "";
+        public DateTime SermonDate { get; set; }
+        public string Mode { get; set; } = "";
+        public int Sessions { get; set; }
+        public int Members { get; set; }
+        public int Guests { get; set; }
+        public TimeSpan AverageDuration { get; set; }
+    }
 }

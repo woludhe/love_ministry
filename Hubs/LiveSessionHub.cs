@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
+using System.Security.Claims;
 
 namespace ChurchMinistry.Hubs
 {
@@ -20,11 +21,82 @@ namespace ChurchMinistry.Hubs
         public async Task JoinLiveRoom(int sermonId)
         {
             await Groups.AddToGroupAsync(Context.ConnectionId, $"live-{sermonId}");
+            await LogAttendanceAsync(sermonId);
         }
 
         public async Task LeaveLiveRoom(int sermonId)
         {
             await Groups.RemoveFromGroupAsync(Context.ConnectionId, $"live-{sermonId}");
+            await CloseAttendanceAsync();
+        }
+
+        public override async Task OnDisconnectedAsync(Exception? exception)
+        {
+            await CloseAttendanceAsync();
+            await base.OnDisconnectedAsync(exception);
+        }
+
+        // ── Attendance tracking ────────────────────────────────
+        // Start a log row for this connection if the sermon tracks attendance
+        private async Task LogAttendanceAsync(int sermonId)
+        {
+            var sermon = await _db.Sermons
+                .FirstOrDefaultAsync(s => s.Id == sermonId && s.TrackAttendance);
+            if (sermon == null) return;
+
+            var connId = Context.ConnectionId;
+            if (await _db.SermonAttendances.AnyAsync(a =>
+                    a.SermonId == sermonId && a.ConnectionId == connId && a.LeftAt == null))
+                return;
+
+            var entry = new SermonAttendance
+            {
+                SermonId = sermonId,
+                ConnectionId = connId,
+                DeliveryMode = sermon.DeliveryMode,
+                IsGuest = true,
+                DisplayName = "Guest"
+            };
+
+            if (Context.User?.Identity?.IsAuthenticated == true)
+            {
+                var userId = Context.User.FindFirstValue(ClaimTypes.NameIdentifier);
+                var member = userId == null ? null
+                    : await _db.Members.FirstOrDefaultAsync(m => m.UserId == userId);
+                entry.IsGuest = false;
+                entry.MemberId = member?.Id;
+                entry.DisplayName = member?.FullName ?? Context.User.Identity.Name ?? "Member";
+            }
+
+            _db.SermonAttendances.Add(entry);
+            await _db.SaveChangesAsync();
+        }
+
+        // Viewer's browser reports its location (only if they allowed it)
+        public async Task ReportLocation(int sermonId, double latitude, double longitude)
+        {
+            if (latitude is < -90 or > 90 || longitude is < -180 or > 180) return;
+
+            var connId = Context.ConnectionId;
+            var entry = await _db.SermonAttendances.FirstOrDefaultAsync(a =>
+                a.SermonId == sermonId && a.ConnectionId == connId && a.LeftAt == null);
+            if (entry == null) return;
+
+            entry.Latitude = latitude;
+            entry.Longitude = longitude;
+            await _db.SaveChangesAsync();
+        }
+
+        private async Task CloseAttendanceAsync()
+        {
+            var connId = Context.ConnectionId;
+            var open = await _db.SermonAttendances
+                .Where(a => a.ConnectionId == connId && a.LeftAt == null)
+                .ToListAsync();
+            if (open.Count == 0) return;
+
+            foreach (var a in open) a.LeftAt = DateTime.UtcNow;
+            await _db.SaveChangesAsync();
         }
 
         // ── Admin pushes verse change ──────────────────────────

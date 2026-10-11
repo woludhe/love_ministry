@@ -1,0 +1,249 @@
+@model ChurchMinistry.ViewModels.SermonAttendanceReportViewModel
+@{
+    ViewData["Title"] = "Sermon Attendance Report";
+    Layout = "~/Views/Shared/_AdminDashboard_Layout.cshtml";
+
+    var modes = new (string Key, string Label, string Icon)[]
+    {
+        ("video", "Video", "fa-video"),
+        ("audio", "Audio", "fa-headphones"),
+        ("live", "Live Stream", "fa-broadcast-tower"),
+        ("meeting", "Meeting Room", "fa-users")
+    };
+    string ModeLabel(string? key) => modes.FirstOrDefault(m => m.Key == key).Label ?? "Unknown";
+    string ModeIcon(string? key) => modes.FirstOrDefault(m => m.Key == key).Icon ?? "fa-circle-question";
+    string Fmt(TimeSpan t) => $"{(int)t.TotalHours}:{t.Minutes:00}:{t.Seconds:00}";
+}
+
+<div class="admin-main">
+    <div class="report-header">
+        <div>
+            <h1>Sermon Attendance</h1>
+            <p class="meta">Online attendance of sermons with attendance tracking · <strong>@Model.PeriodLabel</strong></p>
+        </div>
+    </div>
+
+    @* {{-- Filters --}} *@
+    <form method="get" class="report-filters" id="reportFilters">
+        <div class="rf-field">
+            <label>Period</label>
+            <select name="period" class="form-control" id="periodSelect">
+                <option value="all" selected="@(Model.Period == "all")">All time</option>
+                <option value="range" selected="@(Model.Period == "range")">Date range</option>
+                <option value="month" selected="@(Model.Period == "month")">Month</option>
+                <option value="year" selected="@(Model.Period == "year")">Year</option>
+            </select>
+        </div>
+        <div class="rf-field" data-period="range">
+            <label>From</label>
+            <input type="date" name="from" class="form-control" value="@Model.From?.ToString("yyyy-MM-dd")" />
+        </div>
+        <div class="rf-field" data-period="range">
+            <label>To</label>
+            <input type="date" name="to" class="form-control" value="@Model.To?.ToString("yyyy-MM-dd")" />
+        </div>
+        <div class="rf-field" data-period="month">
+            <label>Month</label>
+            <input type="month" name="month" class="form-control" value="@(Model.Month ?? DateTime.Now.ToString("yyyy-MM"))" />
+        </div>
+        <div class="rf-field" data-period="year">
+            <label>Year</label>
+            <select name="year" class="form-control">
+                @foreach (var y in Model.Years)
+                {
+                    <option value="@y" selected="@(Model.Year == y)">@y</option>
+                }
+            </select>
+        </div>
+        <div class="rf-field rf-wide">
+            <label>Sermon</label>
+            <select name="sermonId" class="form-control">
+                <option value="">All tracked sermons</option>
+                @foreach (var s in Model.Sermons)
+                {
+                    <option value="@s.Id" selected="@(Model.SermonId == s.Id)">@s.Title (@s.SermonDate.ToString("dd MMM yyyy"))</option>
+                }
+            </select>
+        </div>
+        <div class="rf-field">
+            <label>Mode</label>
+            <select name="mode" class="form-control">
+                <option value="">All modes</option>
+                @foreach (var m in modes)
+                {
+                    <option value="@m.Key" selected="@(Model.Mode == m.Key)">@m.Label</option>
+                }
+            </select>
+        </div>
+        <div class="rf-field">
+            <label>Attendee</label>
+            <select name="attendee" class="form-control">
+                <option value="">Members &amp; guests</option>
+                <option value="member" selected="@(Model.Attendee == "member")">Members</option>
+                <option value="guest" selected="@(Model.Attendee == "guest")">Guests</option>
+            </select>
+        </div>
+        <div class="rf-actions">
+            <button type="submit" class="btn btn-primary btn-sm"><i class="fas fa-filter"></i> Apply</button>
+            <a asp-action="SermonAttendanceReport" class="btn btn-outline btn-sm">Reset</a>
+        </div>
+    </form>
+
+    @* {{-- Totals --}} *@
+    <div class="report-stats">
+        <div class="report-stat"><span>@Model.Sessions</span>Sessions</div>
+        <div class="report-stat"><span>@Model.UniqueMembers</span>Unique members</div>
+        <div class="report-stat"><span>@Model.GuestSessions</span>Guest sessions</div>
+        <div class="report-stat"><span>@Fmt(Model.TotalWatchTime)</span>Total watch time</div>
+        <div class="report-stat"><span>@Fmt(Model.AverageDuration)</span>Avg. duration</div>
+    </div>
+
+    <div class="mode-breakdown">
+        @foreach (var m in modes)
+        {
+            var count = Model.SessionsByMode.GetValueOrDefault(m.Key);
+            <div class="mode-chip @(count == 0 ? "is-empty" : "")">
+                <i class="fas @m.Icon"></i> @m.Label <strong>@count</strong>
+            </div>
+        }
+        @{
+            var unknown = Model.SessionsByMode.Where(kv => !modes.Any(m => m.Key == kv.Key)).Sum(kv => kv.Value);
+        }
+        @if (unknown > 0)
+        {
+            <div class="mode-chip"><i class="fas fa-circle-question"></i> Unknown <strong>@unknown</strong></div>
+        }
+    </div>
+
+    @* {{-- By sermon --}} *@
+    <div class="table-card" style="margin-bottom:1.5rem">
+        <h3 class="report-section-title">By sermon</h3>
+        @if (!Model.BySermon.Any())
+        {
+            <p class="meta report-empty">No attendance recorded for these filters.</p>
+        }
+        else
+        {
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Sermon</th>
+                        <th>Date</th>
+                        <th>Type</th>
+                        <th>Mode</th>
+                        <th>Sessions</th>
+                        <th>Members</th>
+                        <th>Guests</th>
+                        <th>Avg. duration</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var r in Model.BySermon)
+                    {
+                        <tr>
+                            <td>@r.Title</td>
+                            <td style="white-space:nowrap">@r.SermonDate.ToString("dd MMM yyyy")</td>
+                            <td><span class="status-badge status-active">Online</span></td>
+                            <td style="white-space:nowrap"><i class="fas @ModeIcon(r.Mode)"></i> @ModeLabel(r.Mode)</td>
+                            <td>@r.Sessions</td>
+                            <td>@r.Members</td>
+                            <td>@r.Guests</td>
+                            <td style="font-variant-numeric:tabular-nums">@Fmt(r.AverageDuration)</td>
+                            <td>
+                                <a asp-action="SermonAttendance" asp-route-id="@r.SermonId"
+                                   class="btn btn-outline btn-xs" title="Full attendance log">
+                                    <i class="fas fa-user-clock"></i>
+                                </a>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        }
+    </div>
+</div>
+
+@section Scripts {
+    <style>
+        .report-header h1 { font-size: 1.4rem; font-weight: 800; margin: 0 0 .25rem; }
+        .report-header .meta { margin: 0 0 1.25rem; }
+
+        .report-filters {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: flex-end;
+            gap: .75rem;
+            background: var(--white);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 1rem;
+            margin-bottom: 1.25rem;
+        }
+
+        .rf-field { display: flex; flex-direction: column; gap: .3rem; min-width: 140px; }
+        .rf-field.rf-wide { min-width: 220px; flex: 1; }
+        .rf-field label { font-size: .75rem; font-weight: 600; color: var(--text-s); }
+        .rf-field .form-control { padding: .5rem .65rem; font-size: .85rem; }
+        .rf-actions { display: flex; gap: .4rem; }
+
+        .report-stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: .75rem;
+            margin-bottom: .75rem;
+        }
+
+        .report-stat {
+            background: var(--white);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: .9rem 1rem;
+            font-size: .8rem;
+            font-weight: 600;
+            color: var(--text-s);
+        }
+
+            .report-stat span {
+                display: block;
+                font-size: 1.4rem;
+                font-weight: 800;
+                color: var(--text);
+                font-variant-numeric: tabular-nums;
+            }
+
+        .mode-breakdown { display: flex; flex-wrap: wrap; gap: .5rem; margin-bottom: 1.5rem; }
+
+        .mode-chip {
+            display: inline-flex;
+            align-items: center;
+            gap: .4rem;
+            background: var(--purple-l);
+            color: var(--purple);
+            padding: .35rem .8rem;
+            border-radius: 100px;
+            font-size: .82rem;
+            font-weight: 600;
+        }
+
+            .mode-chip.is-empty { background: #f3f4f6; color: var(--text-s); }
+
+        .report-section-title { font-size: 1rem; font-weight: 700; margin: 0 0 .75rem; }
+        .report-empty { padding: 1rem 0; margin: 0; }
+    </style>
+    <script>
+        // Show only the date inputs for the chosen period
+        (function () {
+            const sel = document.getElementById('periodSelect');
+            function sync() {
+                document.querySelectorAll('[data-period]').forEach(el => {
+                    const on = el.dataset.period === sel.value;
+                    el.style.display = on ? '' : 'none';
+                    el.querySelectorAll('input, select').forEach(i => i.disabled = !on);
+                });
+            }
+            sel.addEventListener('change', sync);
+            sync();
+        })();
+    </script>
+}

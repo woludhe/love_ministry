@@ -170,6 +170,16 @@ namespace ChurchMinistry.Models
         public ICollection<SermonNote> SermonNotes { get; set; } = new List<SermonNote>();
         public string? MeetingRoomCode { get; set; }   // links to MeetingRoom.RoomCode
         public bool IsOnlineMeeting { get; set; } = false;
+        public bool TrackAttendance { get; set; } = false;
+
+        // Delivery mode derived from which delivery field is set: video | audio | live | meeting
+        [NotMapped]
+        public string DeliveryMode =>
+            IsOnlineMeeting ? "meeting"
+            : !string.IsNullOrEmpty(LiveStreamUrl) ? "live"
+            : !string.IsNullOrEmpty(VideoUrl) ? "video"
+            : !string.IsNullOrEmpty(AudioUrl) ? "audio"
+            : "video";
         // Navigation (optional — load meeting room details when needed)
         [NotMapped]
         public MeetingRoom? LinkedMeetingRoom { get; set; }

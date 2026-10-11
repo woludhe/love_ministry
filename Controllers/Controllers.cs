@@ -1360,6 +1360,7 @@ namespace ChurchMinistry.Controllers
             sermon.AudioUrl = updated.AudioUrl;
             sermon.Tags = updated.Tags;
             sermon.IsPublished = updated.IsPublished;
+            sermon.TrackAttendance = updated.TrackAttendance;
             sermon.MeetingRoomCode = updated.MeetingRoomCode;
             sermon.LiveStreamUrl = updated.LiveStreamUrl;
             ApplyDeliveryMode(sermon, deliveryMode);
@@ -1425,6 +1426,19 @@ namespace ChurchMinistry.Controllers
             return Json(new { isActive = sermon.IsPublished });
         }
 
+        public async Task<IActionResult> SermonAttendance(int id)
+        {
+            var sermon = await _db.Sermons.FindAsync(id);
+            if (sermon == null) return NotFound();
+
+            ViewBag.Sermon = sermon;
+            var log = await _db.SermonAttendances
+                .Where(a => a.SermonId == id)
+                .OrderByDescending(a => a.JoinedAt)
+                .ToListAsync();
+            return View(log);
+        }
+
         [HttpPost]
         public async Task<IActionResult> DeleteSermon(int id)
         {
@@ -1479,12 +1493,122 @@ namespace ChurchMinistry.Controllers
         public async Task<IActionResult> Reports()
         {
             var now = DateTime.UtcNow;
-            ViewBag.MonthlyGiving = await _db.Givings
+
+            // Successful giving this year, per month and payment method (stacked chart + table)
+            ViewBag.MonthlyGivingByMethod = await _db.Givings
                 .Where(g => g.PaymentStatus == PaymentStatus.Successful && g.GivingDate.Year == now.Year)
-                .GroupBy(g => g.GivingDate.Month)
-                .Select(g => new { Month = g.Key, Total = g.Sum(x => x.Amount) })
-                .OrderBy(g => g.Month).ToListAsync();
+                .GroupBy(g => new { g.GivingDate.Month, g.PaymentMethod })
+                .Select(g => new MonthlyGivingByMethodRow
+                {
+                    Month = g.Key.Month,
+                    Method = g.Key.PaymentMethod,
+                    Total = g.Sum(x => x.Amount)
+                })
+                .ToListAsync();
             return View();
+        }
+
+        // ── Reports: online attendance of tracked sermons ──
+        public async Task<IActionResult> SermonAttendanceReport(
+            string? period, DateTime? from, DateTime? to, string? month, int? year,
+            int? sermonId, string? mode, string? attendee)
+        {
+            var vm = new SermonAttendanceReportViewModel
+            {
+                Period = period ?? "all", From = from, To = to, Month = month, Year = year,
+                SermonId = sermonId, Mode = mode, Attendee = attendee
+            };
+
+            // Period → local date window [start, end) → UTC (JoinedAt is stored in UTC)
+            DateTime? start = null, end = null;
+            switch (vm.Period)
+            {
+                case "range":
+                    start = from?.Date;
+                    end = to?.Date.AddDays(1);
+                    vm.PeriodLabel = $"{from:dd MMM yyyy} – {to:dd MMM yyyy}";
+                    break;
+                case "month" when DateTime.TryParseExact(month + "-01", "yyyy-MM-dd",
+                        null, System.Globalization.DateTimeStyles.None, out var m):
+                    start = m;
+                    end = m.AddMonths(1);
+                    vm.PeriodLabel = m.ToString("MMMM yyyy");
+                    break;
+                case "year" when year.HasValue:
+                    start = new DateTime(year.Value, 1, 1);
+                    end = start.Value.AddYears(1);
+                    vm.PeriodLabel = year.Value.ToString();
+                    break;
+                default:
+                    vm.Period = "all";
+                    vm.PeriodLabel = "All time";
+                    break;
+            }
+
+            var q = _db.SermonAttendances.AsQueryable();
+            if (start.HasValue)
+            {
+                var s = DateTime.SpecifyKind(start.Value, DateTimeKind.Local).ToUniversalTime();
+                q = q.Where(a => a.JoinedAt >= s);
+            }
+            if (end.HasValue)
+            {
+                var e = DateTime.SpecifyKind(end.Value, DateTimeKind.Local).ToUniversalTime();
+                q = q.Where(a => a.JoinedAt < e);
+            }
+            if (sermonId.HasValue) q = q.Where(a => a.SermonId == sermonId);
+            if (!string.IsNullOrEmpty(mode)) q = q.Where(a => a.DeliveryMode == mode);
+            if (attendee == "member") q = q.Where(a => !a.IsGuest);
+            if (attendee == "guest") q = q.Where(a => a.IsGuest);
+
+            // Totals and per-sermon summary (light projection, aggregated in memory)
+            var now = DateTime.UtcNow;
+            var rows = await q
+                .Select(a => new { a.SermonId, a.MemberId, a.DisplayName, a.IsGuest,
+                                   a.DeliveryMode, a.JoinedAt, a.LeftAt })
+                .ToListAsync();
+            TimeSpan Dur(DateTime joined, DateTime? left) => (left ?? now) - joined;
+
+            vm.Sessions = rows.Count;
+            vm.GuestSessions = rows.Count(r => r.IsGuest);
+            vm.UniqueMembers = rows.Where(r => !r.IsGuest)
+                .Select(r => r.MemberId?.ToString() ?? r.DisplayName).Distinct().Count();
+            vm.TotalWatchTime = TimeSpan.FromSeconds(rows.Sum(r => Dur(r.JoinedAt, r.LeftAt).TotalSeconds));
+            vm.AverageDuration = rows.Count > 0
+                ? TimeSpan.FromSeconds(vm.TotalWatchTime.TotalSeconds / rows.Count) : TimeSpan.Zero;
+            vm.SessionsByMode = rows.GroupBy(r => r.DeliveryMode)
+                .ToDictionary(g => g.Key, g => g.Count());
+
+            var sermonIds = rows.Select(r => r.SermonId).Distinct().ToList();
+            var sermonInfo = await _db.Sermons.Where(s => sermonIds.Contains(s.Id))
+                .ToDictionaryAsync(s => s.Id);
+            vm.BySermon = rows.GroupBy(r => r.SermonId)
+                .Select(g => new SermonAttendanceSummaryRow
+                {
+                    SermonId = g.Key,
+                    Title = sermonInfo.TryGetValue(g.Key, out var si) ? si.Title : $"Sermon #{g.Key}",
+                    SermonDate = si?.SermonDate ?? default,
+                    Mode = g.GroupBy(r => r.DeliveryMode).OrderByDescending(x => x.Count()).First().Key,
+                    Sessions = g.Count(),
+                    Members = g.Where(r => !r.IsGuest)
+                        .Select(r => r.MemberId?.ToString() ?? r.DisplayName).Distinct().Count(),
+                    Guests = g.Count(r => r.IsGuest),
+                    AverageDuration = TimeSpan.FromSeconds(g.Average(r => Dur(r.JoinedAt, r.LeftAt).TotalSeconds))
+                })
+                .OrderByDescending(r => r.SermonDate)
+                .ToList();
+
+            // Filter options: tracked sermons, plus any with logged attendance
+            var loggedIds = _db.SermonAttendances.Select(a => a.SermonId).Distinct();
+            vm.Sermons = await _db.Sermons
+                .Where(s => s.TrackAttendance || loggedIds.Contains(s.Id))
+                .OrderByDescending(s => s.SermonDate)
+                .ToListAsync();
+            var firstJoin = await _db.SermonAttendances.MinAsync(a => (DateTime?)a.JoinedAt);
+            var firstYear = Math.Min(firstJoin?.ToLocalTime().Year ?? DateTime.Now.Year, DateTime.Now.Year);
+            vm.Years = Enumerable.Range(firstYear, DateTime.Now.Year - firstYear + 1).Reverse().ToList();
+
+            return View(vm);
         }
     }
 }

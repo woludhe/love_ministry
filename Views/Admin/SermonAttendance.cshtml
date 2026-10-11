@@ -1,0 +1,194 @@
+@model List<ChurchMinistry.Models.SermonAttendance>
+@{
+    ViewData["Title"] = "Sermon Attendance";
+    Layout = "~/Views/Shared/_AdminDashboard_Layout.cshtml";
+    var sermon = (ChurchMinistry.Models.Sermon)ViewBag.Sermon;
+    var now = DateTime.UtcNow;
+
+    TimeSpan DurationOf(ChurchMinistry.Models.SermonAttendance a) => (a.LeftAt ?? now) - a.JoinedAt;
+    string Fmt(TimeSpan t) => $"{(int)t.TotalHours}:{t.Minutes:00}:{t.Seconds:00}";
+
+    var uniqueMembers = Model.Where(a => !a.IsGuest)
+        .Select(a => a.MemberId?.ToString() ?? a.DisplayName).Distinct().Count();
+    var guestSessions = Model.Count(a => a.IsGuest);
+    var watchingNow = Model.Count(a => a.LeftAt == null);
+    var avg = Model.Any()
+        ? TimeSpan.FromSeconds(Model.Average(a => DurationOf(a).TotalSeconds))
+        : TimeSpan.Zero;
+}
+
+<div class="admin-main">
+    <div class="attendance-header">
+        <div>
+            <a asp-action="Sermons" class="back-link"><i class="fas fa-arrow-left"></i> Back to Sermons</a>
+            <h1>Attendance: @sermon.Title</h1>
+            <p class="meta">
+                <i class="fas fa-calendar"></i> @sermon.SermonDate.ToString("dddd, dd MMMM yyyy · h:mm tt")
+                @if (!string.IsNullOrEmpty(sermon.Speaker))
+                {
+                    <span>&nbsp;·&nbsp; <i class="fas fa-user"></i> @sermon.Speaker</span>
+                }
+            </p>
+        </div>
+        <div class="attendance-header-actions">
+            @if (!sermon.TrackAttendance)
+            {
+                <span class="status-badge status-inactive">Tracking off</span>
+            }
+            else
+            {
+                <span class="status-badge status-active">Tracking on</span>
+            }
+            <a asp-action="EditSermon" asp-route-id="@sermon.Id" class="btn btn-outline btn-sm">
+                <i class="fas fa-pen"></i> Edit Sermon
+            </a>
+            <a href="@Url.Action("SermonAttendance", new { id = sermon.Id })" class="btn btn-outline btn-sm">
+                <i class="fas fa-rotate"></i> Refresh
+            </a>
+        </div>
+    </div>
+
+    <div class="attendance-stats">
+        <div class="attendance-stat"><span>@Model.Count</span>Sessions</div>
+        <div class="attendance-stat"><span>@uniqueMembers</span>Members</div>
+        <div class="attendance-stat"><span>@guestSessions</span>Guest sessions</div>
+        <div class="attendance-stat"><span>@watchingNow</span>Watching now</div>
+        <div class="attendance-stat"><span>@Fmt(avg)</span>Avg. duration</div>
+    </div>
+
+    <div class="table-card">
+        @if (!Model.Any())
+        {
+            <div style="text-align:center;padding:3rem;color:var(--text-s)">
+                <i class="fas fa-user-clock fa-2x" style="margin-bottom:1rem;display:block;color:var(--border)"></i>
+                <p>
+                    No attendance recorded yet.
+                    @(sermon.TrackAttendance
+                        ? "Viewers are logged when they join this sermon on the Live page or its meeting room."
+                        : "Turn on \"Track attendance\" on the Edit Sermon page to start logging.")
+                </p>
+            </div>
+        }
+        else
+        {
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Attendee</th>
+                        <th>Location</th>
+                        <th>Started</th>
+                        <th>Ended</th>
+                        <th>Duration</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var a in Model)
+                    {
+                        <tr>
+                            <td>
+                                @if (a.IsGuest)
+                                {
+                                    <span class="status-badge status-inactive">Guest</span>
+                                }
+                                else
+                                {
+                                    @a.DisplayName
+                                }
+                            </td>
+                            <td>
+                                @if (a.Latitude.HasValue && a.Longitude.HasValue)
+                                {
+                                    var lat = a.Latitude.Value.ToString("0.#####", System.Globalization.CultureInfo.InvariantCulture);
+                                    var lng = a.Longitude.Value.ToString("0.#####", System.Globalization.CultureInfo.InvariantCulture);
+                                    <a href="https://www.google.com/maps?q=@lat,@lng" target="_blank" rel="noopener">
+                                        <i class="fas fa-map-marker-alt"></i> View on map
+                                    </a>
+                                    <br /><small class="meta">@lat, @lng</small>
+                                }
+                                else
+                                {
+                                    <span class="meta">—</span>
+                                }
+                            </td>
+                            <td style="white-space:nowrap">@a.JoinedAt.ToLocalTime().ToString("dd MMM yyyy h:mm:ss tt")</td>
+                            <td style="white-space:nowrap">
+                                @if (a.LeftAt.HasValue)
+                                {
+                                    @a.LeftAt.Value.ToLocalTime().ToString("dd MMM yyyy h:mm:ss tt")
+                                }
+                                else
+                                {
+                                    <span class="status-badge status-active">Still watching</span>
+                                }
+                            </td>
+                            <td style="font-variant-numeric:tabular-nums">@Fmt(DurationOf(a))</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        }
+    </div>
+</div>
+
+@section Scripts {
+    <style>
+        .attendance-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-end;
+            flex-wrap: wrap;
+            gap: 1rem;
+            margin-bottom: 1.25rem;
+        }
+
+            .attendance-header h1 {
+                font-size: 1.4rem;
+                font-weight: 800;
+                margin: .35rem 0 .25rem;
+            }
+
+            .attendance-header .meta {
+                margin: 0;
+            }
+
+        .back-link {
+            font-size: .82rem;
+            color: var(--text-s);
+            display: inline-flex;
+            align-items: center;
+            gap: .3rem;
+        }
+
+        .attendance-header-actions {
+            display: flex;
+            align-items: center;
+            gap: .5rem;
+            flex-wrap: wrap;
+        }
+
+        .attendance-stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+            gap: .75rem;
+            margin-bottom: 1.25rem;
+        }
+
+        .attendance-stat {
+            background: var(--white);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: .9rem 1rem;
+            font-size: .8rem;
+            color: var(--text-s);
+            font-weight: 600;
+        }
+
+            .attendance-stat span {
+                display: block;
+                font-size: 1.4rem;
+                font-weight: 800;
+                color: var(--text);
+                font-variant-numeric: tabular-nums;
+            }
+    </style>
+}

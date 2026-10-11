@@ -1271,6 +1271,9 @@ namespace ChurchMinistry.Migrations
                         .HasMaxLength(200)
                         .HasColumnType("varchar(200)");
 
+                    b.Property<bool>("TrackAttendance")
+                        .HasColumnType("tinyint(1)");
+
                     b.Property<string>("VideoUrl")
                         .HasColumnType("longtext");
 
@@ -1280,6 +1283,59 @@ namespace ChurchMinistry.Migrations
                     b.HasKey("Id");
 
                     b.ToTable("Sermons");
+                });
+
+            modelBuilder.Entity("ChurchMinistry.Models.SermonAttendance", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    b.Property<string>("ConnectionId")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("varchar(100)");
+
+                    b.Property<string>("DeliveryMode")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("varchar(20)");
+
+                    b.Property<string>("DisplayName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("varchar(200)");
+
+                    b.Property<bool>("IsGuest")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<DateTime>("JoinedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<double?>("Latitude")
+                        .HasColumnType("double");
+
+                    b.Property<DateTime?>("LeftAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<double?>("Longitude")
+                        .HasColumnType("double");
+
+                    b.Property<int?>("MemberId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("SermonId")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ConnectionId");
+
+                    b.HasIndex("MemberId");
+
+                    b.HasIndex("SermonId");
+
+                    b.ToTable("SermonAttendances");
                 });
 
             modelBuilder.Entity("ChurchMinistry.Models.SermonNote", b =>
@@ -1764,6 +1820,24 @@ namespace ChurchMinistry.Migrations
                         .OnDelete(DeleteBehavior.SetNull);
 
                     b.Navigation("Member");
+                });
+
+            modelBuilder.Entity("ChurchMinistry.Models.SermonAttendance", b =>
+                {
+                    b.HasOne("ChurchMinistry.Models.Member", "Member")
+                        .WithMany()
+                        .HasForeignKey("MemberId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.HasOne("ChurchMinistry.Models.Sermon", "Sermon")
+                        .WithMany()
+                        .HasForeignKey("SermonId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Member");
+
+                    b.Navigation("Sermon");
                 });
 
             modelBuilder.Entity("ChurchMinistry.Models.SermonNote", b =>

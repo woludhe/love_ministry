@@ -331,6 +331,7 @@
      data-sermon-id="@sermonId"
      data-room-code="@roomCode"
      data-is-online="@isOnline.ToString().ToLower()"
+     data-track-attendance="@((Model?.TrackAttendance == true).ToString().ToLower())"
      data-is-logged-in="@isLoggedIn.ToString().ToLower()"
      data-display-name="@(isLoggedIn ? (ViewBag.MemberName as string ?? User.Identity?.Name ?? "Member") : "Guest")"
      style="display:none"></div>
@@ -639,6 +640,7 @@
         const IS_ONLINE = D.isOnline === 'true';
         const IS_LOGGED = D.isLoggedIn === 'true';
         const DISPLAY = D.displayName;
+        const TRACK_ATTENDANCE = D.trackAttendance === 'true';
 
         const iceConfig = {
             iceServers: [
@@ -651,6 +653,22 @@
         // LiveSession hub — overlays, giving, chat (everyone)
         const liveConn = new signalR.HubConnectionBuilder()
             .withUrl('/liveSessionHub').withAutomaticReconnect().build();
+
+        // Attendance: send the browser's location if the viewer allows it
+        function reportAttendanceLocation() {
+            if (!TRACK_ATTENDANCE || !navigator.geolocation) return;
+            navigator.geolocation.getCurrentPosition(
+                p => liveConn.invoke('ReportLocation', SERMON_ID, p.coords.latitude, p.coords.longitude).catch(() => { }),
+                () => { }, { timeout: 15000, maximumAge: 600000 });
+        }
+
+        // A reconnect gets a new connection id — join again so overlays and attendance continue
+        liveConn.onreconnected(async () => {
+            if (SERMON_ID > 0) {
+                await liveConn.invoke('JoinLiveRoom', SERMON_ID);
+                reportAttendanceLocation();
+            }
+        });
 
         // Meeting hub — receive-only video from Room.cshtml (all users)
         const guestConn = IS_ONLINE
@@ -1084,6 +1102,7 @@
             await liveConn.start();
             if (SERMON_ID > 0) {
                 await liveConn.invoke('JoinLiveRoom', SERMON_ID);
+                reportAttendanceLocation();
                 try {
                     const res = await fetch(`/api/LiveSettings/${SERMON_ID}/State`);
                     const s = await res.json();

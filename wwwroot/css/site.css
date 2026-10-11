@@ -1570,6 +1570,51 @@ input:checked ~ .toggle-track {
     border-color: rgba(255,255,255,.1);
 }
 
+/* Sidebar sub-menu (e.g. Reports) */
+.sidebar-group summary {
+    display: flex;
+    align-items: center;
+    gap: .6rem;
+    padding: .6rem .75rem;
+    border-radius: 8px;
+    font-size: .88rem;
+    font-weight: 500;
+    color: rgba(255,255,255,.7);
+    cursor: pointer;
+    list-style: none;
+    margin-bottom: .15rem;
+    transition: all .15s;
+}
+
+    .sidebar-group summary::-webkit-details-marker {
+        display: none;
+    }
+
+    .sidebar-group summary:hover {
+        background: rgba(255,255,255,.1);
+        color: white;
+    }
+
+    .sidebar-group summary i:first-child {
+        width: 16px;
+        text-align: center;
+    }
+
+.sidebar-caret {
+    margin-left: auto;
+    font-size: .7rem;
+    transition: transform .15s;
+}
+
+.sidebar-group[open] .sidebar-caret {
+    transform: rotate(180deg);
+}
+
+.admin-sidebar .sidebar-nav .sidebar-group a {
+    padding-left: 2.1rem;
+    font-size: .84rem;
+}
+
 .admin-main {
     padding: 2rem;
     overflow: auto;

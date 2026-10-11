@@ -71,4 +71,33 @@ namespace ChurchMinistry.Models
         public int  SortOrder            { get; set; } = 0;
         public DateTime CreatedAt        { get; set; } = DateTime.UtcNow;
     }
+
+    // ── Attendance log ────────────────────────────────────────
+    // One row per viewer connection to a sermon with TrackAttendance on
+    // (Live page or the sermon's linked meeting room)
+    public class SermonAttendance
+    {
+        public int Id { get; set; }
+        public int SermonId { get; set; }
+        public Sermon Sermon { get; set; } = null!;
+
+        public int? MemberId             { get; set; }   // null for guests
+        public Member? Member            { get; set; }
+        [MaxLength(200)] public string DisplayName { get; set; } = "Guest";
+        public bool IsGuest              { get; set; }
+        [MaxLength(100)] public string ConnectionId { get; set; } = "";
+
+        // Sermon's delivery mode when the viewer joined: video | audio | live | meeting
+        [MaxLength(20)] public string DeliveryMode { get; set; } = "";
+
+        // Browser geolocation (only if the viewer allows it)
+        public double? Latitude          { get; set; }
+        public double? Longitude         { get; set; }
+
+        public DateTime JoinedAt         { get; set; } = DateTime.UtcNow;
+        public DateTime? LeftAt          { get; set; }
+
+        [System.ComponentModel.DataAnnotations.Schema.NotMapped]
+        public TimeSpan? Duration => LeftAt - JoinedAt;
+    }
 }

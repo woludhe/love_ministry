@@ -494,6 +494,15 @@ namespace ChurchMinistry.Controllers
                 await _db.SaveChangesAsync();
             }
 
+            // Sermon streamed through this room (for verse overlays + attendance tracking)
+            var linkedSermon = await _db.Sermons
+                .Where(s => s.IsOnlineMeeting && s.MeetingRoomCode == code && s.IsPublished)
+                .OrderByDescending(s => s.IsLive)
+                .ThenByDescending(s => s.SermonDate)
+                .FirstOrDefaultAsync();
+            ViewBag.LiveSermonId = linkedSermon?.Id;
+            ViewBag.TrackAttendance = linkedSermon?.TrackAttendance == true;
+
             return View(new MeetingRoomViewModel
             {
                 Room = room,
