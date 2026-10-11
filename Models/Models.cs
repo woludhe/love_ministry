@@ -141,7 +141,7 @@ namespace ChurchMinistry.Models
         public DateTime? NextGivingDate { get; set; }
     }
 
-    public enum GivingType { Tithe, Offering, Pledge, BuildingFund, Missions, Seed, Welfare, Special, Other }
+    public enum GivingType { Tithe, Offering, Partnership, BuildingFund, Missions, Seed, Welfare, Special, Other }
     public enum PaymentMethod { MTNMobileMoney, AirtelMoney, MPesa, Visa, Mastercard, Cash, Bank }
     public enum PaymentStatus { Free, Pending, Successful, Failed, PendingVerification, Refunded }
     public enum RecurringInterval { Weekly, Monthly, Quarterly, Annually }
