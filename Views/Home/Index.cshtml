@@ -141,13 +141,15 @@
         <div class="give-text">
             <h2>Give &amp; Support the Ministry</h2>
             <p>Your giving makes a difference. Support our missions, community outreach and church operations.</p>
-            <div class="payment-badges">
-                <span class="badge mtn">MTN MoMo</span>
-                <span class="badge airtel">Airtel Money</span>
-                <span class="badge mpesa">M-Pesa</span>
-                <span class="badge visa">VISA</span>
-                <span class="badge mc">Mastercard</span>
-            </div>
+            @if (Model.ActivePaymentMethods.Any())
+            {
+                <div class="payment-badges">
+                    @foreach (var pm in Model.ActivePaymentMethods)
+                    {
+                        <span class="badge" style="background:@pm.BadgeColor;color:#fff">@pm.Name</span>
+                    }
+                </div>
+            }
             <a asp-controller="Giving" asp-action="Give" class="btn btn-primary">Give Now</a>
         </div>
         <div class="give-verse">

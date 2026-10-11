@@ -10,5 +10,6 @@ namespace ChurchMinistry.ViewModels
         public ChurchMinistry.Models.ChurchEvent? NextEvent { get; set; }
         public int TotalMembers { get; set; }
         public List<ChurchMinistry.Models.PrayerRequest> PrayerWall { get; set; } = new();
+        public List<ChurchMinistry.Models.PaymentMethodConfig> ActivePaymentMethods { get; set; } = new();
     }
 }

@@ -62,7 +62,12 @@ namespace ChurchMinistry.Controllers
                 PrayerWall = await _db.PrayerRequests
                     .Where(p => p.IsPublic && !p.IsAnonymous)
                     .OrderByDescending(p => p.CreatedAt)
-                    .Take(5).ToListAsync()
+                    .Take(5).ToListAsync(),
+
+                ActivePaymentMethods = await _db.PaymentMethods
+                    .Where(m => m.IsActive)
+                    .OrderBy(m => m.SortOrder)
+                    .ToListAsync()
             };
 
             return View(vm);
