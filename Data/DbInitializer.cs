@@ -264,6 +264,40 @@ namespace ChurchMinistry.Data
             //     });
             //     await db.SaveChangesAsync();
             // }
+
+            // ── 8. Meeting test accounts (Development only, opt-in) ───
+            // Used by tests/meeting-e2e. Enable with env var Seed__MeetingTestUsers=true
+            var env    = services.GetRequiredService<IWebHostEnvironment>();
+            var config = services.GetRequiredService<IConfiguration>();
+            if (env.IsDevelopment() && config.GetValue<bool>("Seed:MeetingTestUsers"))
+            {
+                // 19 accounts: enough for a 20-person run (host + 19)
+                for (int i = 1; i <= 19; i++)
+                {
+                    var email = $"meettest{i}@church.test";
+                    var user  = await userManager.FindByEmailAsync(email);
+                    if (user == null)
+                    {
+                        user = new ApplicationUser
+                        {
+                            UserName = email, Email = email, EmailConfirmed = true,
+                            FirstName = "Tester", LastName = i.ToString()
+                        };
+                        var result = await userManager.CreateAsync(user, "MeetTest@123");
+                        if (!result.Succeeded) continue;
+                        await userManager.AddToRoleAsync(user, "Member");
+                    }
+                    if (!await db.Members.AnyAsync(m => m.UserId == user.Id))
+                    {
+                        db.Members.Add(new Member
+                        {
+                            FirstName = "Tester", LastName = i.ToString(),
+                            Email = email, UserId = user.Id
+                        });
+                        await db.SaveChangesAsync();
+                    }
+                }
+            }
         }
 
         // ── Helper: next occurrence of a weekday at a given time ──────

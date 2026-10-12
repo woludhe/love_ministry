@@ -229,6 +229,163 @@ namespace ChurchMinistry.Services
         }
     }
 
+    // ─── LiveKit (meeting media server) ───
+    public interface ILiveKitService
+    {
+        string Url { get; }
+        // LiveKit room name for a meeting. The optional prefix keeps a development copy
+        // of the site out of live rooms when both share one LiveKit server.
+        string RoomName(string roomCode);
+        // Access token for joining a LiveKit room. A hidden participant (a Live page
+        // viewer) receives media but isn't listed to anyone else in the room.
+        string CreateJoinToken(string roomName, string identity, string displayName,
+            string? metadata, bool canPublish, TimeSpan? validFor = null, bool hidden = false);
+
+        // Server-side controls. These are best effort: a failure is logged and
+        // never stops the meeting hub, which still tells the browsers itself.
+        Task RemoveParticipantAsync(string roomName, string identity);
+        Task MuteMicrophoneAsync(string roomName, string identity);
+        // Disconnects everyone still in the room
+        Task DeleteRoomAsync(string roomName);
+    }
+
+    public class LiveKitService : ILiveKitService
+    {
+        private readonly IConfiguration _config;
+        private readonly IHttpClientFactory _http;
+        private readonly ILogger<LiveKitService> _log;
+        public LiveKitService(IConfiguration config, IHttpClientFactory http, ILogger<LiveKitService> log)
+        {
+            _config = config; _http = http; _log = log;
+        }
+
+        public string Url => _config["LiveKit:Url"]!;
+
+        public string RoomName(string roomCode) => (_config["LiveKit:RoomPrefix"] ?? "") + roomCode;
+
+        public string CreateJoinToken(string roomName, string identity, string displayName,
+            string? metadata, bool canPublish, TimeSpan? validFor = null, bool hidden = false)
+        {
+            var now = DateTimeOffset.UtcNow;
+            var claims = new Dictionary<string, object?>
+            {
+                ["iss"]  = _config["LiveKit:ApiKey"],
+                ["sub"]  = identity,
+                ["name"] = displayName,
+                ["nbf"]  = now.ToUnixTimeSeconds(),
+                // Only needed to join: LiveKit sends connected clients a renewed token every
+                // 5 minutes, so a short life limits what a leaked or old token can do
+                ["exp"]  = now.Add(validFor ?? TimeSpan.FromMinutes(5)).ToUnixTimeSeconds(),
+                ["metadata"] = metadata,
+                ["video"] = new Dictionary<string, object>
+                {
+                    ["room"]           = roomName,
+                    ["roomJoin"]       = true,
+                    ["canSubscribe"]   = true,
+                    ["canPublish"]     = canPublish,
+                    ["canPublishData"] = canPublish,
+                    ["hidden"]         = hidden
+                }
+            };
+            return SignJwt(claims);
+        }
+
+        // A removed client may reconnect on its own with the latest token the server gave
+        // it. So permissions are revoked first: that cuts their audio/video straight away
+        // and the server sends the client a refreshed token with no permissions, so a
+        // reconnect gets them nothing. The pause lets that token reach them before removal.
+        public async Task RemoveParticipantAsync(string roomName, string identity)
+        {
+            var revoked = await CallAsync(roomName, "UpdateParticipant", new
+            {
+                room = roomName, identity,
+                permission = new { can_subscribe = false, can_publish = false, can_publish_data = false }
+            });
+            if (revoked == null) return;   // not in the media room (or the server is unreachable)
+            await Task.Delay(1000);
+            await CallAsync(roomName, "RemoveParticipant", new { room = roomName, identity });
+        }
+
+        public async Task MuteMicrophoneAsync(string roomName, string identity)
+        {
+            var info = await CallAsync(roomName, "GetParticipant", new { room = roomName, identity });
+            var mics = (info?["tracks"] as JArray ?? new JArray())
+                .Where(t => (string?)t["source"] == "MICROPHONE" && (bool?)t["muted"] != true);
+            foreach (var t in mics)
+                await CallAsync(roomName, "MutePublishedTrack",
+                    new { room = roomName, identity, track_sid = (string?)t["sid"], muted = true });
+        }
+
+        // As with removal, everyone's permissions are revoked first: a client that reconnects
+        // after the room closes lands in a new, empty room with nothing to send or receive.
+        public async Task DeleteRoomAsync(string roomName)
+        {
+            var list = await CallAsync(roomName, "ListParticipants", new { room = roomName });
+            var identities = (list?["participants"] as JArray ?? new JArray())
+                .Select(p => (string?)p["identity"]).Where(i => i != null).ToList();
+            await Task.WhenAll(identities.Select(identity => CallAsync(roomName, "UpdateParticipant", new
+            {
+                room = roomName, identity,
+                permission = new { can_subscribe = false, can_publish = false, can_publish_data = false }
+            })));
+            if (identities.Count > 0) await Task.Delay(1000);
+            await CallAsync(roomName, "DeleteRoom", new { room = roomName });
+        }
+
+        // LiveKit's server API (Twirp over HTTP, JSON bodies), authorised by a short-lived
+        // admin token for this one room. "Not found" (room or person already gone) is normal.
+        private async Task<JObject?> CallAsync(string roomName, string method, object body)
+        {
+            try
+            {
+                var now = DateTimeOffset.UtcNow;
+                var token = SignJwt(new Dictionary<string, object?>
+                {
+                    ["iss"] = _config["LiveKit:ApiKey"],
+                    ["nbf"] = now.ToUnixTimeSeconds(),
+                    ["exp"] = now.AddMinutes(5).ToUnixTimeSeconds(),
+                    ["video"] = new Dictionary<string, object>
+                    {
+                        ["room"] = roomName, ["roomAdmin"] = true, ["roomCreate"] = true
+                    }
+                });
+                var baseUrl = System.Text.RegularExpressions.Regex.Replace(Url.TrimEnd('/'), "^ws", "http");
+                using var req = new HttpRequestMessage(HttpMethod.Post, $"{baseUrl}/twirp/livekit.RoomService/{method}")
+                {
+                    Content = new StringContent(JsonConvert.SerializeObject(body), Encoding.UTF8, "application/json")
+                };
+                req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+
+                var client = _http.CreateClient();
+                client.Timeout = TimeSpan.FromSeconds(10);
+                using var res = await client.SendAsync(req);
+                var text = await res.Content.ReadAsStringAsync();
+                if (res.IsSuccessStatusCode) return JObject.Parse(text);
+                if (res.StatusCode != System.Net.HttpStatusCode.NotFound)
+                    _log.LogWarning("LiveKit {Method} for room {Room} failed: {Status} {Body}",
+                        method, roomName, (int)res.StatusCode, text);
+            }
+            catch (Exception ex)
+            {
+                _log.LogWarning(ex, "LiveKit {Method} for room {Room} failed", method, roomName);
+            }
+            return null;
+        }
+
+        // LiveKit tokens are HS256 JWTs signed with the API secret
+        private string SignJwt(Dictionary<string, object?> claims)
+        {
+            static string B64(byte[] b) => Microsoft.AspNetCore.WebUtilities.Base64UrlTextEncoder.Encode(b);
+            var header  = B64(Encoding.UTF8.GetBytes("{\"alg\":\"HS256\",\"typ\":\"JWT\"}"));
+            var payload = B64(Encoding.UTF8.GetBytes(JsonConvert.SerializeObject(claims,
+                new JsonSerializerSettings { NullValueHandling = NullValueHandling.Ignore })));
+            using var hmac = new System.Security.Cryptography.HMACSHA256(
+                Encoding.UTF8.GetBytes(_config["LiveKit:ApiSecret"]!));
+            var sig = B64(hmac.ComputeHash(Encoding.UTF8.GetBytes($"{header}.{payload}")));
+            return $"{header}.{payload}.{sig}";
+        }
+    }
+
     // ─── Attendance Service ───
     public interface IAttendanceService
     {

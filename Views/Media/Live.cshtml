@@ -634,7 +634,10 @@
     </style>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/microsoft-signalr/8.0.0/signalr.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/livekit-client@2.22.3/dist/livekit-client.umd.js"
+            integrity="sha384-G/xxtkVytOx/ia9Q8MXxM+V0ohsaY1fZAgVP3iSGTPz4wJ0s3+ulJNKXh/gnzEDZ" crossorigin="anonymous"></script>
     <script>
+        const LK = LivekitClient;
         const D = document.getElementById('liveData').dataset;
         const SERMON_ID = parseInt(D.sermonId);
         const ROOM_CODE = D.roomCode;
@@ -643,13 +646,12 @@
         const DISPLAY = D.displayName;
         const TRACK_ATTENDANCE = D.trackAttendance === 'true';
 
-        const iceConfig = {
-            iceServers: [
-                { urls: 'stun:stun.l.google.com:19302' },
-                { urls: 'stun:stun1.l.google.com:19302' }
-            ]
-        };
-        const peers = {}, peerInfo = {}, viewerPeers = {};
+        const peerInfo = {};
+        // The meeting's audio/video comes from the LiveKit media server; this page only
+        // watches (its token can't publish and keeps it hidden from the meeting)
+        const mediaRoom = IS_ONLINE ? new LK.Room({ adaptiveStream: true, singlePeerConnection: false }) : null;
+        // Read-only hooks for automated tests
+        window.__live = { mediaRoom, peerInfo };
 
         // LiveSession hub — overlays, giving, chat (everyone)
         const liveConn = new signalR.HubConnectionBuilder()
@@ -720,25 +722,35 @@
         // Show reactions from other viewers floating up on screen
         liveConn.on('LiveReaction', ({ emoji }) => showFloatingReaction(emoji));
 
-        // Meeting hub events — receive-only video
+        // Meeting hub events — who is in the meeting (the media comes from LiveKit)
         if (guestConn) {
-            guestConn.on('RoomJoined', ({ participants }) => {
+            guestConn.on('RoomJoined', async ({ participants, spotlightId: spot, media }) => {
                 const hostPresent = participants.some(p => p.isHost || p.isAdminPastor);
                 if (hostPresent) hostArrived();
+                // After a reconnect, drop anyone who left while we were away
+                for (const cid of Object.keys(peerInfo))
+                    if (!participants.some(p => p.connectionId === cid)) { document.getElementById(`tile-${cid}`)?.remove(); delete peerInfo[cid]; }
                 for (const p of participants)
                     peerInfo[p.connectionId] = {
                         name: p.displayName, photo: p.photo,
                         isHost: p.isHost ?? false, isAdminPastor: p.isAdminPastor ?? false
                     };
+                if (spot) spotlightId = spot;
+                if (media && mediaRoom.state === 'disconnected') await connectMedia(media);
+                mediaRoom.remoteParticipants.forEach(p => { ensureTile(p); showRemoteVideo(p.identity); });
+                reflow();
             });
             guestConn.on('PeerJoined', ({ connectionId, displayName, photo, isHost, isAdminPastor }) => {
                 peerInfo[connectionId] = { name: displayName, photo, isHost: isHost ?? false, isAdminPastor: isAdminPastor ?? false };
                 if (isHost || isAdminPastor) hostArrived();
+                // Their media may have arrived before this announcement
+                const p = mediaRoom.remoteParticipants.get(connectionId);
+                if (p) { ensureTile(p); showRemoteVideo(connectionId); }
             });
             guestConn.on('PeerLeft', (cid, wasHost) => {
                 const peerWasHost = wasHost || peerInfo[cid]?.isHost || peerInfo[cid]?.isAdminPastor;
                 document.getElementById(`tile-${cid}`)?.remove();
-                closePeer(cid); delete peerInfo[cid]; reflow();
+                delete peerInfo[cid]; reflow();
                 if (peerWasHost && !Object.values(peerInfo).some(p => p.isHost || p.isAdminPastor)) {
                     const soon = document.getElementById('startingSoonOverlay');
                     if (soon) { soon.style.display = 'flex'; soon.style.opacity = '1'; }
@@ -746,22 +758,7 @@
                     if (prompt) prompt.style.display = 'none';
                 }
             });
-            guestConn.on('ReceiveOffer', async (from, offer) => {
-                const pc = getOrCreateGuestPeer(from);
-                await pc.setRemoteDescription(new RTCSessionDescription(offer));
-                const ans = await pc.createAnswer();
-                await pc.setLocalDescription(ans);
-                await guestConn.invoke('SendAnswer', from, ans);
-                document.getElementById('guestPrompt').style.display = 'none';
-            });
-            guestConn.on('ReceiveAnswer', async (from, ans) => {
-                const pc = peers[from] || viewerPeers[from];
-                if (pc) await pc.setRemoteDescription(new RTCSessionDescription(ans));
-            });
-            guestConn.on('ReceiveIceCandidate', async (from, c) => {
-                const pc = peers[from] || viewerPeers[from];
-                try { if (pc && c) await pc.addIceCandidate(new RTCIceCandidate(c)); } catch { }
-            });
+            guestConn.on('MeetingEnded', () => showMeetingEnded());
             guestConn.on('SpotlightChanged', cid => {
                 spotlightId = cid || null;
                 reflow();
@@ -770,43 +767,78 @@
             });
         }
 
-        // WebRTC receive-only
-        function getOrCreateGuestPeer(cid) {
-            if (peers[cid]) return peers[cid];
-            const pc = new RTCPeerConnection(iceConfig);
-            peers[cid] = pc;
-            const remoteStream = new MediaStream();
-            pc.onicecandidate = e => { if (e.candidate) guestConn.invoke('SendIceCandidate', cid, e.candidate); };
-            pc.ontrack = e => {
-                remoteStream.addTrack(e.track);
+        // LiveKit media (watch only)
+        async function connectMedia({ url, token }) {
+            try {
+                await mediaRoom.connect(url, token);
+                if (!mediaRoom.canPlaybackAudio) showAutoplayUnblock();
+            } catch (e) { console.error('Could not connect to the meeting audio/video', e); }
+        }
+        if (mediaRoom) {
+            const audioBox = document.createElement('div');
+            audioBox.style.display = 'none';
+            document.body.appendChild(audioBox);
+            mediaRoom
+                .on(LK.RoomEvent.ParticipantConnected, p => ensureTile(p))
+                .on(LK.RoomEvent.ParticipantDisconnected, p => { document.getElementById(`tile-${p.identity}`)?.remove(); reflow(); })
+                .on(LK.RoomEvent.TrackSubscribed, (track, pub, p) => {
+                    if (track.kind === 'audio') audioBox.appendChild(track.attach());
+                    else showRemoteVideo(p.identity);
+                })
+                .on(LK.RoomEvent.TrackUnsubscribed, (track, pub, p) => {
+                    if (track.kind === 'audio') track.detach().forEach(el => el.remove());
+                    else showRemoteVideo(p.identity);
+                })
+                .on(LK.RoomEvent.TrackMuted, (pub, p) => showRemoteVideo(p.identity))
+                .on(LK.RoomEvent.TrackUnmuted, (pub, p) => showRemoteVideo(p.identity))
+                .on(LK.RoomEvent.AudioPlaybackStatusChanged, () => { if (!mediaRoom.canPlaybackAudio) showAutoplayUnblock(); })
+                // The media room was closed (the hub's MeetingEnded normally arrives first)
+                .on(LK.RoomEvent.Disconnected, reason => {
+                    if (reason === LK.DisconnectReason.ROOM_DELETED) showMeetingEnded();
+                });
+        }
+        // The host ended the meeting: stop watching and say so on the player
+        function showMeetingEnded() {
+            mediaRoom?.disconnect();
+            document.querySelectorAll('#guestVideoGrid .video-tile').forEach(t => t.remove());
+            const soon = document.getElementById('startingSoonOverlay');
+            if (!soon) return;
+            soon.querySelector('h2').textContent = 'This meeting has ended';
+            soon.querySelector('p').textContent = 'Thank you for watching. God bless you!';
+            soon.querySelector('.starting-soon-dots')?.remove();
+            soon.style.display = 'flex'; soon.style.opacity = '1';
+        }
 
-                // Create tile on FIRST track arrival — audio may arrive before video
-                let tile = document.getElementById(`tile-${cid}`);
-                if (!tile) tile = addRemoteTile(cid, peerInfo[cid]?.name, peerInfo[cid]?.photo);
-
-                const vid = tile.querySelector('video');
-                if (!vid) return;
-
-                // Always attach stream and attempt play — even for audio-first arrival.
-                // vid.play() is a no-op if already playing, safe to call on every track.
-                vid.srcObject = remoteStream;
-                vid.play().catch(() => { });
-
-                if (e.track.kind === 'video') {
-                    checkAutoplayBlocked(vid);
-                    tile.classList.remove('video-off');
-                    tile.classList.add('video-on');
-                    reflow();
-                }
-            };
-            return pc;
+        // Tiles are for people the meeting hub lists (peerInfo); LiveKit only supplies media.
+        // A media participant the hub hasn't announced, or has said left, gets no tile.
+        function ensureTile(p) {
+            if (!peerInfo[p.identity] || document.getElementById(`tile-${p.identity}`)) return;
+            addRemoteTile(p.identity, peerInfo[p.identity].name, peerInfo[p.identity].photo);
+        }
+        // Screen share if they have one, otherwise camera, otherwise their avatar
+        function showRemoteVideo(cid) {
+            const tile = document.getElementById(`tile-${cid}`);
+            if (!tile) return;
+            const p = mediaRoom.remoteParticipants.get(cid);
+            const pub = [LK.Track.Source.ScreenShare, LK.Track.Source.Camera]
+                .map(s => p?.getTrackPublication(s)).find(x => x?.track && !x.isMuted);
+            const track = pub?.track ?? null, vid = tile.querySelector('video');
+            if (tile._track !== track) {
+                tile._track?.detach(vid);
+                track?.attach(vid);
+                tile._track = track;
+            }
+            tile.classList.toggle('video-on', !!track); tile.classList.toggle('video-off', !track);
+            // (the sign-in prompt only exists for guests)
+            const prompt = document.getElementById('guestPrompt');
+            if (track && prompt) prompt.style.display = 'none';
         }
         function addRemoteTile(cid, name, photo) {
             const grid = document.getElementById('guestVideoGrid');
             const tile = document.createElement('div');
             tile.className = 'video-tile video-off'; tile.id = `tile-${cid}`;
             tile.innerHTML = `
-                <video autoplay playsinline style="width:100%;height:100%;object-fit:cover;display:block"></video>
+                <video autoplay muted playsinline style="width:100%;height:100%;object-fit:cover;display:block"></video>
                 <div class="tile-avatar">
                     <img src="${escHtml(photo ?? '/images/avatar-default.png')}" alt="${escHtml(name ?? 'Participant')}"/>
                     <span>${escHtml(name ?? 'Participant')}</span>
@@ -814,7 +846,6 @@
                 <div class="tile-name">${escHtml(name ?? 'Participant')}</div>`;
             grid?.appendChild(tile); reflow(); return tile;
         }
-        function closePeer(cid) { peers[cid]?.close(); delete peers[cid]; }
 
         // Reactions
         function toggleReactions() { document.getElementById('reactionsBar')?.classList.toggle('visible'); }
@@ -849,17 +880,15 @@
         // Autoplay
         function dismissGuestPrompt() { document.getElementById('guestPrompt').style.display = 'none'; playAllVideos(); }
         function unblockAutoplay() { document.getElementById('autoplayUnblock').style.display = 'none'; playAllVideos(); }
+        // Called from a click, which lets the browser start the meeting sound
         function playAllVideos() {
             document.getElementById('guestVideoGrid')?.querySelectorAll('video')
                 .forEach(v => { if (v.paused) v.play().catch(() => { }); });
+            mediaRoom?.startAudio().catch(() => { });
         }
-        function checkAutoplayBlocked(vid) {
-            setTimeout(() => {
-                if (vid.paused) {
-                    const o = document.getElementById('autoplayUnblock');
-                    if (o) { o.style.display = 'flex'; o.style.alignItems = 'center'; o.style.justifyContent = 'center'; }
-                }
-            }, 800);
+        function showAutoplayUnblock() {
+            const o = document.getElementById('autoplayUnblock');
+            if (o) { o.style.display = 'flex'; o.style.alignItems = 'center'; o.style.justifyContent = 'center'; }
         }
 
         // Reflow grid
@@ -888,7 +917,13 @@
                 else if (n === 2) { grid.style.gridTemplateColumns = '1fr 1fr'; grid.style.gridTemplateRows = '1fr'; }
                 else if (n === 3) { grid.style.gridTemplateColumns = 'repeat(3,1fr)'; grid.style.gridTemplateRows = '1fr'; }
                 else if (n <= 4) { grid.style.gridTemplateColumns = '1fr 1fr'; grid.style.gridTemplateRows = '1fr 1fr'; }
-                else { grid.style.gridTemplateColumns = 'repeat(auto-fill,minmax(200px,1fr))'; grid.style.gridTemplateRows = ''; }
+                else {
+                    // 5+ people: an even grid that fits the player, so no tile is cut off
+                    // (the stylesheet's !important rules need an !important inline style)
+                    const cols = Math.ceil(Math.sqrt(n));
+                    grid.style.setProperty('grid-template-columns', `repeat(${cols},minmax(0,1fr))`, 'important');
+                    grid.style.setProperty('grid-template-rows', `repeat(${Math.ceil(n / cols)},minmax(0,1fr))`, 'important');
+                }
                 grid.style.alignContent = 'stretch';
                 document.getElementById('spotlightLabel').style.display = 'none';
             }
@@ -1122,24 +1157,18 @@
             await loadPaymentMethods();
 
             if (IS_ONLINE && guestConn) {
+                const joinAsViewer = () => guestConn.invoke('JoinAsViewer', ROOM_CODE, IS_LOGGED ? DISPLAY : 'Guest')
+                    .catch(err => console.error('JoinAsViewer failed:', err));
+                // A reconnect gets a new connection id — join again so updates and the viewer
+                // count continue (the media connection is separate and carries on)
+                guestConn.onreconnected(joinAsViewer);
                 await guestConn.start();
-                const name = IS_LOGGED ? DISPLAY : 'Guest';
-                try {
-                    await guestConn.invoke('JoinAsViewer', ROOM_CODE, name);
-                    console.log('JoinAsViewer ok, connId:', guestConn.connectionId);
-                } catch (err) { console.error('JoinAsViewer failed:', err); }
-
-                // Retry after 6s if no video yet
-                setTimeout(async () => {
-                    const grid = document.getElementById('guestVideoGrid');
-                    const hasVideo = grid && Array.from(grid.querySelectorAll('.video-on')).length > 0;
-                    if (!hasVideo && guestConn.state === 'Connected')
-                        guestConn.invoke('RequestVideoFromParticipants', ROOM_CODE).catch(() => { });
-                }, 6000);
+                await joinAsViewer();
             }
         })();
 
         window.addEventListener('beforeunload', () => {
+            mediaRoom?.disconnect();
             if (IS_ONLINE && guestConn) guestConn.invoke('LeaveAsViewer', ROOM_CODE).catch(() => { });
         });
     </script>

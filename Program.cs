@@ -35,7 +35,12 @@ builder.Services.ConfigureApplicationCookie(opt =>
 
 // ── MVC + SignalR + Razor runtime compilation ──
 builder.Services.AddControllersWithViews().AddRazorRuntimeCompilation();
-builder.Services.AddSignalR();
+builder.Services.AddSignalR(o =>
+{
+    // Matches the 60 s serverTimeoutInMilliseconds set in Views/Meeting/Room.cshtml,
+    // so a phone on a weak connection isn't dropped from the meeting too quickly
+    o.ClientTimeoutInterval = TimeSpan.FromSeconds(60);
+});
 
 // ── Custom Services ──
 builder.Services.AddScoped<IEmailService, EmailService>();
@@ -44,6 +49,7 @@ builder.Services.AddScoped<IPaymentService, PaymentService>();
 builder.Services.AddScoped<ISmsService, SmsService>();
 builder.Services.AddScoped<IAttendanceService, AttendanceService>();
 builder.Services.AddScoped<INotificationService, NotificationService>();
+builder.Services.AddScoped<ILiveKitService, LiveKitService>();
 builder.Services.AddHttpClient();
 
 // ── Session ──
@@ -102,6 +108,11 @@ using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
     db.Database.Migrate();
+
+    // Meeting connections don't survive a restart — close out anyone still marked present
+    await db.MeetingParticipants
+        .Where(p => p.LeftAt == null)
+        .ExecuteUpdateAsync(s => s.SetProperty(p => p.LeftAt, DateTime.UtcNow));
 
     await DbInitializer.SeedAsync(scope.ServiceProvider);
 

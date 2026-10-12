@@ -68,13 +68,16 @@
     .meet-main   { flex: 1; display: flex; flex-direction: column; overflow: hidden; position: relative; }
 
     /* ── Video grid ── */
-    .video-grid  { flex: 1; display: grid; gap: 6px; padding: 10px; overflow: hidden;
+    .video-grid  { flex: 1; min-height: 0; display: grid; gap: 6px; padding: 10px; overflow: hidden;
                    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); align-content: center; }
     .video-grid.solo   { grid-template-columns: 1fr; }
     .video-grid.duo    { grid-template-columns: 1fr 1fr; }
     .video-grid.trio   { grid-template-columns: repeat(3, 1fr); }
     .video-grid.quad   { grid-template-columns: repeat(2, 1fr); grid-template-rows: repeat(2, 1fr); }
-    .video-grid.many   { grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); }
+    /* 5+ tiles: columns/rows set by reflow() so every tile fits without clipping */
+    .video-grid.many   { grid-template-columns: repeat(var(--cols, 3), minmax(0, 1fr));
+                         grid-template-rows: repeat(var(--rows, 2), minmax(0, 1fr)); align-content: stretch; }
+    .video-grid.many .video-tile { aspect-ratio: auto; min-height: 0; }
     .video-grid.spotlight-mode { grid-template-columns: 1fr; }
 
     .video-tile  { position: relative; background: var(--card); border-radius: var(--radius);
@@ -249,6 +252,9 @@
       .controls { gap: .4rem; }
       .ctrl-btn { width: 44px; height: 44px; font-size: 1rem; }
       .count-chips { display: none; }
+      .video-grid.many { grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: none;
+                         grid-auto-rows: auto; align-content: start; overflow-y: auto; }
+      .video-grid.many .video-tile { aspect-ratio: 4/3; }
     }
   </style>
 </head>
@@ -395,7 +401,10 @@
      style="display:none"></div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/microsoft-signalr/8.0.0/signalr.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/livekit-client@2.22.3/dist/livekit-client.umd.js"
+        integrity="sha384-G/xxtkVytOx/ia9Q8MXxM+V0ohsaY1fZAgVP3iSGTPz4wJ0s3+ulJNKXh/gnzEDZ" crossorigin="anonymous"></script>
 <script>
+const LK         = LivekitClient;
 const data       = document.getElementById('meetData').dataset;
 const ROOM_CODE  = data.roomCode;
 const DISPLAY    = data.displayName;
@@ -405,30 +414,34 @@ const WAITING_ON = data.waitingRoom === 'true';
 const SERMON_ID  = parseInt(data.sermonId) || 0;
 const TRACK_ATTENDANCE = data.trackAttendance === 'true';
 
-let localStream=null, screenStream=null;
+let micTrack=null, camTrack=null;
 let isMuted=false, isCamOff=false, isHandRaised=false, isScreenSharing=false;
 let sidebarOpen=false, currentTab='people', unreadChat=0;
 let meetingSeconds=0, timerInterval=null;
 let spotlightId=null, spotlightMode=false, myConnId=null;
-const peers={}, peerInfo={};
+const peerInfo={};
 
-const iceConfig = { iceServers:[
-  {urls:'stun:stun.l.google.com:19302'},
-  {urls:'stun:stun1.l.google.com:19302'},
-  {urls:'stun:stun2.l.google.com:19302'}
-]};
+// Audio and video go through the LiveKit media server: everyone sends their camera
+// once and the server forwards it to the others. A participant's LiveKit identity is
+// their meeting-hub connection id, the same id the tiles and host controls use.
+// Separate connections for sending and receiving: with the newer single-connection
+// mode every joiner renegotiates everyone's connection, and during a busy start
+// (10 people arriving) those renegotiations timed out and forced full reconnects.
+const room=new LK.Room({adaptiveStream:true, dynacast:true, singlePeerConnection:false});
 
 const conn = new signalR.HubConnectionBuilder()
   .withUrl('/meetingHub').withAutomaticReconnect().build();
+// A phone on a weak connection can go quiet for a while; allow longer before dropping
+conn.serverTimeoutInMilliseconds=60000;
 
 async function initMedia() {
-  const audioConstraints = { echoCancellation:true, noiseSuppression:true, autoGainControl:true, sampleRate:48000 };
+  const audioOptions = { echoCancellation:true, noiseSuppression:true, autoGainControl:true };
 
   // Check if browser supports getUserMedia at all
   if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
     console.error('getUserMedia not supported — HTTP instead of HTTPS?');
     showPermissionBanner('error', 'Camera/microphone not available. Make sure you are using HTTPS.');
-    localStream = new MediaStream(); isCamOff=true; isMuted=true;
+    isCamOff=true; isMuted=true;
     addLocalTile(); updateMediaButtons(); return;
   }
 
@@ -443,22 +456,25 @@ async function initMedia() {
     }
   } catch {}
 
+  let tracks = [];
   try {
-    localStream = await navigator.mediaDevices.getUserMedia({video:true, audio:audioConstraints});
-    console.log('Media acquired — tracks:', localStream.getTracks().map(t=>t.kind+':'+t.label));
+    tracks = await LK.createLocalTracks({audio:audioOptions, video:{resolution:LK.VideoPresets.h720.resolution}});
+    console.log('Media acquired — tracks:', tracks.map(t=>t.kind+':'+t.mediaStreamTrack.label));
   } catch(err1) {
     console.warn('Video+audio failed:', err1.name, err1.message);
     try {
-      localStream = await navigator.mediaDevices.getUserMedia({video:false, audio:audioConstraints});
+      tracks = await LK.createLocalTracks({audio:audioOptions, video:false});
       isCamOff = true;
-      console.log('Audio-only acquired:', localStream.getAudioTracks().map(t=>t.label));
+      console.log('Audio-only acquired:', tracks.map(t=>t.mediaStreamTrack.label));
     } catch(err2) {
       console.error('All media failed:', err2.name, err2.message);
       showPermissionBanner('blocked',
         `Could not access camera/microphone: ${err2.message}. Check browser permissions and try again.`);
-      localStream = new MediaStream(); isCamOff=true; isMuted=true;
+      isCamOff=true; isMuted=true;
     }
   }
+  micTrack = tracks.find(t=>t.kind==='audio') ?? null;
+  camTrack = tracks.find(t=>t.kind==='video') ?? null;
   addLocalTile(); updateMediaButtons();
 }
 
@@ -488,83 +504,173 @@ function addLocalTile() {
     <div class="tile-name"><i class="fas fa-user"></i> ${escHtml(DISPLAY)} (You)</div>
     <div class="tile-badges" id="localBadges"></div>`;
   grid.appendChild(tile);
-  tile.querySelector('video').srcObject=localStream;
+  showLocalVideo(camTrack);
   if(IS_HOST||IS_ADMIN) attachCtxMenu(tile,'local',DISPLAY);
   reflow();
 }
+// Shows our camera or screen share in our own tile
+function showLocalVideo(track){
+  const v=document.getElementById('localVideo');
+  if(!v||v._track===track) return;
+  v._track?.detach(v);
+  track?.attach(v);
+  v._track=track;
+}
 
 // ── SignalR handlers ──────────────────────────────────────
-conn.on('RoomJoined', async({participants,isInWaitingRoom}) => {
+conn.on('RoomJoined', async({participants,isInWaitingRoom,forceMuted,spotlightId:spot}) => {
   myConnId = conn.connectionId;
   if(isInWaitingRoom){document.getElementById('waitingOverlay').style.display='flex';return;}
-  startTimer();
-  updateViewerCount(participants.length+1);
-  updateMemberCount(participants.length+1);
-  for(const p of participants){
-    if(p.connectionId!==conn.connectionId){
-      peerInfo[p.connectionId]={name:p.displayName,photo:p.photo};
-      await createOffer(p.connectionId);
-    }
-  }
-  renderParticipants(participants);
+  await enterMeeting(participants,forceMuted,spot);
 });
 
-conn.on('Admitted',()=>{document.getElementById('waitingOverlay').style.display='none';startTimer();toast('You have been admitted','success');});
+conn.on('Admitted',async({participants,forceMuted,spotlightId:spot})=>{
+  document.getElementById('waitingOverlay').style.display='none';
+  toast('You have been admitted','success');
+  await enterMeeting(participants,forceMuted,spot);
+});
 
-conn.on('PeerJoined',async({connectionId,displayName,photo})=>{
-  peerInfo[connectionId]={name:displayName,photo};
+// Shared by RoomJoined and Admitted: show the list, apply room state, join the media room
+async function enterMeeting(participants,forceMuted,spot){
+  startTimer();
+  updateViewerCount(participants.length+1);
+  for(const p of participants){
+    peerInfo[p.connectionId]={name:p.displayName,photo:p.photo,isHost:p.isHost,
+      isMuted:p.isMuted,isVideoOff:p.isVideoOff,isHandRaised:p.isHandRaised};
+  }
+  renderParticipants(participants);
+  if(forceMuted&&!isMuted){toggleMic();toast('The host has muted participants — unmute when you want to speak','warn');}
+  if(spot){spotlightId=spot===myConnId?'local':spot;reflow();}
+  await connectMedia();
+}
+
+// The hub only gives a media token to an admitted participant on this connection
+async function connectMedia(){
+  try{
+    const t=await conn.invoke('GetMediaToken',ROOM_CODE);
+    if(!t){
+      console.warn('Media connection failed: the hub refused a media token');
+      toast('Could not join the meeting audio/video — refresh to try again','warn');return;
+    }
+    await room.connect(t.url,t.token);
+    for(const track of [micTrack,camTrack]) if(track) await room.localParticipant.publishTrack(track);
+    room.remoteParticipants.forEach(p=>{ensureTile(p);showRemoteVideo(p.identity);});
+    if(!room.canPlaybackAudio) showSoundUnlock();
+  }catch(e){
+    console.error('Media connection failed',e);
+    toast('Could not connect audio/video — refresh to try again','warn');
+  }
+}
+
+// ── LiveKit events ────────────────────────────────────────
+const audioBox=document.createElement('div');
+audioBox.style.display='none';
+document.body.appendChild(audioBox);
+
+room
+  .on(LK.RoomEvent.ParticipantConnected,p=>ensureTile(p))
+  .on(LK.RoomEvent.ParticipantDisconnected,p=>{document.getElementById(`tile-${p.identity}`)?.remove();reflow();})
+  .on(LK.RoomEvent.TrackSubscribed,(track,pub,p)=>{
+    if(track.kind==='audio') audioBox.appendChild(track.attach());
+    else showRemoteVideo(p.identity);
+  })
+  .on(LK.RoomEvent.TrackUnsubscribed,(track,pub,p)=>{
+    if(track.kind==='audio') track.detach().forEach(el=>el.remove());
+    else showRemoteVideo(p.identity);
+  })
+  .on(LK.RoomEvent.TrackMuted,(pub,p)=>{
+    if(p!==room.localParticipant) showRemoteVideo(p.identity);
+    // Muted by the host through the media server: keep our button in step
+    else if(pub.source===LK.Track.Source.Microphone&&!isMuted) toggleMic();
+  })
+  .on(LK.RoomEvent.TrackUnmuted,(pub,p)=>{if(p!==room.localParticipant)showRemoteVideo(p.identity);})
+  .on(LK.RoomEvent.ActiveSpeakersChanged,speakers=>{
+    const ids=new Set(speakers.map(s=>s===room.localParticipant?'local':s.identity));
+    document.querySelectorAll('.video-tile').forEach(t=>t.classList.toggle('speaking',ids.has(t.id.slice(5))));
+  })
+  .on(LK.RoomEvent.AudioPlaybackStatusChanged,()=>{if(!room.canPlaybackAudio)showSoundUnlock();})
+  // The browser's own "Stop sharing" button ends the share without our button
+  .on(LK.RoomEvent.LocalTrackUnpublished,pub=>{if(pub.source===LK.Track.Source.ScreenShare)screenShareStopped();})
+  .on(LK.RoomEvent.Reconnecting,()=>toast('Audio/video connection lost — reconnecting…','warn'))
+  .on(LK.RoomEvent.Reconnected,()=>toast('Audio/video reconnected','success'))
+  .on(LK.RoomEvent.Disconnected,reason=>{
+    if(reason!==LK.DisconnectReason.CLIENT_INITIATED) console.warn('Media room disconnected:',reason);
+    // The host ended the meeting (the hub normally says so first). A removal isn't
+    // handled here: the hub also removes a connection that is only reconnecting.
+    if(reason===LK.DisconnectReason.ROOM_DELETED){
+      clearInterval(timerInterval);
+      document.getElementById('endedOverlay').style.display='flex';
+    }
+  });
+
+// Who is in the meeting comes from the hub (peerInfo); LiveKit only supplies media.
+// A media participant the hub hasn't announced (or already said has left, e.g. the
+// old connection of someone who rejoined) gets no tile.
+function ensureTile(p){
+  if(!peerInfo[p.identity]||document.getElementById(`tile-${p.identity}`)) return;
+  let photo;
+  try{photo=JSON.parse(p.metadata||'{}').photo;}catch{}
+  addRemoteTile(p.identity,peerInfo[p.identity]?.name??p.name??'Participant',
+    peerInfo[p.identity]?.photo??photo??'/images/avatar-default.png');
+}
+
+conn.on('PeerJoined',async({connectionId,displayName,photo,isHost,isMuted:m,isVideoOff})=>{
+  peerInfo[connectionId]={...peerInfo[connectionId],name:displayName,photo,isHost,isMuted:m,isVideoOff};
   toast(`${displayName} joined`);
-  addParticipantItem(connectionId,displayName,photo,false);
-  updateMemberCount(document.querySelectorAll('.participant-item').length+1);
+  addParticipantItem(connectionId,displayName,photo,isHost);
+  updatePeopleCount();
+  // Their media may have arrived before this announcement
+  const p=room.remoteParticipants.get(connectionId);
+  if(p){ensureTile(p);showRemoteVideo(connectionId);}
 });
 
 conn.on('PeerLeft',(cid)=>{
-  const name=peerInfo[cid]?.name??'Someone';
-  toast(`${name} left`);
-  closePeer(cid);
+  if(cid===myConnId) return;
+  const name=peerInfo[cid]?.name;
+  if(name) toast(`${name} left`);
+  removePeer(cid);
+});
+
+// Removes everything we hold for a remote participant
+function removePeer(cid){
   document.getElementById(`tile-${cid}`)?.remove();
   document.getElementById(`person-${cid}`)?.remove();
   delete peerInfo[cid];
-  if(spotlightId===cid) clearSpotlight(); else reflow();
+  // The server clears the shared spotlight; only reset our view here
+  if(spotlightId===cid) spotlightId=null;
+  reflow();
   updatePeopleCount();
-  updateMemberCount(document.querySelectorAll('.participant-item').length+1);
-});
+}
 
 conn.on('ViewerCountUpdated', count => updateViewerCount(count));
 
-conn.on('ReceiveOffer',async(from,offer)=>{
-  const pc=getOrCreatePeer(from);
-  await pc.setRemoteDescription(new RTCSessionDescription(offer));
-  const ans=await pc.createAnswer();
-  await pc.setLocalDescription(ans);
-  await conn.invoke('SendAnswer',from,ans);
+conn.on('ParticipantMuted',(cid,m)=>{
+  if(peerInfo[cid]) peerInfo[cid].isMuted=m;
+  if(m) addBadge(cid,'mute','🔇'); else document.getElementById(`badge-mute-${cid}`)?.remove();
 });
-conn.on('ReceiveAnswer',async(from,ans)=>{
-  const pc = peers[from] || viewerPeers[from];
-  if(pc) await pc.setRemoteDescription(new RTCSessionDescription(ans));
+conn.on('ParticipantVideoToggled',(cid,off)=>{
+  if(peerInfo[cid]) peerInfo[cid].isVideoOff=off;
+  applyVideoState(cid);
 });
-conn.on('ReceiveIceCandidate',async(from,c)=>{
-  const pc = peers[from] || viewerPeers[from];
-  if(pc&&c) try{await pc.addIceCandidate(new RTCIceCandidate(c));}catch{}
+conn.on('HandRaised',(cid,raised,name)=>{
+  if(peerInfo[cid]) peerInfo[cid].isHandRaised=raised;
+  if(raised){toast(`✋ ${name} raised their hand`);addBadge(cid,'hand','✋');}else document.getElementById(`badge-hand-${cid}`)?.remove();
 });
-conn.on('ParticipantMuted',(cid,m)=>{ if(m&&!document.getElementById(`badge-mute-${cid}`)) addBadge(cid,'mute','🔇'); else document.getElementById(`badge-mute-${cid}`)?.remove(); });
-conn.on('ParticipantVideoToggled',(cid,off)=>{ const t=document.getElementById(`tile-${cid}`); if(t){t.classList.toggle('video-off',off);t.classList.toggle('video-on',!off);} });
-conn.on('HandRaised',(cid,raised,name)=>{ if(raised){toast(`✋ ${name} raised their hand`);addBadge(cid,'hand','✋');}else document.getElementById(`badge-hand-${cid}`)?.remove(); });
-conn.on('ForceMuted',()=>{if(!isMuted)toggleMic();toast('Host muted everyone','warn');});
+conn.on('ForceMuted',()=>{if(!isMuted)toggleMic();toast('The host muted you','warn');});
 conn.on('ReceiveMessage',msg=>appendChatMessage(msg));
 conn.on('Reaction',(cid,emoji)=>showFloatingReaction(emoji));
 conn.on('ScreenShareStarted',cid=>{document.getElementById(`tile-${cid}`)?.classList.add('screenshare');toast(`${peerInfo[cid]?.name??'Someone'} started screen sharing`);});
 conn.on('ScreenShareStopped',cid=>document.getElementById(`tile-${cid}`)?.classList.remove('screenshare'));
 conn.on('SystemMessage',msg=>appendSystemMessage(msg));
 conn.on('WaitingRoomRequest',({connectionId,displayName,participantId})=>{addWaitingItem(connectionId,displayName,participantId);toast(`✋ ${displayName} is waiting`);});
-conn.on('MeetingEnded',()=>{clearInterval(timerInterval);document.getElementById('endedOverlay').style.display='flex';});
-conn.on('Removed',()=>{clearInterval(timerInterval);document.getElementById('endedOverlay').style.display='flex';});
+conn.on('MeetingEnded',()=>{clearInterval(timerInterval);room.disconnect();document.getElementById('endedOverlay').style.display='flex';});
+conn.on('Removed',()=>{clearInterval(timerInterval);room.disconnect();document.getElementById('endedOverlay').style.display='flex';});
 
 // Spotlight broadcast from admin
 conn.on('SpotlightChanged',cid=>{
   if(!cid){
+    if(spotlightId) toast('Spotlight cleared');
     spotlightId=null;
-    toast('Spotlight cleared');
   } else {
     // If the spotlighted ID is our own connection, map to 'local'
     // so getElementById('tile-local') resolves correctly
@@ -576,129 +682,47 @@ conn.on('SpotlightChanged',cid=>{
   reflow();
 });
 
-// Viewers joined the Live page — send them our video stream
-// Use a separate viewerPeers map so viewer connections don't
-// conflict with participant-to-participant peer connections
-const viewerPeers = {};
-
-conn.on('NewViewerJoined', async ({viewerConnectionId, displayName}) => {
-  if(viewerPeers[viewerConnectionId]) return;
-
-  // If localStream isn't ready yet, retry after stream is initialised
-  if (!localStream || localStream.getTracks().length === 0) {
-    console.warn('NewViewerJoined: localStream not ready, retrying in 1.5s for', viewerConnectionId);
-    setTimeout(() => handleNewViewer(viewerConnectionId, displayName), 1500);
-    return;
-  }
-  await handleNewViewer(viewerConnectionId, displayName);
-});
-
-async function handleNewViewer(viewerConnectionId, displayName) {
-  if(viewerPeers[viewerConnectionId]) return;
-
-  const pc = new RTCPeerConnection(iceConfig);
-  viewerPeers[viewerConnectionId] = pc;
-
-  const audioTracks = localStream ? localStream.getAudioTracks() : [];
-  const videoTracks = localStream ? localStream.getVideoTracks() : [];
-
-  // Log full track state for diagnosis
-  console.log('handleNewViewer for', displayName);
-  audioTracks.forEach(t => console.log('  audio:', t.label, 'enabled:', t.enabled,
-    'muted:', t.muted, 'readyState:', t.readyState));
-  videoTracks.forEach(t => console.log('  video:', t.label, 'enabled:', t.enabled,
-    'readyState:', t.readyState));
-
-  // Only add live tracks
-  audioTracks.forEach(t => { if(t.readyState === 'live') pc.addTrack(t, localStream); });
-  videoTracks.forEach(t => { if(t.readyState === 'live') pc.addTrack(t, localStream); });
-
-  // If no live audio track found, request mic separately as fallback
-  if(audioTracks.filter(t => t.readyState === 'live').length === 0) {
-    console.warn('No live audio track — requesting mic separately');
-    try {
-      const audioStream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation:true, noiseSuppression:true, autoGainControl:true }, video: false });
-      const freshAudio = audioStream.getAudioTracks()[0];
-      if(freshAudio) {
-        localStream.addTrack(freshAudio);
-        pc.addTrack(freshAudio, localStream);
-        console.log('Fresh audio track added:', freshAudio.label);
-      }
-    } catch(e) {
-      console.error('Could not get fresh audio track:', e);
-    }
-  }
-
-  pc.onicecandidate = e => {
-    if(e.candidate) conn.invoke('SendIceCandidate', viewerConnectionId, e.candidate);
-  };
-
-  pc.onconnectionstatechange = () => {
-    console.log('Viewer peer', viewerConnectionId, 'state:', pc.connectionState);
-    if(pc.connectionState === 'disconnected' || pc.connectionState === 'failed') {
-      pc.close(); delete viewerPeers[viewerConnectionId];
-    }
-  };
-
-  try {
-    // Force audio in the offer even if host is currently muted.
-    // Muting disables the track (enabled=false) but the track still exists
-    // and must be negotiated so the viewer receives audio when host unmutes.
-    const offer = await pc.createOffer({
-      offerToReceiveAudio: false,   // we SEND, not receive
-      offerToReceiveVideo: false,
-      voiceActivityDetection: false // don't let VAD suppress audio m-line
-    });
-    await pc.setLocalDescription(offer);
-    await conn.invoke('SendOffer', viewerConnectionId, offer);
-    const audioLines = offer.sdp.split('\n').filter(l => l.startsWith('m=audio'));
-    console.log('Offer sent to viewer:', displayName,
-      '| audio m-lines:', audioLines.length,
-      '| snippet:', audioLines[0] || 'NONE - AUDIO MISSING FROM SDP');
-  } catch(e) {
-    console.error('Failed to create offer for viewer:', e);
-  }
-}
-
-// ── WebRTC ────────────────────────────────────────────────
-async function createOffer(cid){
-  const pc=getOrCreatePeer(cid);
-  const offer=await pc.createOffer();
-  await pc.setLocalDescription(offer);
-  await conn.invoke('SendOffer',cid,offer);
-}
-function getOrCreatePeer(cid){
-  if(peers[cid]) return peers[cid];
-  const pc=new RTCPeerConnection(iceConfig);
-  peers[cid]=pc;
-  localStream.getTracks().forEach(t=>pc.addTrack(t,localStream));
-  pc.onicecandidate=e=>{if(e.candidate) conn.invoke('SendIceCandidate',cid,e.candidate);};
-  pc.ontrack=e=>{
-    let tile=document.getElementById(`tile-${cid}`);
-    if(!tile) tile=addRemoteTile(cid,peerInfo[cid]?.name??'Participant',peerInfo[cid]?.photo);
-    const vid=tile.querySelector('video');
-    if(vid&&e.streams[0]){vid.srcObject=e.streams[0];tile.classList.remove('video-off');tile.classList.add('video-on');}
-    reflow();
-  };
-  pc.oniceconnectionstatechange=()=>{
-    if(pc.iceConnectionState==='disconnected'||pc.iceConnectionState==='failed'){
-      document.getElementById(`tile-${cid}`)?.remove();closePeer(cid);reflow();
-    }
-  };
-  return pc;
-}
-function closePeer(cid){peers[cid]?.close();delete peers[cid];}
+// ── Video tiles ───────────────────────────────────────────
 function addRemoteTile(cid,name,photo='/images/avatar-default.png'){
   const grid=document.getElementById('videoGrid');
   const tile=document.createElement('div');
-  tile.className='video-tile video-off'; tile.id=`tile-${cid}`;
-  tile.innerHTML=`<video autoplay playsinline id="vid-${cid}"></video>
+  tile.className='video-tile video-off'; tile.id=`tile-${cid}`; tile.dataset.cid=cid;
+  tile.innerHTML=`<video autoplay muted playsinline id="vid-${cid}"></video>
     <div class="tile-avatar"><img src="${escHtml(photo)}" alt="${escHtml(name)}"/><span>${escHtml(name)}</span></div>
     <div class="tile-name">${escHtml(name)}</div>
     <div class="tile-badges" id="badges-${cid}"></div>`;
   grid.appendChild(tile);
   if(IS_HOST||IS_ADMIN) attachCtxMenu(tile,cid,name);
+  // Show state that was set before this tile existed (e.g. muted before we joined)
+  if(peerInfo[cid]?.isMuted) addBadge(cid,'mute','🔇');
+  if(peerInfo[cid]?.isHandRaised) addBadge(cid,'hand','✋');
   reflow(); return tile;
+}
+// Shows the person's screen share if they have one, otherwise their camera,
+// or their avatar when neither is on
+function showRemoteVideo(cid){
+  const tile=document.getElementById(`tile-${cid}`);
+  if(!tile) return;
+  const p=room.remoteParticipants.get(cid);
+  const pub=[LK.Track.Source.ScreenShare,LK.Track.Source.Camera]
+    .map(s=>p?.getTrackPublication(s)).find(x=>x?.track&&!x.isMuted);
+  const track=pub?.track??null, vid=tile.querySelector('video');
+  if(tile._track!==track){
+    tile._track?.detach(vid);
+    track?.attach(vid);
+    tile._track=track;
+  }
+  tile.classList.toggle('video-on',!!track); tile.classList.toggle('video-off',!track);
+}
+const applyVideoState=showRemoteVideo;
+function showSoundUnlock(){
+  if(document.getElementById('soundUnlock')) return;
+  const b=document.createElement('button');
+  b.id='soundUnlock';
+  b.style.cssText='position:fixed;top:1rem;left:50%;transform:translateX(-50%);z-index:9998;background:var(--purple);color:#fff;border:none;border-radius:100px;padding:.6rem 1.2rem;font-weight:600;cursor:pointer';
+  b.innerHTML='<i class="fas fa-volume-high"></i> Click to turn on meeting sound';
+  b.onclick=()=>{room.startAudio().catch(()=>{});b.remove();};
+  document.body.appendChild(b);
 }
 function addBadge(cid,type,icon){
   const c=document.getElementById(cid===conn.connectionId?'localBadges':`badges-${cid}`);
@@ -757,7 +781,7 @@ function showCtxMenu(cid,name,x,y){
     </button>
     ${pinned?`<button onclick="clearSpotlight();closeCtxMenu()"><i class="fas fa-times"></i> Clear spotlight</button>`:''}
     ${(IS_HOST||IS_ADMIN)&&cid!=='local'?`<div class="spm-divider"></div>
-    <button onclick="conn.invoke('ForceMute','${cid}');closeCtxMenu()"><i class="fas fa-microphone-slash"></i> Mute this person</button>`:''}`;
+    <button onclick="conn.invoke('ForceMute',ROOM_CODE,'${cid}');closeCtxMenu()"><i class="fas fa-microphone-slash"></i> Mute this person</button>`:''}`;
   setTimeout(()=>document.addEventListener('click',closeCtxMenu,{once:true}),30);
 }
 function closeCtxMenu(){document.getElementById('spotlightCtxMenu').style.display='none';}
@@ -802,6 +826,9 @@ function reflow(){
     });
     const n = grid.querySelectorAll('.video-tile').length;
     grid.className = 'video-grid '+(n<=1?'solo':n===2?'duo':n===3?'trio':n<=4?'quad':'many');
+    const cols = Math.ceil(Math.sqrt(n));
+    grid.style.setProperty('--cols', cols);
+    grid.style.setProperty('--rows', Math.ceil(n/cols));
   }
   refreshSpotlightBtns();
 }
@@ -812,44 +839,49 @@ function updateMemberCount(n){document.getElementById('memberCount').textContent
 
 // ── Controls ──────────────────────────────────────────────
 function toggleMic(){
-  isMuted=!isMuted; localStream.getAudioTracks().forEach(t=>t.enabled=!isMuted);
+  isMuted=!isMuted;
+  (isMuted?micTrack?.mute():micTrack?.unmute())?.catch(e=>console.warn('Mic toggle failed',e));
   document.getElementById('btnMic').classList.toggle('ctrl-danger',isMuted);
   document.getElementById('micIcon').className=isMuted?'fas fa-microphone-slash':'fas fa-microphone';
   conn.invoke('ToggleMute',ROOM_CODE,isMuted);
   if(isMuted) addBadge(conn.connectionId,'mute','🔇'); else document.getElementById(`badge-mute-${conn.connectionId}`)?.remove();
 }
 async function toggleCamera(){
-  isCamOff=!isCamOff; localStream.getVideoTracks().forEach(t=>t.enabled=!isCamOff);
+  if(!camTrack){toast('No camera available — check your browser permissions','warn');return;}
+  isCamOff=!isCamOff;
+  try{ isCamOff?await camTrack.mute():await camTrack.unmute(); }
+  catch(e){ console.warn('Camera toggle failed',e); }
   const t=document.getElementById('tile-local');
   t?.classList.toggle('video-off',isCamOff); t?.classList.toggle('video-on',!isCamOff);
   document.getElementById('btnCam').classList.toggle('ctrl-danger',isCamOff);
   document.getElementById('camIcon').className=isCamOff?'fas fa-video-slash':'fas fa-video';
   conn.invoke('ToggleVideo',ROOM_CODE,isCamOff);
 }
+// The screen is published as its own track; others show it in place of our camera
 async function toggleScreenShare(){
   if(!isScreenSharing){
     try{
-      screenStream=await navigator.mediaDevices.getDisplayMedia({video:true});
-      const track=screenStream.getVideoTracks()[0];
-      Object.values(peers).forEach(pc=>{const s=pc.getSenders().find(s=>s.track?.kind==='video');if(s)s.replaceTrack(track);});
-      document.getElementById('localVideo').srcObject=screenStream;
-      track.onended=()=>{if(isScreenSharing)toggleScreenShare();};
+      const pub=await room.localParticipant.setScreenShareEnabled(true);
+      if(!pub?.track) return;
+      showLocalVideo(pub.track);
       isScreenSharing=true; document.getElementById('btnScreen').classList.add('ctrl-active');
       conn.invoke('StartScreenShare',ROOM_CODE);
-    }catch{}
+    }catch(e){ console.warn('Screen share failed',e); }
   }else{
-    const vt=localStream.getVideoTracks()[0];
-    Object.values(peers).forEach(pc=>{const s=pc.getSenders().find(s=>s.track?.kind==='video');if(s&&vt)s.replaceTrack(vt);});
-    document.getElementById('localVideo').srcObject=localStream;
-    screenStream?.getTracks().forEach(t=>t.stop());
-    isScreenSharing=false; document.getElementById('btnScreen').classList.remove('ctrl-active');
-    conn.invoke('StopScreenShare',ROOM_CODE);
+    await room.localParticipant.setScreenShareEnabled(false).catch(()=>{});
+    screenShareStopped();
   }
+}
+function screenShareStopped(){
+  if(!isScreenSharing) return;
+  isScreenSharing=false; showLocalVideo(camTrack);
+  document.getElementById('btnScreen').classList.remove('ctrl-active');
+  conn.invoke('StopScreenShare',ROOM_CODE);
 }
 function toggleHand(){isHandRaised=!isHandRaised;document.getElementById('btnHand').classList.toggle('ctrl-active',isHandRaised);conn.invoke('RaiseHand',ROOM_CODE,isHandRaised);}
 function muteAll(){conn.invoke('MuteAll',ROOM_CODE);}
 function confirmEnd(){if(confirm('End the meeting for everyone?'))conn.invoke('EndMeeting',ROOM_CODE);}
-function leaveMeeting(){conn.invoke('LeaveRoom',ROOM_CODE).then(()=>window.location.href='/Meeting');}
+function leaveMeeting(){room.disconnect();conn.invoke('LeaveRoom',ROOM_CODE).then(()=>window.location.href='/Meeting');}
 
 // ── Sidebar ───────────────────────────────────────────────
 function toggleSidebar(tab){
@@ -919,7 +951,7 @@ function sendReaction(emoji){conn.invoke('SendReaction',ROOM_CODE,emoji);showFlo
 function showFloatingReaction(emoji){const el=document.createElement('div');el.className='floating-reaction';el.textContent=emoji;el.style.left=(20+Math.random()*60)+'%';el.style.bottom='100px';document.body.appendChild(el);setTimeout(()=>el.remove(),2600);}
 
 // ── Timer ─────────────────────────────────────────────────
-function startTimer(){timerInterval=setInterval(()=>{meetingSeconds++;const h=Math.floor(meetingSeconds/3600),m=Math.floor((meetingSeconds%3600)/60),s=meetingSeconds%60;document.getElementById('meetTimer').textContent=h>0?`${pad(h)}:${pad(m)}:${pad(s)}`:`${pad(m)}:${pad(s)}`;},1000);}
+function startTimer(){if(timerInterval)return;timerInterval=setInterval(()=>{meetingSeconds++;const h=Math.floor(meetingSeconds/3600),m=Math.floor((meetingSeconds%3600)/60),s=meetingSeconds%60;document.getElementById('meetTimer').textContent=h>0?`${pad(h)}:${pad(m)}:${pad(s)}`:`${pad(m)}:${pad(s)}`;},1000);}
 
 // ── Utilities ─────────────────────────────────────────────
 function updateMediaButtons(){
@@ -970,10 +1002,40 @@ if (liveConn) {
     });
 }
 
+// Joins (or re-joins) the room, then re-sends our media state, since the
+// server may have created a fresh participant row for this connection
+async function joinRoom(){
+    await conn.invoke('JoinRoom',ROOM_CODE,DISPLAY);
+    if(isMuted) conn.invoke('ToggleMute',ROOM_CODE,true);
+    if(isCamOff) conn.invoke('ToggleVideo',ROOM_CODE,true);
+    if(isHandRaised) conn.invoke('RaiseHand',ROOM_CODE,true);
+}
+
+// After an automatic reconnect we have a new connection id, which is also our
+// LiveKit identity — leave the media room (keeping our camera and mic running)
+// and join again; RoomJoined then reconnects the media under the new id
+conn.onreconnecting(()=>toast('Connection lost — reconnecting…','warn'));
+conn.onreconnected(async()=>{
+    if(isScreenSharing){await room.localParticipant.setScreenShareEnabled(false).catch(()=>{});screenShareStopped();}
+    await room.disconnect(false);
+    audioBox.innerHTML='';
+    document.querySelectorAll('.video-tile:not(#tile-local)').forEach(t=>t.remove());
+    Object.keys(peerInfo).forEach(cid=>delete peerInfo[cid]);
+    document.getElementById('participantList').innerHTML='';
+    spotlightId=null; reflow();
+    await joinRoom();
+    toast('Reconnected','success');
+});
+conn.onclose(()=>toast('Disconnected from the meeting — refresh the page to rejoin','warn'));
+
+// Read-only hooks for automated tests
+window.__meet = { room, peerInfo, get spotlightId(){return spotlightId;}, get myConnId(){return myConnId;},
+                  get isMuted(){return isMuted;}, get isCamOff(){return isCamOff;} };
+
 (async()=>{
     await initMedia();
     await conn.start();
-    await conn.invoke('JoinRoom',ROOM_CODE,DISPLAY);
+    await joinRoom();
 
     // Connect to LiveSession hub to receive verse projections
     if (liveConn) {
@@ -999,6 +1061,7 @@ if (liveConn) {
     }
 })();
 window.addEventListener('beforeunload',()=>{
+    room.disconnect();
     conn.invoke('LeaveRoom',ROOM_CODE);
     liveConn?.stop();
 });

@@ -1,5 +1,6 @@
 using ChurchMinistry.Data;
 using ChurchMinistry.Models;
+using ChurchMinistry.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.SignalR;
@@ -13,10 +14,11 @@ namespace ChurchMinistry.Hubs
     {
         private readonly ApplicationDbContext _db;
         private readonly UserManager<ApplicationUser> _userManager;
+        private readonly ILiveKitService _liveKit;
 
-        public MeetingHub(ApplicationDbContext db, UserManager<ApplicationUser> um)
+        public MeetingHub(ApplicationDbContext db, UserManager<ApplicationUser> um, ILiveKitService liveKit)
         {
-            _db = db; _userManager = um;
+            _db = db; _userManager = um; _liveKit = liveKit;
         }
 
         // ── Join meeting room ──────────────────────────────────
@@ -62,64 +64,62 @@ namespace ChurchMinistry.Hubs
             }
             else
             {
+                // Same member re-joining (SignalR reconnect or a second tab) — the old
+                // connection is dead or superseded, so drop it from the room for everyone
+                var oldConnectionId = participant.ConnectionId;
+                var superseded = !string.IsNullOrEmpty(oldConnectionId) && oldConnectionId != Context.ConnectionId;
+
+                // Save the new connection first. The old connection's disconnect may be handled
+                // meanwhile and set LeftAt on this row, so LeftAt is always written (an unchanged
+                // null wouldn't be) or the person would count as having left.
                 participant.ConnectionId = Context.ConnectionId;
                 participant.LeftAt       = null;
+                _db.Entry(participant).Property(p => p.LeftAt).IsModified = true;
                 // Fix IsHost if they re-joined and their role wasn't set correctly before
                 if (isEffectiveHost) participant.IsHost = true;
                 await _db.SaveChangesAsync();
+
+                if (superseded)
+                {
+                    await Groups.RemoveFromGroupAsync(oldConnectionId!, roomCode);
+                    await Clients.Group(roomCode).SendAsync("PeerLeft", oldConnectionId, participant.IsHost);
+                    await Clients.Group(ViewersGroup(roomCode)).SendAsync("PeerLeft", oldConnectionId, participant.IsHost);
+                    await _liveKit.RemoveParticipantAsync(_liveKit.RoomName(roomCode), oldConnectionId!);
+                }
             }
 
             await Groups.AddToGroupAsync(Context.ConnectionId, roomCode);
 
-            // Tell everyone else a new peer arrived
-            await Clients.OthersInGroup(roomCode).SendAsync("PeerJoined", new
-            {
-                connectionId  = Context.ConnectionId,
-                displayName   = participant.DisplayName,
-                isHost        = participant.IsHost,
-                isAdminPastor = participant.IsHost || isAdminPastor,
-                memberId      = participant.MemberId,
-                photo         = member?.ProfilePhoto ?? "/images/avatar-default.png"
-            });
+            // People in the waiting room are announced only once admitted
+            if (!participant.IsInWaitingRoom)
+                await AnnounceJoinAsync(roomCode, participant, member?.ProfilePhoto, isAdminPastor);
 
-            // Send current participant list to the new joiner
-            var activeParticipants = await _db.MeetingParticipants
-                .Include(p => p.Member)
-                .Where(p => p.MeetingRoomId == room.Id && p.LeftAt == null && p.IsAdmitted)
-                .Select(p => new {
-                    connectionId  = p.ConnectionId,
-                    displayName   = p.DisplayName,
-                    isHost        = p.IsHost,
-                    isAdminPastor = p.IsHost,   // host flag doubles as admin indicator for clients
-                    isMuted       = p.IsMuted,
-                    isVideoOff    = p.IsVideoOff,
-                    isHandRaised  = p.IsHandRaised,
-                    photo         = p.Member != null
-                        ? p.Member.ProfilePhoto ?? "/images/avatar-default.png"
-                        : "/images/avatar-default.png"
-                }).ToListAsync();
+            var forceMuted = !participant.IsHost && _muteOnEntry.ContainsKey(roomCode);
+            if (forceMuted) { participant.IsMuted = true; await _db.SaveChangesAsync(); }
 
             await Clients.Caller.SendAsync("RoomJoined", new
             {
                 roomCode,
-                participants    = activeParticipants,
+                participants    = participant.IsInWaitingRoom
+                                    ? new List<ParticipantDto>()
+                                    : await GetActiveParticipantsAsync(room.Id),
                 isInWaitingRoom = participant.IsInWaitingRoom,
                 chatEnabled     = room.ChatEnabled,
                 isHost          = participant.IsHost,
-                isAdminPastor   = participant.IsHost || isAdminPastor
+                isAdminPastor   = participant.IsHost || isAdminPastor,
+                forceMuted,
+                spotlightId     = _spotlight.TryGetValue(roomCode, out var spot) ? spot : null
             });
 
-            // System message
-            await Clients.Group(roomCode).SendAsync("SystemMessage",
-                $"{participant.DisplayName} joined the meeting");
-
-            // Notify host if waiting room
+            // Notify every host present if this person is waiting
             if (participant.IsInWaitingRoom)
             {
-                var hostParticipant = await _db.MeetingParticipants
-                    .FirstOrDefaultAsync(p => p.MeetingRoomId == room.Id && p.IsHost && p.LeftAt == null);
-                if (hostParticipant?.ConnectionId != null)
-                    await Clients.Client(hostParticipant.ConnectionId).SendAsync("WaitingRoomRequest", new
+                var hostConnections = await _db.MeetingParticipants
+                    .Where(p => p.MeetingRoomId == room.Id && p.IsHost && p.LeftAt == null && p.ConnectionId != null)
+                    .Select(p => p.ConnectionId!)
+                    .ToListAsync();
+                if (hostConnections.Count > 0)
+                    await Clients.Clients(hostConnections).SendAsync("WaitingRoomRequest", new
                     {
                         connectionId  = Context.ConnectionId,
                         displayName   = participant.DisplayName,
@@ -127,28 +127,118 @@ namespace ChurchMinistry.Hubs
                     });
             }
 
-            // Tell this new participant to send video offers to any existing Live page viewers
-            await PushOffersToExistingViewers(roomCode);
+            // A host arriving late must still see people who were already waiting
+            if (participant.IsHost && room.WaitingRoomEnabled)
+            {
+                var waiting = await _db.MeetingParticipants
+                    .Where(p => p.MeetingRoomId == room.Id && p.IsInWaitingRoom && p.LeftAt == null && p.ConnectionId != null)
+                    .ToListAsync();
+                foreach (var w in waiting)
+                    await Clients.Caller.SendAsync("WaitingRoomRequest", new
+                    {
+                        connectionId  = w.ConnectionId,
+                        displayName   = w.DisplayName,
+                        participantId = w.Id
+                    });
+            }
 
             // Update viewer count for everyone
             await BroadcastViewerCount(roomCode);
         }
 
-        // ── WebRTC signalling ──────────────────────────────────
+        // ── Media (LiveKit) ────────────────────────────────────
+        // Join token for the room's audio/video, requested after RoomJoined/Admitted.
+        // Only an admitted participant on this connection gets one, so the waiting
+        // room applies to media too. The LiveKit identity is the connection id, which
+        // is what clients already use to find tiles, spotlight and mute targets.
         [Authorize]
-        public async Task SendOffer(string targetConnectionId, object offer)
-            => await Clients.Client(targetConnectionId).SendAsync("ReceiveOffer",
-                Context.ConnectionId, offer);
+        public async Task<object?> GetMediaToken(string roomCode)
+        {
+            var room = await _db.MeetingRooms.FirstOrDefaultAsync(r => r.RoomCode == roomCode);
+            if (room == null || room.Status == RoomStatus.Ended || room.Status == RoomStatus.Cancelled)
+                return null;
 
-        //[Authorize]
-        //public async Task SendAnswer(string targetConnectionId, object answer)
-        //    => await Clients.Client(targetConnectionId).SendAsync("ReceiveAnswer",
-        //        Context.ConnectionId, answer);
+            var participant = await _db.MeetingParticipants
+                .Include(p => p.Member)
+                .FirstOrDefaultAsync(p => p.MeetingRoomId == room.Id && p.ConnectionId == Context.ConnectionId
+                                       && p.LeftAt == null && p.IsAdmitted);
+            if (participant == null || (!room.IsApproved && !participant.IsHost)) return null;
 
-        //[AllowAnonymous]
-        //public async Task SendIceCandidate(string targetConnectionId, object candidate)
-        //    => await Clients.Client(targetConnectionId).SendAsync("ReceiveIceCandidate",
-        //        Context.ConnectionId, candidate);
+            var metadata = Newtonsoft.Json.JsonConvert.SerializeObject(new
+            {
+                memberId = participant.MemberId,
+                isHost   = participant.IsHost,
+                photo    = participant.Member?.ProfilePhoto ?? "/images/avatar-default.png"
+            });
+            var token = _liveKit.CreateJoinToken(_liveKit.RoomName(roomCode), Context.ConnectionId,
+                participant.DisplayName, metadata, canPublish: true);
+            return new { url = _liveKit.Url, token };
+        }
+
+        // ── Shared state for late joiners (single server instance) ─
+        // Rooms where the host pressed "Mute all" — later joiners start muted
+        private static readonly ConcurrentDictionary<string, bool> _muteOnEntry = new();
+        // Current spotlighted connection id per room
+        private static readonly ConcurrentDictionary<string, string> _spotlight = new();
+
+        public record ParticipantDto(string? connectionId, string displayName, bool isHost,
+            bool isAdminPastor, bool isMuted, bool isVideoOff, bool isHandRaised, string photo);
+
+        // Admitted, present participants other than the caller (or the given connection)
+        private async Task<List<ParticipantDto>> GetActiveParticipantsAsync(int roomId, string? excludeConnectionId = null)
+        {
+            var exclude = excludeConnectionId ?? Context.ConnectionId;
+            return await _db.MeetingParticipants
+                .Include(p => p.Member)
+                .Where(p => p.MeetingRoomId == roomId && p.LeftAt == null && p.IsAdmitted
+                         && p.ConnectionId != exclude)
+                .Select(p => new ParticipantDto(
+                    p.ConnectionId,
+                    p.DisplayName,
+                    p.IsHost,
+                    p.IsHost,   // host flag doubles as admin indicator for clients
+                    p.IsMuted,
+                    p.IsVideoOff,
+                    p.IsHandRaised,
+                    p.Member != null
+                        ? p.Member.ProfilePhoto ?? "/images/avatar-default.png"
+                        : "/images/avatar-default.png"))
+                .ToListAsync();
+        }
+
+        private async Task AnnounceJoinAsync(string roomCode, MeetingParticipant participant,
+            string? photo, bool isAdminPastor, string? connectionId = null)
+        {
+            var cid = connectionId ?? Context.ConnectionId;
+            var joined = new
+            {
+                connectionId  = cid,
+                displayName   = participant.DisplayName,
+                isHost        = participant.IsHost,
+                isAdminPastor = participant.IsHost || isAdminPastor,
+                memberId      = participant.MemberId,
+                isMuted       = participant.IsMuted,
+                isVideoOff    = participant.IsVideoOff,
+                photo         = photo ?? "/images/avatar-default.png"
+            };
+            await Clients.GroupExcept(roomCode, cid).SendAsync("PeerJoined", joined);
+            await Clients.Group(ViewersGroup(roomCode)).SendAsync("PeerJoined", joined);
+            await Clients.Group(roomCode).SendAsync("SystemMessage",
+                $"{participant.DisplayName} joined the meeting");
+        }
+
+        // Room host (creator), or any Admin/Pastor
+        private async Task<bool> IsRoomHostAsync(string roomCode)
+        {
+            if (await IsAdminOrPastorAsync()) return true;
+            var user = await _userManager.GetUserAsync(Context.User!);
+            if (user == null) return false;
+            var room = await _db.MeetingRooms.FirstOrDefaultAsync(r => r.RoomCode == roomCode);
+            if (room == null) return false;
+            if (room.HostUserId == user.Id) return true;
+            var member = await _db.Members.FirstOrDefaultAsync(m => m.UserId == user.Id);
+            return member != null && room.HostMemberId == member.Id;
+        }
 
         // ── Media state ────────────────────────────────────────
         [Authorize]
@@ -229,31 +319,80 @@ namespace ChurchMinistry.Hubs
         [Authorize]
         public async Task AdmitParticipant(string roomCode, int participantId)
         {
-            var p = await _db.MeetingParticipants.FindAsync(participantId);
-            if (p == null) return;
+            if (!await IsRoomHostAsync(roomCode)) return;
+            var p = await _db.MeetingParticipants
+                .Include(x => x.Member)
+                .Include(x => x.MeetingRoom)
+                .FirstOrDefaultAsync(x => x.Id == participantId);
+            if (p == null || p.MeetingRoom.RoomCode != roomCode) return;
             p.IsInWaitingRoom = false;
             p.IsAdmitted = true;
+            if (_muteOnEntry.ContainsKey(roomCode)) p.IsMuted = true;
             await _db.SaveChangesAsync();
-            if (p.ConnectionId != null)
-                await Clients.Client(p.ConnectionId).SendAsync("Admitted");
-            await Clients.Group(roomCode).SendAsync("SystemMessage",
-                $"{p.DisplayName} was admitted");
+            if (p.ConnectionId == null) return;
+
+            // Announce to the room now that they're in, then give the admitted
+            // person the participant list so they can connect to everyone
+            await AnnounceJoinAsync(roomCode, p, p.Member?.ProfilePhoto, false, p.ConnectionId);
+            var others = await GetActiveParticipantsAsync(p.MeetingRoomId, p.ConnectionId);
+            await Clients.Client(p.ConnectionId).SendAsync("Admitted", new
+            {
+                participants = others,
+                forceMuted   = _muteOnEntry.ContainsKey(roomCode),
+                spotlightId  = _spotlight.TryGetValue(roomCode, out var spot) ? spot : null
+            });
+            await BroadcastViewerCount(roomCode);
         }
 
         [Authorize]
         public async Task RemoveParticipant(string roomCode, string targetConnectionId)
         {
+            if (!await IsRoomHostAsync(roomCode)) return;
+            var p = await _db.MeetingParticipants
+                .FirstOrDefaultAsync(x => x.ConnectionId == targetConnectionId && x.LeftAt == null);
+            if (p != null) { p.LeftAt = DateTime.UtcNow; await _db.SaveChangesAsync(); }
             await Clients.Client(targetConnectionId).SendAsync("Removed");
-            await Clients.Group(roomCode).SendAsync("PeerLeft", targetConnectionId);
+            // Cut their audio/video on the media server too, whatever their page does
+            await _liveKit.RemoveParticipantAsync(_liveKit.RoomName(roomCode), targetConnectionId);
+            await Groups.RemoveFromGroupAsync(targetConnectionId, roomCode);
+            await Clients.Group(roomCode).SendAsync("PeerLeft", targetConnectionId, p?.IsHost ?? false);
+            await Clients.Group(ViewersGroup(roomCode)).SendAsync("PeerLeft", targetConnectionId, p?.IsHost ?? false);
+            await ClearSpotlightIfAsync(roomCode, targetConnectionId);
+            await BroadcastViewerCount(roomCode);
+        }
+
+        // Mutes every non-host present, and everyone who joins afterwards.
+        // Participants can still unmute themselves.
+        [Authorize]
+        public async Task MuteAll(string roomCode)
+        {
+            if (!await IsRoomHostAsync(roomCode)) return;
+            var targets = await _db.MeetingParticipants
+                .Where(p => p.MeetingRoom.RoomCode == roomCode && p.LeftAt == null
+                         && !p.IsHost && p.ConnectionId != null && p.ConnectionId != Context.ConnectionId)
+                .ToListAsync();
+            foreach (var t in targets) t.IsMuted = true;
+            await _db.SaveChangesAsync();
+            _muteOnEntry[roomCode] = true;
+            if (targets.Count > 0)
+                await Clients.Clients(targets.Select(t => t.ConnectionId!).ToList()).SendAsync("ForceMuted");
+            // The media server mutes them as well, so it happens even if a page ignores the message
+            await Task.WhenAll(targets.Select(t =>
+                _liveKit.MuteMicrophoneAsync(_liveKit.RoomName(roomCode), t.ConnectionId!)));
         }
 
         [Authorize]
-        public async Task MuteAll(string roomCode)
-            => await Clients.OthersInGroup(roomCode).SendAsync("ForceMuted");
+        public async Task ForceMute(string roomCode, string targetConnectionId)
+        {
+            if (!await IsRoomHostAsync(roomCode)) return;
+            await Clients.Client(targetConnectionId).SendAsync("ForceMuted");
+            await _liveKit.MuteMicrophoneAsync(_liveKit.RoomName(roomCode), targetConnectionId);
+        }
 
         [Authorize]
         public async Task EndMeeting(string roomCode)
         {
+            if (!await IsRoomHostAsync(roomCode)) return;
             var room = await _db.MeetingRooms.FirstOrDefaultAsync(r => r.RoomCode == roomCode);
             if (room != null)
             {
@@ -261,28 +400,42 @@ namespace ChurchMinistry.Hubs
                 room.EndedAt = DateTime.UtcNow;
                 await _db.SaveChangesAsync();
             }
+            _muteOnEntry.TryRemove(roomCode, out _);
+            _spotlight.TryRemove(roomCode, out _);
             await Clients.Group(roomCode).SendAsync("MeetingEnded");
+            await Clients.Group(ViewersGroup(roomCode)).SendAsync("MeetingEnded");
+            // Closing the media room disconnects everyone's audio/video
+            await _liveKit.DeleteRoomAsync(_liveKit.RoomName(roomCode));
         }
 
-        // ── Admin/Pastor sets a participant in the spotlight ────────
+        // ── Host sets a participant in the spotlight ────────
         // Broadcasts to all participants in the room so everyone
         // sees the same person spotlighted automatically.
-        [Authorize(Roles = "Admin,Pastor")]
+        [Authorize]
         public async Task SetSpotlight(string roomCode, string connectionId)
         {
+            if (!await IsRoomHostAsync(roomCode)) return;
             var spotId = string.IsNullOrEmpty(connectionId) ? null : connectionId;
+            if (spotId == null) _spotlight.TryRemove(roomCode, out _);
+            else _spotlight[roomCode] = spotId;
 
             // Broadcast to meeting participants in Room.cshtml
             await Clients.Group(roomCode).SendAsync("SpotlightChanged", spotId);
 
             // Also broadcast to Live.cshtml viewers watching this room
-            await Clients.Group($"{roomCode}-viewers").SendAsync("SpotlightChanged", spotId);
+            await Clients.Group(ViewersGroup(roomCode)).SendAsync("SpotlightChanged", spotId);
         }
 
+        [Authorize]
         public async Task ClearSpotlight(string roomCode)
+            => await SetSpotlight(roomCode, "");
+
+        // Clears the spotlight when the spotlighted connection leaves
+        private async Task ClearSpotlightIfAsync(string roomCode, string connectionId)
         {
+            if (!_spotlight.TryRemove(new KeyValuePair<string, string>(roomCode, connectionId))) return;
             await Clients.Group(roomCode).SendAsync("SpotlightChanged", null);
-            await Clients.Group($"{roomCode}-viewers").SendAsync("SpotlightChanged", null);
+            await Clients.Group(ViewersGroup(roomCode)).SendAsync("SpotlightChanged", null);
         }
 
 
@@ -304,23 +457,36 @@ namespace ChurchMinistry.Hubs
             if (p != null)
                 await HandleDisconnect(p.MeetingRoom.RoomCode);
 
+            // A Live page viewer who closed the tab without LeaveAsViewer
+            foreach (var roomCode in _roomViewers.Keys)
+                if (RemoveViewer(roomCode, Context.ConnectionId)) await BroadcastViewerCount(roomCode);
+
             await base.OnDisconnectedAsync(exception);
         }
 
         [Authorize]
         private async Task HandleDisconnect(string roomCode)
         {
-            var p = await _db.MeetingParticipants
+            var p = await _db.MeetingParticipants.AsNoTracking()
                 .FirstOrDefaultAsync(x => x.ConnectionId == Context.ConnectionId && x.LeftAt == null);
-            if (p != null)
+            // Only if the row still belongs to this connection: the same person may have just
+            // rejoined on a new connection, which takes the row over
+            var left = p == null ? 0 : await _db.MeetingParticipants
+                .Where(x => x.Id == p.Id && x.ConnectionId == Context.ConnectionId && x.LeftAt == null)
+                .ExecuteUpdateAsync(s => s.SetProperty(x => x.LeftAt, DateTime.UtcNow));
+            if (p != null && left > 0)
             {
-                p.LeftAt = DateTime.UtcNow;
-                await _db.SaveChangesAsync();
                 // Include isHost so Live page knows if host left and should show "Starting Soon"
                 await Clients.OthersInGroup(roomCode).SendAsync("PeerLeft", Context.ConnectionId, p.IsHost);
+                await Clients.Group(ViewersGroup(roomCode)).SendAsync("PeerLeft", Context.ConnectionId, p.IsHost);
                 await Clients.Group(roomCode).SendAsync("SystemMessage",
                     $"{p.DisplayName} left the meeting");
+                await ClearSpotlightIfAsync(roomCode, Context.ConnectionId);
                 await BroadcastViewerCount(roomCode);
+                // The media room is left alone here: this also runs for a connection that is
+                // only reconnecting, and a server-side removal would stop that person's camera
+                // and microphone. A closed tab leaves the media room itself; a crashed one is
+                // dropped by LiveKit after its timeout (its tile is already gone via PeerLeft).
             }
         }
 
@@ -333,51 +499,35 @@ namespace ChurchMinistry.Hubs
             return roles.Contains("Admin") || roles.Contains("Pastor");
         }
 
-        private async Task<int> GetRoomViewerCount(string roomCode)
-        {
-            return await _db.MeetingParticipants
-                .CountAsync(p => p.MeetingRoom.RoomCode == roomCode && p.LeftAt == null);
-        }
-
-        // ── In-memory viewer tracking (per room) ───────────────────
-        // Stores viewer connectionIds so participants who join AFTER
-        // a guest can still send them offers
+        // ── Live page viewers ──────────────────────────────────────
+        // Viewer connection ids per room, for the viewer count
         private static readonly ConcurrentDictionary<string, HashSet<string>> _roomViewers
             = new ConcurrentDictionary<string, HashSet<string>>();
 
-        // ── Guest calls this to join as a viewer ───────────────────
+        // Viewers have their own group so meeting-only messages (chat, signalling of
+        // host controls) don't reach them; who joins/leaves and the spotlight do.
+        private static string ViewersGroup(string roomCode) => $"{roomCode}-viewers";
+
+        // Live page (guests too) joins to watch. The viewer gets a watch-only, hidden
+        // LiveKit token, so the media server sends them the meeting's audio/video
+        // without them appearing in, or adding traffic to, the meeting itself.
         [AllowAnonymous]
         public async Task JoinAsViewer(string roomCode, string displayName)
         {
-            // Add to separate viewers group — NOT the main room group
-            // This prevents NewViewerJoined from looping back to the viewer
-            await Groups.AddToGroupAsync(Context.ConnectionId, $"{roomCode}-viewers");
-
-            // Track this viewer so late-joining participants can also send them offers
-            var viewers = _roomViewers.GetOrAdd(roomCode, _ => new HashSet<string>());
-            lock (viewers) { viewers.Add(Context.ConnectionId); }
-
-            // Load current room and its active participants
             var room = await _db.MeetingRooms
                 .Include(r => r.Participants.Where(p => p.LeftAt == null && !p.IsInWaitingRoom))
                 .ThenInclude(p => p.Member)
                 .FirstOrDefaultAsync(r => r.RoomCode == roomCode);
+            if (room == null || room.Status == RoomStatus.Ended || room.Status == RoomStatus.Cancelled) return;
 
-            if (room == null) return;
+            // A separate group from the meeting's, so meeting-only messages don't reach viewers
+            await Groups.AddToGroupAsync(Context.ConnectionId, ViewersGroup(roomCode));
+            var viewers = _roomViewers.GetOrAdd(roomCode, _ => new HashSet<string>());
+            lock (viewers) { viewers.Add(Context.ConnectionId); }
 
-            // Tell all current PARTICIPANTS (main room group) to send video offers to this viewer
-            // The viewer is in {roomCode}-viewers group, NOT roomCode, so they won't receive this
-            await Clients.Group(roomCode).SendAsync("NewViewerJoined", new
-            {
-                viewerConnectionId = Context.ConnectionId,
-                displayName        = displayName,
-                isGuest            = !Context.User?.Identity?.IsAuthenticated ?? true
-            });
-
-            // Send viewer the current participant list including isHost flag
-            // so the client knows whether the host is already present
+            // Current participants, with isHost so the page knows whether the host is already here
             var participantList = room.Participants
-                .Where(p => p.LeftAt == null && !p.IsInWaitingRoom)
+                .Where(p => p.IsAdmitted)
                 .Select(p => new {
                     connectionId  = p.ConnectionId ?? "",
                     displayName   = p.DisplayName,
@@ -386,75 +536,33 @@ namespace ChurchMinistry.Hubs
                     isAdminPastor = p.IsHost   // IsHost covers host + admin for client purposes
                 }).ToList();
 
+            var token = _liveKit.CreateJoinToken(_liveKit.RoomName(roomCode), $"viewer-{Context.ConnectionId}",
+                string.IsNullOrWhiteSpace(displayName) ? "Viewer" : displayName, null,
+                canPublish: false, hidden: true);
+
             await Clients.Caller.SendAsync("RoomJoined", new
             {
                 participants    = participantList,
                 isInWaitingRoom = false,
-                viewerMode      = true
+                viewerMode      = true,
+                spotlightId     = _spotlight.TryGetValue(roomCode, out var spot) ? spot : null,
+                media           = new { url = _liveKit.Url, token }
             });
 
             await BroadcastViewerCount(roomCode);
         }
 
-        // ── Viewer leaves ──────────────────────────────────────────
         [AllowAnonymous]
         public async Task LeaveAsViewer(string roomCode)
         {
-            await Groups.RemoveFromGroupAsync(Context.ConnectionId, $"{roomCode}-viewers");
-
-            if (_roomViewers.TryGetValue(roomCode, out var viewers))
-                lock (viewers) { viewers.Remove(Context.ConnectionId); }
-
-            await BroadcastViewerCount(roomCode);
+            await Groups.RemoveFromGroupAsync(Context.ConnectionId, ViewersGroup(roomCode));
+            if (RemoveViewer(roomCode, Context.ConnectionId)) await BroadcastViewerCount(roomCode);
         }
 
-        // ── Push offers to existing viewers when a new participant joins
-        // Add this call at the END of your JoinRoom success path:
-        //   await PushOffersToExistingViewers(roomCode);
-        public async Task PushOffersToExistingViewers(string roomCode)
+        private static bool RemoveViewer(string roomCode, string connectionId)
         {
-            if (!_roomViewers.TryGetValue(roomCode, out var viewers)) return;
-
-            List<string> viewerList;
-            lock (viewers) { viewerList = viewers.ToList(); }
-
-            // Tell the newly joined participant to send offers to every current viewer
-            foreach (var viewerConnId in viewerList)
-            {
-                await Clients.Caller.SendAsync("NewViewerJoined", new
-                {
-                    viewerConnectionId = viewerConnId,
-                    displayName = "Viewer",
-                    isGuest = true
-                });
-            }
-        }
-
-        // ── Guest retry — called if no video after timeout ─────────
-        [AllowAnonymous]
-        public async Task RequestVideoFromParticipants(string roomCode)
-        {
-            await Clients.Group(roomCode).SendAsync("NewViewerJoined", new
-            {
-                viewerConnectionId = Context.ConnectionId,
-                displayName = "Viewer",
-                isGuest = true
-            });
-        }
-
-        // ── WebRTC answer/ICE must be anonymous so guests can complete handshake
-        [AllowAnonymous]
-        public async Task SendAnswer(string targetConnectionId, object answer)
-        {
-            await Clients.Client(targetConnectionId).SendAsync("ReceiveAnswer",
-                Context.ConnectionId, answer);
-        }
-
-        [AllowAnonymous]
-        public async Task SendIceCandidate(string targetConnectionId, object candidate)
-        {
-            await Clients.Client(targetConnectionId).SendAsync("ReceiveIceCandidate",
-                Context.ConnectionId, candidate);
+            if (!_roomViewers.TryGetValue(roomCode, out var viewers)) return false;
+            lock (viewers) { return viewers.Remove(connectionId); }
         }
 
         // ── Viewer count helper ────────────────────────────────────
