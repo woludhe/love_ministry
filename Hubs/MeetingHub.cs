@@ -15,10 +15,12 @@ namespace ChurchMinistry.Hubs
         private readonly ApplicationDbContext _db;
         private readonly UserManager<ApplicationUser> _userManager;
         private readonly ILiveKitService _liveKit;
+        private readonly IAttendanceService _attendance;
 
-        public MeetingHub(ApplicationDbContext db, UserManager<ApplicationUser> um, ILiveKitService liveKit)
+        public MeetingHub(ApplicationDbContext db, UserManager<ApplicationUser> um, ILiveKitService liveKit,
+            IAttendanceService attendance)
         {
-            _db = db; _userManager = um; _liveKit = liveKit;
+            _db = db; _userManager = um; _liveKit = liveKit; _attendance = attendance;
         }
 
         // ── Join meeting room ──────────────────────────────────
@@ -399,6 +401,12 @@ namespace ChurchMinistry.Hubs
                 room.Status = RoomStatus.Ended;
                 room.EndedAt = DateTime.UtcNow;
                 await _db.SaveChangesAsync();
+
+                // End the attendance of everyone still in the meeting or watching it live
+                var sermonIds = await _db.Sermons
+                    .Where(s => s.MeetingRoomCode == roomCode)
+                    .Select(s => s.Id).ToListAsync();
+                await _attendance.CloseSermonAttendanceAsync(sermonIds);
             }
             _muteOnEntry.TryRemove(roomCode, out _);
             _spotlight.TryRemove(roomCode, out _);
@@ -571,7 +579,8 @@ namespace ChurchMinistry.Hubs
             int participants = await _db.MeetingParticipants
                 .CountAsync(p => p.MeetingRoom.RoomCode == roomCode && p.LeftAt == null);
             int viewers = _roomViewers.TryGetValue(roomCode, out var v) ? v.Count : 0;
-            await Clients.Group(roomCode).SendAsync("ViewerCountUpdated", participants + viewers);
+            // Live page viewers show the count too ("· N watching")
+            await Clients.Groups(roomCode, ViewersGroup(roomCode)).SendAsync("ViewerCountUpdated", participants + viewers);
         }
 
 

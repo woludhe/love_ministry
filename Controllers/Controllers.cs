@@ -1403,15 +1403,18 @@ namespace ChurchMinistry.Controllers
             bool isCurrentlyLive = sermon.IsLive;
 
             // Always clear any live sermon first (only one can be live at a time)
-            await _db.Sermons
-                .Where(s => s.IsLive)
-                .ForEachAsync(s => s.IsLive = false);
+            var stopped = await _db.Sermons.Where(s => s.IsLive).ToListAsync();
+            foreach (var s in stopped) s.IsLive = false;
 
             // If it was NOT live before → go live. If it WAS live → leave it off (stop).
             if (!isCurrentlyLive)
                 sermon.IsLive = true;
 
             await _db.SaveChangesAsync();
+
+            // End the attendance of everyone still watching a stream that just stopped
+            await _attendance.CloseSermonAttendanceAsync(
+                stopped.Where(s => !s.IsLive).Select(s => s.Id));
             return Json(new { isLive = sermon.IsLive });
         }
 

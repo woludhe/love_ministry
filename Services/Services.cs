@@ -391,6 +391,7 @@ namespace ChurchMinistry.Services
     {
         Task<bool> CheckInAsync(string qrData, int sessionId);
         Task<AttendanceRecord?> ManualCheckInAsync(int memberId, int sessionId);
+        Task CloseSermonAttendanceAsync(IEnumerable<int> sermonIds);
     }
 
     public class AttendanceService : IAttendanceService
@@ -421,6 +422,18 @@ namespace ChurchMinistry.Services
             _db.AttendanceRecords.Add(record);
             await _db.SaveChangesAsync();
             return record;
+        }
+
+        // The live stream stopped or the meeting ended for all: everyone still
+        // watching leaves now, rather than whenever their browser disconnects
+        public async Task CloseSermonAttendanceAsync(IEnumerable<int> sermonIds)
+        {
+            var ids = sermonIds.Distinct().ToList();
+            if (ids.Count == 0) return;
+            var now = DateTime.UtcNow;
+            await _db.SermonAttendances
+                .Where(a => ids.Contains(a.SermonId) && a.LeftAt == null)
+                .ExecuteUpdateAsync(s => s.SetProperty(a => a.LeftAt, now));
         }
     }
 

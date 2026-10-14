@@ -153,10 +153,7 @@
                                 {
                                     <span class="meeting-badge">
                                         <i class="fas fa-video"></i> Online Meeting
-                                        @if (participantCount > 0)
-                                        {
-                                            <span>· @participantCount watching</span>
-                                        }
+                                        <span id="watchingCount" style="@(participantCount > 0 ? "" : "display:none")">· @participantCount watching</span>
                                     </span>
                                 }
                             </p>
@@ -633,6 +630,10 @@
         }
     </style>
 
+    @if (Model != null)
+    {
+        <script src="~/js/wake-lock.js" asp-append-version="true"></script>
+    }
     <script src="https://cdnjs.cloudflare.com/ajax/libs/microsoft-signalr/8.0.0/signalr.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/livekit-client@2.22.3/dist/livekit-client.umd.js"
             integrity="sha384-G/xxtkVytOx/ia9Q8MXxM+V0ohsaY1fZAgVP3iSGTPz4wJ0s3+ulJNKXh/gnzEDZ" crossorigin="anonymous"></script>
@@ -759,6 +760,12 @@
                 }
             });
             guestConn.on('MeetingEnded', () => showMeetingEnded());
+            guestConn.on('ViewerCountUpdated', count => {
+                const el = document.getElementById('watchingCount');
+                if (!el) return;
+                el.textContent = `· ${count} watching`;
+                el.style.display = count > 0 ? '' : 'none';
+            });
             guestConn.on('SpotlightChanged', cid => {
                 spotlightId = cid || null;
                 reflow();

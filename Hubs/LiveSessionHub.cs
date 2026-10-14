@@ -44,6 +44,16 @@ namespace ChurchMinistry.Hubs
                 .FirstOrDefaultAsync(s => s.Id == sermonId && s.TrackAttendance);
             if (sermon == null) return;
 
+            // Nothing to attend once it's over: a viewer whose browser reconnects after the
+            // stream stopped or the meeting ended mustn't open a new row
+            if (!string.IsNullOrEmpty(sermon.MeetingRoomCode))
+            {
+                if (await _db.MeetingRooms.AnyAsync(r => r.RoomCode == sermon.MeetingRoomCode
+                        && (r.Status == RoomStatus.Ended || r.Status == RoomStatus.Cancelled)))
+                    return;
+            }
+            else if (!sermon.IsLive) return;
+
             var connId = Context.ConnectionId;
             if (await _db.SermonAttendances.AnyAsync(a =>
                     a.SermonId == sermonId && a.ConnectionId == connId && a.LeftAt == null))
