@@ -513,6 +513,32 @@ namespace ChurchMinistry.Controllers
             return RedirectToAction("Invite", new { id });
         }
 
+        // ── Cancel — permanently deletes the meeting (Admin/Pastor only) ──
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        [Authorize(Roles = "Admin,Pastor")]
+        public async Task<IActionResult> Cancel(int id)
+        {
+            var room = await _db.MeetingRooms.FindAsync(id);
+            if (room == null) return NotFound();
+
+            // Cancelling a recurring meeting stops its series, otherwise the
+            // series catch-up would schedule a replacement from an earlier meeting
+            if (room.SeriesId != null)
+            {
+                var series = await _db.MeetingRooms
+                    .Where(r => r.SeriesId == room.SeriesId && r.Id != room.Id && r.IsRecurring)
+                    .ToListAsync();
+                foreach (var r in series) r.IsRecurring = false;
+            }
+
+            // Participants, chat messages and invitations are removed with it (cascade)
+            _db.MeetingRooms.Remove(room);
+            await _db.SaveChangesAsync();
+            TempData["Success"] = $"Meeting \"{room.Title}\" was cancelled and deleted.";
+            return RedirectToAction("Index");
+        }
+
         // In-app notification + email for one invited member
         private async Task NotifyInviteeAsync(MeetingRoom room, Member invitee, string joinUrl, string token)
         {
