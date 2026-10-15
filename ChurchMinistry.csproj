@@ -27,4 +27,9 @@
     <Folder Include="Views\Shared\Components\CurrentMember\" />
   </ItemGroup>
 
+  <!-- Bible translations read by BibleService; not in git, so they're published only when present -->
+  <ItemGroup>
+    <Content Include="App_Data\bibles\**" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+
 </Project>

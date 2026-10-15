@@ -37,3 +37,6 @@ wwwroot/uploads/*
 appsettings.json
 appsettings.*.json
 !appsettings.example.json
+
+# Bible translations (copyrighted, licensed with EasyWorship) - copy to the server by hand
+App_Data/bibles/

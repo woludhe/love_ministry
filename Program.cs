@@ -52,6 +52,8 @@ builder.Services.AddScoped<INotificationService, NotificationService>();
 builder.Services.AddScoped<ILiveKitService, LiveKitService>();
 builder.Services.AddScoped<IMeetingAccessService, MeetingAccessService>();
 builder.Services.AddScoped<IMeetingSeriesService, MeetingSeriesService>();
+builder.Services.AddMemoryCache();
+builder.Services.AddScoped<IBibleService, BibleService>();
 builder.Services.AddHttpClient();
 
 // ── Session ──

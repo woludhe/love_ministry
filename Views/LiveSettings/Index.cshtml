@@ -4,6 +4,12 @@
     Layout = "~/Views/Shared/_Layout.cshtml";
     var sermon = ViewBag.Sermon as ChurchMinistry.Models.Sermon;
     var sermonId = sermon?.Id ?? 0;
+    var bibleTranslations = ViewBag.BibleTranslations as IReadOnlyList<ChurchMinistry.Services.BibleTranslation>
+                            ?? Array.Empty<ChurchMinistry.Services.BibleTranslation>();
+    var defaultTranslation = ViewBag.DefaultTranslation as string;
+    var activeVerse = Model.BibleVerses.FirstOrDefault(v => v.IsActive);
+    var bibleBooks = ViewBag.BibleBooks as IReadOnlyList<ChurchMinistry.Services.BibleBookInfo>
+                     ?? Array.Empty<ChurchMinistry.Services.BibleBookInfo>();
 }
 
 <section class="page-header" style="background:linear-gradient(135deg,#7f1d1d,#dc2626)">
@@ -57,83 +63,79 @@
                         </div>
                     </div>
 
-                    @* {{-- Search / add verse --}} *@
+                    @* {{-- Look up a chapter, click a verse to show it --}} *@
                     <div class="ls-card-body" style="border-bottom:1px solid var(--border)">
-                        <div id="verseSearchWrap" style="display:flex;gap:.5rem">
-                            <div style="flex:1;position:relative">
-                                <i class="fas fa-search" style="position:absolute;left:.7rem;top:50%;transform:translateY(-50%);color:var(--text-s);font-size:.8rem"></i>
-                                <input type="text" id="verseRef" placeholder="e.g. John 3:16"
-                                       class="form-control" style="padding-left:2.2rem"
-                                       onkeypress="if(event.key==='Enter'){lookupVerse();return false;}" />
+                        <div class="bv-search">
+                            <select id="bvTranslation" class="form-control bv-trans" aria-label="Translation">
+                                @foreach (var t in bibleTranslations)
+                                {
+                                    <option value="@t.Code" title="@t.Name" selected="@(t.Code == defaultTranslation)">@t.Abbrev</option>
+                                }
+                            </select>
+                            <div class="bv-ac">
+                                <input type="text" id="bvQuery" class="form-control" placeholder="e.g. John 1" autocomplete="off"
+                                       role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="bvSuggest" />
+                                <div id="bvSuggest" class="bv-suggest" role="listbox" style="display:none"></div>
                             </div>
-                            <button type="button" class="btn btn-primary btn-sm" onclick="lookupVerse()">
-                                <i class="fas fa-search"></i> Lookup
-                            </button>
                         </div>
-                        @* {{-- Lookup result --}} *@
-                        <div id="verseResult" style="display:none;margin-top:.75rem">
-                            <div class="verse-result-card">
-                                <div style="display:flex;justify-content:space-between;margin-bottom:.35rem">
-                                    <strong id="verseResultRef" class="tag"></strong>
-                                    <select id="verseTranslation" class="form-control" style="width:auto;padding:.2rem .5rem;font-size:.78rem">
-                                        <option>KJV</option>
-                                        <option>NIV</option>
-                                        <option>ESV</option>
-                                        <option>NLT</option>
-                                        <option>NKJV</option>
-                                        <option>AMP</option>
-                                    </select>
+                        @if (!bibleTranslations.Any())
+                        {
+                            <p class="bv-warn"><i class="fas fa-triangle-exclamation"></i> No Bible files found. Put the .ewb files in App_Data/bibles on the server.</p>
+                        }
+
+                        <div id="bvChapter" class="bv-chapter" style="display:none">
+                            <div class="bv-chapter-head">
+                                <button type="button" class="ls-icon-btn" id="bvPrev" title="Previous chapter" onclick="stepChapter(-1)">
+                                    <i class="fas fa-chevron-left"></i>
+                                </button>
+                                <div class="bv-chapter-title">
+                                    <strong id="bvTitle"></strong>
+                                    <span class="tag" id="bvTransTag"></span>
+                                    <small id="bvCount"></small>
                                 </div>
-                                <p id="verseResultText" style="font-size:.88rem;line-height:1.7;font-style:italic"></p>
-                                <div style="display:flex;gap:.5rem;margin-top:.6rem">
-                                    <button type="button" class="btn btn-primary btn-sm" onclick="saveVerse()">
-                                        <i class="fas fa-save"></i> Save to list
-                                    </button>
-                                    <button type="button" class="btn btn-outline btn-sm" onclick="saveAndActivateVerse()">
-                                        <i class="fas fa-play"></i> Save &amp; Go Live
-                                    </button>
-                                </div>
+                                <button type="button" class="ls-icon-btn" id="bvNext" title="Next chapter" onclick="stepChapter(1)">
+                                    <i class="fas fa-chevron-right"></i>
+                                </button>
+                                <button type="button" class="btn btn-outline btn-xs bv-clear" onclick="clearVerse()" title="Take the verse off the screen">
+                                    <i class="fas fa-stop"></i> Clear screen
+                                </button>
                             </div>
+                            <p class="bv-hint">Click a verse to show it on screen straight away.</p>
+                            <div id="bvVerses" class="bv-verses"></div>
                         </div>
                     </div>
 
-                    @* {{-- Verse list --}} *@
-                    <div id="verseList">
-                        @foreach (var verse in Model.BibleVerses.OrderBy(v => v.SortOrder))
+                    @* {{-- Log of verses shown --}} *@
+                    <div class="bv-log-head">
+                        <i class="fas fa-clock-rotate-left"></i> Shared verses
+                        <span class="bv-log-count" id="bvLogCount">@Model.BibleVerses.Count</span>
+                    </div>
+                    <div id="verseList" class="bv-log">
+                        @foreach (var verse in Model.BibleVerses.OrderByDescending(v => v.LastShownAt ?? v.CreatedAt))
                         {
-                            <div class="ls-list-item @(verse.IsActive ? "ls-item-active" : "")"
-                                 id="verse-item-@verse.Id">
-                                <div style="display:flex;align-items:center;gap:.6rem;flex:1;min-width:0">
-                                    <div class="ls-radio @(verse.IsActive ? "ls-radio-on" : "")"></div>
-                                    <div style="flex:1;min-width:0">
-                                        <div class="ls-item-title">
-                                            @verse.Reference
-                                            <span class="tag" style="font-size:.7rem;margin-left:.3rem">@verse.Translation</span>
-                                            @if (verse.IsActive)
-                                            {
-                                                <span class="ls-badge ls-badge-green" style="margin-left:.3rem">Active</span>
-                                            }
-                                        </div>
-                                        <div class="ls-item-sub">@verse.VerseText.Substring(0, Math.Min(verse.VerseText.Length, 80))…</div>
+                            <div class="ls-list-item @(verse.IsActive ? "ls-item-active" : "")" id="verse-item-@verse.Id"
+                                 data-ref="@verse.Reference" data-code="@verse.Translation.ToLowerInvariant()">
+                                <div style="flex:1;min-width:0">
+                                    <div class="ls-item-title">
+                                        @verse.Reference
+                                        <span class="tag" style="font-size:.7rem;margin-left:.3rem">@verse.Translation</span>
+                                        @if (verse.IsActive)
+                                        {
+                                            <span class="ls-badge ls-badge-green bv-onscreen" style="margin-left:.3rem">On screen</span>
+                                        }
+                                    </div>
+                                    <div class="ls-item-sub">
+                                        <span class="bv-time">@((verse.LastShownAt ?? verse.CreatedAt).ToLocalTime().ToString("h:mm tt"))</span> · @verse.VerseText
                                     </div>
                                 </div>
                                 <div style="display:flex;gap:.3rem;flex-shrink:0">
-                                    @if (!verse.IsActive)
-                                    {
-                                        <button type="button" class="ls-icon-btn" title="Activate on live page"
-                                                onclick="activateVerse(@verse.Id)">
-                                            <i class="fas fa-play"></i>
-                                        </button>
-                                    }
-                                    else
-                                    {
-                                        <button type="button" class="ls-icon-btn ls-icon-btn-red" title="Clear verse"
-                                                onclick="clearVerse()">
-                                            <i class="fas fa-stop"></i>
-                                        </button>
-                                    }
-                                    <button type="button" class="ls-icon-btn ls-icon-btn-red" title="Delete"
-                                            onclick="deleteVerse(@verse.Id)">
+                                    <button type="button" class="ls-icon-btn" title="Show again" onclick="activateVerse(@verse.Id)">
+                                        <i class="fas fa-play"></i>
+                                    </button>
+                                    <button type="button" class="ls-icon-btn" title="Open this chapter" onclick="openInChapter(@verse.Id)">
+                                        <i class="fas fa-book-open"></i>
+                                    </button>
+                                    <button type="button" class="ls-icon-btn ls-icon-btn-red" title="Remove from log" onclick="deleteVerse(@verse.Id)">
                                         <i class="fas fa-trash"></i>
                                     </button>
                                 </div>
@@ -143,28 +145,9 @@
                         {
                             <div class="ls-empty" id="verseEmpty">
                                 <i class="fas fa-book-open"></i>
-                                <p>No verses added yet. Search above to add one.</p>
+                                <p>Verses you show will be listed here.</p>
                             </div>
                         }
-                    </div>
-
-                    @* {{-- Auto-rotate --}} *@
-                    <div class="ls-card-footer">
-                        <label class="ls-toggle-wrap">
-                            <input type="checkbox" class="ls-toggle-input" asp-for="AutoRotateVerses" id="autoRotate"
-                                   onchange="document.getElementById('rotateSpeed').style.display=this.checked?'flex':'none'" />
-                            <span class="ls-toggle"></span>
-                            <span style="font-size:.85rem">&nbsp;Auto-rotate verses</span>
-                        </label>
-                        <div id="rotateSpeed" style="display:@(Model.AutoRotateVerses ? "flex" : "none");align-items:center;gap:.5rem;margin-top:.5rem">
-                            <span style="font-size:.82rem;color:var(--text-s)">Every</span>
-                            <select asp-for="VerseRotateSeconds" class="form-control" style="width:auto">
-                                <option value="30">30s</option>
-                                <option value="60">60s</option>
-                                <option value="90">90s</option>
-                                <option value="120">2 min</option>
-                            </select>
-                        </div>
                     </div>
                 </div>
 
@@ -417,163 +400,329 @@
             .build();
         conn.start().catch(console.error);
 
-        // ── Verse lookup (Bible API) ──────────────────────────────
-        let lookupData = null;
+        // ── Bible: look up a chapter, click a verse to show it ────
+        const TRANSLATION_KEY = 'ls-bible-translation';
+        const transSelect = document.getElementById('bvTranslation');
+        let chapterState = null;   // { code, translation, book, bookName, chapter, chapterCount }
+        let onScreen = @Html.Raw(Json.Serialize(activeVerse == null ? null : new { reference = activeVerse.Reference, translation = activeVerse.Translation }));
 
-        async function lookupVerse() {
-            const ref = document.getElementById('verseRef').value.trim();
-            if (!ref) return;
-            const trans = document.getElementById('verseTranslation')?.value || 'kjv';
+        try {
+            const saved = localStorage.getItem(TRANSLATION_KEY);
+            if (saved && [...transSelect.options].some(o => o.value === saved)) transSelect.value = saved;
+        } catch { }
 
-            // Use Bible-api.com (free, no key needed)
+        transSelect.addEventListener('change', () => {
+            try { localStorage.setItem(TRANSLATION_KEY, transSelect.value); } catch { }
+            if (chapterState) loadChapter({ book: chapterState.book, chapter: chapterState.chapter });
+        });
+
+        function lookupChapter() {
+            closeSuggest();
+            const q = document.getElementById('bvQuery').value.trim();
+            if (q) loadChapter({ q });
+        }
+
+        // ── Book / chapter autocomplete ───────────────────────────
+        // Typing letters suggests books ("jo" → Joshua, Job, Joel, John…, short forms like "jn" too);
+        // once a book is chosen, its chapters show as a grid and a click opens that chapter
+        const BIBLE_BOOKS = @Html.Raw(Json.Serialize(bibleBooks.Select(b => new
+        {
+            name = b.Name,
+            chapters = b.Chapters,
+            keys = new[] { new string(b.Name.ToLowerInvariant().Where(char.IsLetterOrDigit).ToArray()) }
+                   .Concat(b.Aliases).ToArray()
+        })));
+        const queryInput = document.getElementById('bvQuery');
+        const suggestBox = document.getElementById('bvSuggest');
+        let suggestItems = [], suggestActive = -1;
+
+        const compact = s => s.toLowerCase().replace(/[^a-z0-9]/g, '');
+
+        // Splits "1 Cor 13" into book text "1 Cor" and chapter "13"; a ":" means a verse is being typed
+        function splitQuery(value) {
+            const m = value.match(/^\s*(\d?\s*[^\d:]*?)\s*(\d*)\s*(:.*)?$/);
+            return m ? { book: m[1], chapter: m[2], verse: m[3] !== undefined, endsWithSpace: /\s$/.test(value) } : null;
+        }
+
+        function matchBooks(text) {
+            const key = compact(text);
+            if (!key) return [];
+            const exact = BIBLE_BOOKS.filter(b => b.keys.includes(key));
+            const prefix = BIBLE_BOOKS.filter(b => !exact.includes(b) && b.keys.some(k => k.startsWith(key)));
+            return exact.concat(prefix);
+        }
+
+        function updateSuggest() {
+            const q = splitQuery(queryInput.value);
+            if (!q || q.verse || !q.book.trim()) { closeSuggest(); return; }
+
+            const books = matchBooks(q.book);
+            const single = books.length === 1 || (books.length > 0 && books[0].keys.includes(compact(q.book)));
+
+            if (single && (q.chapter || q.endsWithSpace)) {
+                renderChapters(books[0], q.chapter);
+            } else if (books.length) {
+                renderBooks(books.slice(0, 8));
+            } else {
+                closeSuggest();
+            }
+        }
+
+        function renderBooks(books) {
+            suggestItems = books.map(b => ({ type: 'book', book: b }));
+            suggestBox.className = 'bv-suggest';
+            suggestBox.innerHTML = books.map((b, i) => `
+                <div class="bv-sug-book" role="option" id="bvSug${i}" data-i="${i}">
+                    <span>${escHtml(b.name)}</span><small>${b.chapters} chapter${b.chapters === 1 ? '' : 's'}</small>
+                </div>`).join('');
+            openSuggest(0);
+        }
+
+        function renderChapters(book, typed) {
+            const all = Array.from({ length: book.chapters }, (_, i) => i + 1);
+            const chapters = typed ? all.filter(c => String(c).startsWith(typed)) : all;
+            if (!chapters.length) { closeSuggest(); return; }
+            suggestItems = chapters.map(c => ({ type: 'chapter', book, chapter: c }));
+            suggestBox.className = 'bv-suggest bv-suggest-chapters';
+            suggestBox.innerHTML = `<div class="bv-sug-head">${escHtml(book.name)} — choose a chapter</div>
+                <div class="bv-sug-grid">${chapters.map((c, i) =>
+                    `<div class="bv-sug-ch" role="option" id="bvSug${i}" data-i="${i}">${c}</div>`).join('')}</div>`;
+            openSuggest(typed ? 0 : -1);
+        }
+
+        function openSuggest(active) {
+            suggestBox.style.display = 'block';
+            queryInput.setAttribute('aria-expanded', 'true');
+            setActive(active);
+        }
+
+        function closeSuggest() {
+            suggestBox.style.display = 'none';
+            queryInput.setAttribute('aria-expanded', 'false');
+            queryInput.removeAttribute('aria-activedescendant');
+            suggestItems = []; suggestActive = -1;
+        }
+
+        function setActive(i) {
+            suggestActive = i;
+            suggestBox.querySelectorAll('[role="option"]').forEach(el =>
+                el.classList.toggle('bv-sug-active', Number(el.dataset.i) === i));
+            const el = document.getElementById(`bvSug${i}`);
+            if (el) { queryInput.setAttribute('aria-activedescendant', el.id); el.scrollIntoView({ block: 'nearest' }); }
+            else queryInput.removeAttribute('aria-activedescendant');
+        }
+
+        // Chapter cells per row in the grid, so up/down move a whole row
+        function gridColumns() {
+            const cells = [...suggestBox.querySelectorAll('.bv-sug-ch')];
+            if (!cells.length) return 1;
+            const top = cells[0].offsetTop;
+            return Math.max(1, cells.findIndex(c => c.offsetTop !== top) === -1 ? cells.length
+                : cells.findIndex(c => c.offsetTop !== top));
+        }
+
+        function chooseSuggestion(i) {
+            const item = suggestItems[i];
+            if (!item) return;
+            if (item.type === 'book') {
+                queryInput.value = item.book.name + ' ';
+                queryInput.focus();
+                updateSuggest();                     // goes straight to the chapter grid
+            } else {
+                queryInput.value = `${item.book.name} ${item.chapter}`;
+                lookupChapter();
+            }
+        }
+
+        queryInput.addEventListener('input', updateSuggest);
+        queryInput.addEventListener('focus', updateSuggest);
+        queryInput.addEventListener('blur', () => setTimeout(closeSuggest, 150));
+
+        queryInput.addEventListener('keydown', e => {
+            const open = suggestBox.style.display !== 'none' && suggestItems.length > 0;
+            const grid = suggestBox.classList.contains('bv-suggest-chapters');
+            const arrows = ['ArrowDown', 'ArrowUp', 'ArrowLeft', 'ArrowRight'];
+
+            if (open && arrows.includes(e.key)) {
+                // Left/right move the caret in the book list, and move across in the chapter grid
+                if (!grid && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) return;
+                e.preventDefault();
+                const cols = grid ? gridColumns() : 1;
+                const step = { ArrowDown: cols, ArrowUp: -cols, ArrowRight: 1, ArrowLeft: -1 }[e.key];
+                const start = suggestActive < 0 ? (step > 0 ? -step : suggestItems.length) : suggestActive;
+                setActive(Math.min(suggestItems.length - 1, Math.max(0, start + step)));
+            } else if (e.key === 'Enter') {
+                e.preventDefault();                   // never submit the settings form
+                if (open && suggestActive >= 0) chooseSuggestion(suggestActive);
+                else lookupChapter();
+            } else if (e.key === 'Tab' && open && !grid && !e.shiftKey) {
+                e.preventDefault();
+                chooseSuggestion(Math.max(0, suggestActive));
+            } else if (e.key === 'Escape' && open) {
+                e.preventDefault();
+                closeSuggest();
+            }
+        });
+
+        // mousedown so the choice lands before the input loses focus
+        suggestBox.addEventListener('mousedown', e => {
+            const el = e.target.closest('[role="option"]');
+            if (!el) return;
+            e.preventDefault();
+            chooseSuggestion(Number(el.dataset.i));
+        });
+
+        function stepChapter(delta) {
+            if (!chapterState) return;
+            const c = chapterState.chapter + delta;
+            if (c >= 1 && c <= chapterState.chapterCount)
+                loadChapter({ book: chapterState.book, chapter: c });
+        }
+
+        async function loadChapter(params) {
+            const qs = new URLSearchParams({ translation: transSelect.value });
+            if (params.q) qs.set('q', params.q);
+            else { qs.set('book', params.book); qs.set('chapter', params.chapter); }
+
+            let data;
             try {
-                const encoded = encodeURIComponent(ref);
-                const res = await fetch(`https://bible-api.com/${encoded}?translation=${trans.toLowerCase()}`);
-                const data = await res.json();
-
-                if (data.error) { alert('Verse not found. Try: John 3:16 or Psalm 23:1'); return; }
-
-                lookupData = {
-                    reference: data.reference,
-                    verseText: data.text.replace(/\n/g, ' ').trim(),
-                    translation: trans
-                };
-
-                document.getElementById('verseResultRef').textContent = data.reference;
-                document.getElementById('verseResultText').textContent = lookupData.verseText;
-                document.getElementById('verseResult').style.display = 'block';
+                const res = await fetch(`${BASE}/Chapter?${qs}`);
+                data = await res.json();
             } catch {
-                alert('Could not reach Bible API. Check your connection.');
+                showToast('❌ Could not load the chapter. Check your connection.');
+                return;
+            }
+            if (data.error) { showToast('❌ ' + data.error); return; }
+
+            chapterState = {
+                code: data.code, translation: data.translation, book: data.book,
+                bookName: data.bookName, chapter: data.chapter, chapterCount: data.chapterCount
+            };
+            document.getElementById('bvQuery').value = data.reference;
+            document.getElementById('bvTitle').textContent = data.reference;
+            document.getElementById('bvTransTag').textContent = data.translation;
+            document.getElementById('bvCount').textContent = `${data.verses.length} verses`;
+            document.getElementById('bvPrev').disabled = data.chapter <= 1;
+            document.getElementById('bvNext').disabled = data.chapter >= data.chapterCount;
+
+            const list = document.getElementById('bvVerses');
+            list.innerHTML = data.verses.map(v => `
+                <button type="button" class="bv-verse" data-n="${v.n}" data-label="${escHtml(v.label)}" onclick="showVerse(${v.n})">
+                    <span class="bv-num">${escHtml(v.label)}</span><span class="bv-text">${escHtml(v.text)}</span>
+                </button>`).join('');
+            document.getElementById('bvChapter').style.display = 'block';
+            markOnScreen();
+
+            const target = data.highlight ? list.querySelector(`[data-n="${data.highlight}"]`) : null;
+            if (target) {
+                target.classList.add('bv-target');
+                list.scrollTop = target.offsetTop - list.clientHeight / 3;
+            } else {
+                list.scrollTop = 0;
             }
         }
 
-        async function saveVerse() {
-            if (!lookupData) return;
-            const btn = event.currentTarget;
-            btn.disabled = true;
-            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving…';
-            const fd = new FormData();
-            fd.append('reference', lookupData.reference);
-            fd.append('verseText', lookupData.verseText);
-            fd.append('translation', lookupData.translation);
-            const res = await fetch(`${BASE}/AddVerse`, { method: 'POST', body: fd });
-            const data = await res.json();
-            if (data.success) {
-                addVerseToList(data.id, lookupData.reference, lookupData.translation, lookupData.verseText, false);
-                document.getElementById('verseResult').style.display = 'none';
-                document.getElementById('verseRef').value = '';
-                lookupData = null;
-                showToast('✝ Verse saved to list');
-            }
-            btn.disabled = false;
-            btn.innerHTML = '<i class="fas fa-save"></i> Save to list';
+        // Only one request at a time; clicks made meanwhile collapse into the latest one,
+        // so the last verse clicked is the one left on screen
+        let showInFlight = false, queuedShow = null;
+
+        function showVerse(n) {
+            if (!chapterState) return;
+            document.querySelectorAll('.bv-verse.bv-pending').forEach(el => el.classList.remove('bv-pending'));
+            document.querySelector(`.bv-verse[data-n="${n}"]`)?.classList.add('bv-pending');
+
+            const req = { code: chapterState.code, book: chapterState.book, chapter: chapterState.chapter, verse: n };
+            if (showInFlight) { queuedShow = req; return; }
+            sendShow(req);
         }
 
-        async function saveAndActivateVerse() {
-            if (!lookupData) return;
-            const btn = event.currentTarget;
-            btn.disabled = true;
-            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Activating…';
-
+        async function sendShow(req) {
+            showInFlight = true;
+            let data;
             try {
-                // Step 1: save to DB
                 const fd = new FormData();
-                fd.append('reference', lookupData.reference);
-                fd.append('verseText', lookupData.verseText);
-                fd.append('translation', lookupData.translation);
-                const saveRes = await fetch(`${BASE}/AddVerse`, { method: 'POST', body: fd });
-
-                // Check we got JSON back, not a redirect/error page
-                const contentType = saveRes.headers.get('content-type') ?? '';
-                if (!contentType.includes('application/json')) {
-                    const raw = await saveRes.text();
-                    console.error('AddVerse returned non-JSON:', saveRes.status, raw.substring(0, 200));
-                    showToast('❌ Server error — check console for details');
-                    return;
-                }
-
-                const saveData = await saveRes.json();
-                if (!saveData.success) {
-                    showToast('❌ Could not save verse: ' + (saveData.message ?? 'unknown error'));
-                    return;
-                }
-
-                const newId = saveData.id;
-
-                // Step 2: activate in DB
-                await fetch(`${BASE}/ActivateVerse/${newId}`, { method: 'POST' });
-
-                // Step 3: push to live page via SignalR
-                await conn.invoke('PushVerse', SERMON_ID,
-                    lookupData.reference, lookupData.verseText, lookupData.translation
-                ).catch(e => console.warn('SignalR PushVerse failed:', e));
-
-                // Step 4: update UI without reload
-                document.querySelectorAll('.ls-list-item').forEach(el => {
-                    if (!el.id.startsWith('verse-item-')) return;
-                    el.classList.remove('ls-item-active');
-                    el.querySelector('.ls-radio')?.classList.remove('ls-radio-on');
-                    el.querySelector('.ls-badge-green')?.remove();
-                    const stopBtn = el.querySelector('.ls-icon-btn-red[onclick^="clearVerse"]');
-                    if (stopBtn) {
-                        const vid = el.id.replace('verse-item-', '');
-                        stopBtn.outerHTML = `<button type="button" class="ls-icon-btn"
-                            title="Activate on live page" onclick="activateVerse(${vid})">
-                            <i class="fas fa-play"></i></button>`;
-                    }
-                });
-
-                addVerseToList(newId, lookupData.reference, lookupData.translation, lookupData.verseText, true);
-                document.getElementById('verseResult').style.display = 'none';
-                document.getElementById('verseRef').value = '';
-                document.getElementById('verseEmpty')?.remove();
-                lookupData = null;
-
-                showToast(`✝ ${saveData.reference} is now live on the screen`);
-
-            } catch (err) {
-                console.error('saveAndActivateVerse error:', err);
-                showToast('❌ Error: ' + err.message);
-            } finally {
-                // Always reset the button — even if something threw
-                btn.disabled = false;
-                btn.innerHTML = '<i class="fas fa-play"></i> Save &amp; Go Live';
+                fd.append('translation', req.code);
+                fd.append('book', req.book);
+                fd.append('chapter', req.chapter);
+                fd.append('verse', req.verse);
+                const res = await fetch(`${BASE}/ShowVerse`, { method: 'POST', body: fd });
+                data = await res.json();
+            } catch {
+                data = { success: false, message: 'Could not reach the server.' };
             }
+            showInFlight = false;
+
+            if (data.success) {
+                upsertLog(data);
+                setOnScreen(data);
+            }
+
+            if (queuedShow) {
+                const next = queuedShow; queuedShow = null;
+                sendShow(next);
+                return;
+            }
+            document.querySelectorAll('.bv-verse.bv-pending').forEach(el => el.classList.remove('bv-pending'));
+            if (data.success) showToast(`✝ ${data.reference} is on screen`);
+            else showToast('❌ ' + (data.message ?? 'Could not show that verse'));
         }
 
-        function addVerseToList(id, reference, translation, verseText, isActive) {
-            // Remove empty state placeholder if present
-            document.getElementById('verseEmpty')?.remove();
+        function setOnScreen(verse) {
+            onScreen = verse ? { reference: verse.reference, translation: verse.translation } : null;
+            markOnScreen();
+            document.querySelectorAll('#verseList .ls-list-item').forEach(el => {
+                const on = verse && el.id === `verse-item-${verse.id}`;
+                el.classList.toggle('ls-item-active', !!on);
+                el.querySelector('.bv-onscreen')?.remove();
+                if (on) el.querySelector('.ls-item-title').insertAdjacentHTML('beforeend',
+                    '<span class="ls-badge ls-badge-green bv-onscreen" style="margin-left:.3rem">On screen</span>');
+            });
+        }
 
-            const list = document.getElementById('verseList');
-            const preview = verseText.length > 80
-                ? verseText.substring(0, 80) + '…' : verseText;
+        // Highlight the verse that's on screen if it's in the open chapter
+        function markOnScreen() {
+            document.querySelectorAll('.bv-verse').forEach(el => {
+                const ref = chapterState && `${chapterState.bookName} ${chapterState.chapter}:${el.dataset.label}`;
+                el.classList.toggle('bv-on', !!onScreen && onScreen.reference === ref
+                    && onScreen.translation === chapterState.translation);
+            });
+        }
+
+        // Put a log entry at the top (moving it if it's already listed)
+        function upsertLog(v) {
+            document.getElementById('verseEmpty')?.remove();
+            document.getElementById(`verse-item-${v.id}`)?.remove();
 
             const div = document.createElement('div');
-            div.className = `ls-list-item ${isActive ? 'ls-item-active' : ''}`;
-            div.id = `verse-item-${id}`;
+            div.className = 'ls-list-item';
+            div.id = `verse-item-${v.id}`;
+            div.dataset.ref = v.reference;
+            div.dataset.code = v.translation.toLowerCase();
             div.innerHTML = `
-                <div style="display:flex;align-items:center;gap:.6rem;flex:1;min-width:0">
-                    <div class="ls-radio ${isActive ? 'ls-radio-on' : ''}"></div>
-                    <div style="flex:1;min-width:0">
-                        <div class="ls-item-title">
-                            ${escHtml(reference)}
-                            <span class="tag" style="font-size:.7rem;margin-left:.3rem">${escHtml(translation)}</span>
-                            ${isActive ? '<span class="ls-badge ls-badge-green" style="margin-left:.3rem">Active</span>' : ''}
-                        </div>
-                        <div class="ls-item-sub">${escHtml(preview)}</div>
+                <div style="flex:1;min-width:0">
+                    <div class="ls-item-title">
+                        ${escHtml(v.reference)}
+                        <span class="tag" style="font-size:.7rem;margin-left:.3rem">${escHtml(v.translation)}</span>
                     </div>
+                    <div class="ls-item-sub"><span class="bv-time">${escHtml(v.shownAt)}</span> · ${escHtml(v.verseText)}</div>
                 </div>
                 <div style="display:flex;gap:.3rem;flex-shrink:0">
-                    ${isActive
-                        ? `<button type="button" class="ls-icon-btn ls-icon-btn-red" title="Clear verse"
-                              onclick="clearVerse()"><i class="fas fa-stop"></i></button>`
-                        : `<button type="button" class="ls-icon-btn" title="Activate on live page"
-                              onclick="activateVerse(${id})"><i class="fas fa-play"></i></button>`}
-                    <button type="button" class="ls-icon-btn ls-icon-btn-red" title="Delete"
-                            onclick="deleteVerse(${id})"><i class="fas fa-trash"></i></button>
+                    <button type="button" class="ls-icon-btn" title="Show again" onclick="activateVerse(${v.id})">
+                        <i class="fas fa-play"></i></button>
+                    <button type="button" class="ls-icon-btn" title="Open this chapter" onclick="openInChapter(${v.id})">
+                        <i class="fas fa-book-open"></i></button>
+                    <button type="button" class="ls-icon-btn ls-icon-btn-red" title="Remove from log" onclick="deleteVerse(${v.id})">
+                        <i class="fas fa-trash"></i></button>
                 </div>`;
-            list.appendChild(div);
+            const list = document.getElementById('verseList');
+            list.prepend(div);
+            list.scrollTop = 0;
+            updateLogCount();
+        }
+
+        function updateLogCount() {
+            document.getElementById('bvLogCount').textContent =
+                document.querySelectorAll('#verseList .ls-list-item').length;
         }
 
         function escHtml(s) {
@@ -583,35 +732,39 @@
         }
 
         async function activateVerse(id) {
-            const res = await fetch(`${BASE}/ActivateVerse/${id}`, { method: 'POST' });
-            const data = await res.json();
-            if (data.success) {
-                document.querySelectorAll('.ls-list-item').forEach(el => {
-                    if (el.id.startsWith('verse-item-')) {
-                        el.classList.remove('ls-item-active');
-                        el.querySelector('.ls-radio')?.classList.remove('ls-radio-on');
-                    }
-                });
-                const item = document.getElementById(`verse-item-${id}`);
-                item?.classList.add('ls-item-active');
-                item?.querySelector('.ls-radio')?.classList.add('ls-radio-on');
-                showToast(`✝ ${data.reference} is now live on the screen`);
+            try {
+                const res = await fetch(`${BASE}/ActivateVerse/${id}`, { method: 'POST' });
+                const data = await res.json();
+                if (!data.success) { showToast('❌ ' + (data.message ?? 'Could not show that verse')); return; }
+                upsertLog(data);
+                setOnScreen(data);
+                showToast(`✝ ${data.reference} is on screen`);
+            } catch {
+                showToast('❌ Could not reach the server.');
             }
+        }
+
+        function openInChapter(id) {
+            const item = document.getElementById(`verse-item-${id}`);
+            if (!item) return;
+            if ([...transSelect.options].some(o => o.value === item.dataset.code)) transSelect.value = item.dataset.code;
+            loadChapter({ q: item.dataset.ref });
+            document.getElementById('bvChapter').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
         }
 
         async function clearVerse() {
             await fetch(`${BASE}/ClearVerse`, { method: 'POST' });
-            document.querySelectorAll('[id^="verse-item-"]').forEach(el => {
-                el.classList.remove('ls-item-active');
-                el.querySelector('.ls-radio')?.classList.remove('ls-radio-on');
-            });
-            showToast('Verse overlay cleared');
+            setOnScreen(null);
+            showToast('Verse taken off the screen');
         }
 
         async function deleteVerse(id) {
-            if (!confirm('Remove this verse?')) return;
+            if (!confirm('Remove this verse from the log?')) return;
             await fetch(`${BASE}/DeleteVerse/${id}`, { method: 'POST' });
-            document.getElementById(`verse-item-${id}`)?.remove();
+            const item = document.getElementById(`verse-item-${id}`);
+            if (item?.classList.contains('ls-item-active')) setOnScreen(null);
+            item?.remove();
+            updateLogCount();
         }
 
         // ── Announcements ─────────────────────────────────────────
@@ -685,7 +838,7 @@
 
         .ls-grid {
             display: grid;
-            grid-template-columns: 1fr 1fr;
+            grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);   /* equal columns, whatever the content */
             gap: 1.25rem;
         }
 
@@ -693,6 +846,7 @@
             display: flex;
             flex-direction: column;
             gap: 1.25rem;
+            min-width: 0;
         }
 
         /* ── Card ──────────────────────────────────── */
@@ -889,13 +1043,87 @@
             color: #dc2626 !important;
         }
 
-        /* ── Verse result card ─────────────────────── */
-        .verse-result-card {
-            background: #f5f3ff;
-            border: 1px solid #ddd6fe;
-            border-radius: 10px;
-            padding: .85rem;
+        /* ── Bible chapter picker ──────────────────── */
+        .bv-search { display: flex; gap: .5rem; }
+        .ls-card:has(.bv-ac) { overflow: visible; }   /* let the suggestions drop below the card */
+        .bv-ac { flex: 1; min-width: 0; position: relative; }
+        .bv-suggest {
+            position: absolute; top: calc(100% + 4px); left: 0; right: 0; z-index: 30;
+            background: var(--white); border: 1px solid var(--border); border-radius: 10px;
+            box-shadow: 0 10px 28px rgba(0,0,0,.12); max-height: 280px; overflow-y: auto; padding: .3rem;
         }
+        .bv-sug-book {
+            display: flex; justify-content: space-between; align-items: center; gap: .5rem;
+            padding: .5rem .65rem; border-radius: 7px; cursor: pointer; font-size: .88rem;
+        }
+        .bv-sug-book small { color: var(--text-s); font-size: .74rem; white-space: nowrap; }
+        .bv-sug-head { font-size: .75rem; font-weight: 700; color: var(--text-s); padding: .35rem .45rem .45rem; }
+        .bv-sug-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(40px, 1fr)); gap: .3rem; padding: 0 .2rem .2rem; }
+        .bv-sug-ch {
+            text-align: center; padding: .4rem 0; border: 1px solid var(--border); border-radius: 7px;
+            font-size: .84rem; font-weight: 600; cursor: pointer;
+        }
+        .bv-sug-book:hover, .bv-sug-ch:hover { background: #faf9ff; }
+        .bv-sug-active, .bv-sug-active:hover { background: var(--purple-l); color: var(--purple); border-color: var(--purple); }
+        .bv-trans { width: auto; max-width: 110px; flex-shrink: 0; }
+        .bv-warn { font-size: .8rem; color: #92400e; margin-top: .5rem; }
+        .bv-chapter { margin-top: .85rem; }
+        .bv-chapter-head { display: flex; align-items: center; gap: .4rem; }
+        .bv-chapter-head .ls-icon-btn:disabled { opacity: .35; cursor: default; }
+        .bv-chapter-title { flex: 1; min-width: 0; display: flex; align-items: center; gap: .4rem; flex-wrap: wrap; }
+        .bv-chapter-title strong { font-size: .95rem; }
+        .bv-chapter-title .tag { margin: 0; font-size: .7rem; }
+        .bv-chapter-title small { color: var(--text-s); font-size: .75rem; }
+        .bv-clear { flex-shrink: 0; }
+        .bv-hint { font-size: .75rem; color: var(--text-s); margin: .4rem 0; }
+        .bv-verses {
+            position: relative;
+            max-height: 420px;
+            overflow-y: auto;
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            background: var(--white);
+        }
+        .bv-verse {
+            display: flex;
+            gap: .6rem;
+            width: 100%;
+            text-align: left;
+            background: none;
+            border: none;
+            border-bottom: 1px solid var(--border);
+            border-left: 3px solid transparent;
+            padding: .55rem .75rem;
+            font: inherit;
+            font-size: .86rem;
+            line-height: 1.55;
+            color: var(--text);
+            cursor: pointer;
+            transition: background .12s;
+        }
+        .bv-verse:last-child { border-bottom: none; }
+        .bv-verse:hover { background: #faf9ff; }
+        .bv-verse:focus-visible { outline: 2px solid var(--purple); outline-offset: -2px; }
+        .bv-num { font-weight: 800; color: var(--purple); min-width: 1.6rem; flex-shrink: 0; }
+        .bv-text { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+        .bv-verse.bv-target { border-left-color: #c4b5fd; background: #faf9ff; }
+        .bv-verse.bv-pending { background: #f5f3ff; }
+        .bv-verse.bv-pending .bv-num::after { content: ' ⋯'; }
+        .bv-verse.bv-on { background: #ede9fe; border-left-color: var(--purple); font-weight: 600; }
+        .bv-log-head {
+            display: flex; align-items: center; gap: .45rem;
+            padding: .65rem 1rem; font-size: .8rem; font-weight: 700; color: var(--text-s);
+            border-bottom: 1px solid var(--border); background: #fafafa;
+        }
+        .bv-log-count {
+            background: var(--purple-l); color: var(--purple); font-size: .7rem; font-weight: 800;
+            padding: .05rem .45rem; border-radius: 100px;
+        }
+        .bv-log { max-height: 320px; overflow-y: auto; }
+        .bv-log .ls-list-item { align-items: flex-start; }
+        .bv-log .ls-item-sub { white-space: normal; overflow-wrap: anywhere; line-height: 1.5; }
+        .bv-chapter-title strong { overflow-wrap: anywhere; }
+        .bv-time { font-weight: 700; color: var(--text); }
 
         /* ── Empty state ───────────────────────────── */
         .ls-empty {
@@ -1092,7 +1320,7 @@
 
         @@media (max-width: 900px) {
             .ls-grid {
-                grid-template-columns: 1fr;
+                grid-template-columns: minmax(0, 1fr);
             }
         }
     </style>

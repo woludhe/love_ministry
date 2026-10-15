@@ -512,6 +512,9 @@ namespace ChurchMinistry.Migrations
                     b.Property<bool>("IsActive")
                         .HasColumnType("tinyint(1)");
 
+                    b.Property<DateTime?>("LastShownAt")
+                        .HasColumnType("datetime(6)");
+
                     b.Property<int>("LiveSessionId")
                         .HasColumnType("int");
 

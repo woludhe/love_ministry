@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
 using ChurchMinistry.Hubs;
+using ChurchMinistry.Services;
 
 namespace ChurchMinistry.Controllers
 {
@@ -13,11 +14,13 @@ namespace ChurchMinistry.Controllers
     {
         private readonly ApplicationDbContext _db;
         private readonly IHubContext<LiveSessionHub> _hub;
+        private readonly IBibleService _bible;
 
-        public LiveSettingsController(ApplicationDbContext db, IHubContext<LiveSessionHub> hub)
+        public LiveSettingsController(ApplicationDbContext db, IHubContext<LiveSessionHub> hub, IBibleService bible)
         {
             _db = db;
             _hub = hub;
+            _bible = bible;
         }
 
         // ── Settings page for a given sermon ──────────────────
@@ -35,6 +38,9 @@ namespace ChurchMinistry.Controllers
             var session = await GetOrCreateSessionAsync(sermonId);
             session.Sermon = sermon;
             ViewBag.Sermon = sermon;
+            ViewBag.BibleTranslations = _bible.GetTranslations();
+            ViewBag.DefaultTranslation = _bible.DefaultCode();
+            ViewBag.BibleBooks = _bible.GetBooks();
 
             return View(session);
         }
@@ -50,8 +56,6 @@ namespace ChurchMinistry.Controllers
             var session = await GetOrCreateSessionAsync(sermonId);
 
             session.ShowVerseOverlay = form.ShowVerseOverlay;
-            session.AutoRotateVerses = form.AutoRotateVerses;
-            session.VerseRotateSeconds = form.VerseRotateSeconds;
             session.ShowMarquee = form.ShowMarquee;
             session.MarqueeSpeed = form.MarqueeSpeed;
             session.ShowGivingPanel = form.ShowGivingPanel;
@@ -82,134 +86,77 @@ namespace ChurchMinistry.Controllers
             return RedirectToAction("Index", new { sermonId });
         }
 
-        //// ── Add Bible verse ────────────────────────────────────
-        //[HttpPost("Admin/LiveSettings/{sermonId}/AddVerse")]
-        //public async Task<IActionResult> AddVerse(int sermonId,
-        //    string reference, string verseText, string translation = "KJV")
-        //{
-        //    if (string.IsNullOrWhiteSpace(reference) || string.IsNullOrWhiteSpace(verseText))
-        //    {
-        //        TempData["Error"] = "Reference and verse text are required.";
-        //        return RedirectToAction("Index", new { sermonId });
-        //    }
-
-        //    var session = await GetOrCreateSessionAsync(sermonId);
-        //    var verse = new LiveBibleVerse
-        //    {
-        //        LiveSessionId = session.Id,
-        //        Reference = reference.Trim(),
-        //        VerseText = verseText.Trim(),
-        //        Translation = translation,
-        //        SortOrder = session.BibleVerses.Count
-        //    };
-        //    _db.LiveBibleVerses.Add(verse);
-        //    await _db.SaveChangesAsync();
-
-        //    TempData["Success"] = $"Verse {reference} added.";
-        //    return RedirectToAction("Index", new { sermonId });
-        //}
-
-        //// ── Activate a verse (push to viewers) ────────────────
-        //[HttpPost("Admin/LiveSettings/{sermonId}/ActivateVerse/{verseId}")]
-        //public async Task<IActionResult> ActivateVerse(int sermonId, int verseId)
-        //{
-        //    var session = await _db.LiveSessions
-        //        .Include(s => s.BibleVerses)
-        //        .FirstOrDefaultAsync(s => s.SermonId == sermonId);
-        //    if (session == null) return NotFound();
-
-        //    // Deactivate all
-        //    session.BibleVerses.ToList().ForEach(v => v.IsActive = false);
-
-        //    var verse = session.BibleVerses.FirstOrDefault(v => v.Id == verseId);
-        //    if (verse == null) return NotFound();
-
-        //    verse.IsActive = true;
-        //    session.ActiveVerseId = verseId;
-        //    session.UpdatedAt = DateTime.UtcNow;
-        //    await _db.SaveChangesAsync();
-
-        //    // Push to viewers in real time
-        //    await _hub.Clients.Group($"live-{sermonId}")
-        //        .SendAsync("VerseChanged", new
-        //        {
-        //            reference = verse.Reference,
-        //            verseText = verse.VerseText,
-        //            translation = verse.Translation
-        //        });
-
-        //    return Json(new { success = true, reference = verse.Reference });
-        //}
-
-        [HttpPost]
-        [Route("Admin/LiveSettings/{sermonId}/AddVerse")]
-        public async Task<IActionResult> AddVerse(int sermonId, string reference,
-    string verseText, string translation)
+        // ── Bible: load a whole chapter ("John 1", "Ps 23", "John 1:5") ──
+        [HttpGet("Admin/LiveSettings/{sermonId}/Chapter")]
+        public async Task<IActionResult> Chapter(int sermonId, string? q, string? translation, int? book, int? chapter)
         {
-            // ── get or create the live session ──────────────────────
-            // (keep your existing session lookup logic here — this is just the wrapper)
-            var session = await _db.LiveSessions
-                .Include(s => s.BibleVerses)
-                .FirstOrDefaultAsync(s => s.SermonId == sermonId);
-
-            if (session == null)
+            int? highlight = null;
+            if (book == null || chapter == null)
             {
-                session = new LiveSession { SermonId = sermonId };
-                _db.LiveSessions.Add(session);
-                await _db.SaveChangesAsync();
+                var (reference, parseError) = _bible.ParseReference(q);
+                if (reference == null) return Json(new { error = parseError });
+                book = reference.Book; chapter = reference.Chapter; highlight = reference.Verse;
             }
 
-            // ── save the verse ───────────────────────────────────────
-            var verse = new LiveBibleVerse
-            {
-                LiveSessionId = session.Id,
-                Reference = reference?.Trim() ?? "",
-                VerseText = verseText?.Trim() ?? "",
-                Translation = translation?.Trim() ?? "KJV",
-                SortOrder = session.BibleVerses.Count
-            };
-            _db.LiveBibleVerses.Add(verse);
-            await _db.SaveChangesAsync();
+            var (result, error) = await _bible.GetChapterAsync(translation, book.Value, chapter.Value);
+            if (result == null) return Json(new { error });
 
-            // ── return JSON so JS can get the new verse ID ───────────
-            // (previously this returned RedirectToAction or location.reload)
-            return Json(new { success = true, id = verse.Id, reference = verse.Reference });
+            return Json(new
+            {
+                reference = $"{RefBook(result)} {result.Chapter}",
+                book = result.Book,
+                bookName = RefBook(result),
+                chapter = result.Chapter,
+                chapterCount = result.ChapterCount,
+                code = result.Code,
+                translation = result.Abbrev,
+                highlight = highlight != null && result.Verses.Any(v => v.Number == highlight) ? highlight : null,
+                verses = result.Verses.Select(v => new { n = v.Number, label = v.Label, text = v.Text })
+            });
         }
 
-        // ═══════════════════════════════════════════════════════════
-        // ActivateVerse should also return JSON (it likely already does,
-        // but confirm it returns { success, reference }):
-        // ═══════════════════════════════════════════════════════════
+        // ── Bible: put one verse on screen and log it ──────────
+        // The text is read from the Bible file here, not taken from the browser
+        [HttpPost("Admin/LiveSettings/{sermonId}/ShowVerse")]
+        public async Task<IActionResult> ShowVerse(int sermonId, string translation, int book, int chapter, int verse)
+        {
+            var (result, error) = await _bible.GetChapterAsync(translation, book, chapter);
+            var text = result?.Verses.FirstOrDefault(v => v.Number == verse);
+            if (result == null || text == null)
+                return Json(new { success = false, message = error ?? "That verse isn't in this chapter." });
 
-        [HttpPost]
-        [Route("Admin/LiveSettings/{sermonId}/ActivateVerse/{id}")]
+            var session = await GetOrCreateSessionAsync(sermonId);
+            var reference = $"{RefBook(result)} {chapter}:{text.Label}";
+
+            // One log row per verse: showing it again moves it back to the top
+            var entry = session.BibleVerses.FirstOrDefault(v => v.Reference == reference && v.Translation == result.Abbrev);
+            if (entry == null)
+            {
+                entry = new LiveBibleVerse
+                {
+                    LiveSessionId = session.Id,
+                    Reference = reference,
+                    VerseText = text.Text,
+                    Translation = result.Abbrev,
+                    SortOrder = session.BibleVerses.Count
+                };
+                _db.LiveBibleVerses.Add(entry);
+            }
+
+            await PutOnScreenAsync(session, entry);
+            return Json(VerseJson(entry));
+        }
+
+        // ── Show a verse from the log again ───────────────────
+        [HttpPost("Admin/LiveSettings/{sermonId}/ActivateVerse/{id}")]
         public async Task<IActionResult> ActivateVerse(int sermonId, int id)
         {
-            var verse = await _db.LiveBibleVerses
-                .Include(v => v.LiveSession)
-                .FirstOrDefaultAsync(v => v.Id == id);
+            var session = await GetOrCreateSessionAsync(sermonId);
+            var entry = session.BibleVerses.FirstOrDefault(v => v.Id == id);
+            if (entry == null) return Json(new { success = false, message = "That verse is no longer in the log." });
 
-            if (verse == null) return NotFound();
-
-            // Deactivate all verses in this session
-            await _db.LiveBibleVerses
-                .Where(v => v.LiveSessionId == verse.LiveSessionId)
-                .ForEachAsync(v => v.IsActive = false);
-
-            verse.IsActive = true;
-            await _db.SaveChangesAsync();
-
-            // Push via SignalR to all live viewers
-            await _hub.Clients
-                .Group($"live-{verse.LiveSession.SermonId}")
-                .SendAsync("VerseChanged", new
-                {
-                    reference = verse.Reference,
-                    verseText = verse.VerseText,
-                    translation = verse.Translation
-                });
-
-            return Json(new { success = true, reference = verse.Reference });
+            await PutOnScreenAsync(session, entry);
+            return Json(VerseJson(entry));
         }
 
         // ── Clear verse overlay ────────────────────────────────
@@ -229,14 +176,54 @@ namespace ChurchMinistry.Controllers
             return Json(new { success = true });
         }
 
-        // ── Delete verse ───────────────────────────────────────
+        // ── Delete verse from the log ──────────────────────────
         [HttpPost("Admin/LiveSettings/{sermonId}/DeleteVerse/{verseId}")]
         public async Task<IActionResult> DeleteVerse(int sermonId, int verseId)
         {
-            var verse = await _db.LiveBibleVerses.FindAsync(verseId);
-            if (verse != null) { _db.LiveBibleVerses.Remove(verse); await _db.SaveChangesAsync(); }
+            var verse = await _db.LiveBibleVerses.Include(v => v.LiveSession)
+                .FirstOrDefaultAsync(v => v.Id == verseId && v.LiveSession.SermonId == sermonId);
+            if (verse == null) return Json(new { success = true });
+
+            var wasOnScreen = verse.IsActive;
+            if (verse.LiveSession.ActiveVerseId == verse.Id) verse.LiveSession.ActiveVerseId = null;
+            _db.LiveBibleVerses.Remove(verse);
+            await _db.SaveChangesAsync();
+
+            if (wasOnScreen) await _hub.Clients.Group($"live-{sermonId}").SendAsync("VerseCleared");
             return Json(new { success = true });
         }
+
+        // Saves first, then tells the live page and meeting rooms; only one verse is ever active
+        private async Task PutOnScreenAsync(LiveSession session, LiveBibleVerse entry)
+        {
+            foreach (var v in session.BibleVerses) v.IsActive = false;
+            entry.IsActive = true;
+            entry.LastShownAt = DateTime.UtcNow;
+            await _db.SaveChangesAsync();          // gives a new entry its Id
+
+            session.ActiveVerseId = entry.Id;
+            await _db.SaveChangesAsync();
+
+            await _hub.Clients.Group($"live-{session.SermonId}").SendAsync("VerseChanged", new
+            {
+                reference = entry.Reference,
+                verseText = entry.VerseText,
+                translation = entry.Translation
+            });
+        }
+
+        // "Psalm 23:1", not "Psalms 23:1"
+        private static string RefBook(BibleChapter c) => c.BookName == "Psalms" ? "Psalm" : c.BookName;
+
+        private static object VerseJson(LiveBibleVerse v) => new
+        {
+            success = true,
+            id = v.Id,
+            reference = v.Reference,
+            translation = v.Translation,
+            verseText = v.VerseText,
+            shownAt = (v.LastShownAt ?? v.CreatedAt).ToLocalTime().ToString("h:mm tt")
+        };
 
         // ── Add announcement ───────────────────────────────────
         [HttpPost("Admin/LiveSettings/{sermonId}/AddAnnouncement")]

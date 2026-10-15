@@ -57,6 +57,7 @@ namespace ChurchMinistry.Models
         public bool IsActive       { get; set; } = false;
         public int  SortOrder      { get; set; } = 0;
         public DateTime CreatedAt  { get; set; } = DateTime.UtcNow;
+        public DateTime? LastShownAt { get; set; }   // last time it was put on screen (the shared-verse log)
     }
 
     // ── Announcement ──────────────────────────────────────────

@@ -3,6 +3,7 @@ using ChurchMinistry.Models;
 using ChurchMinistry.ViewModels;
 using MailKit.Net.Smtp;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Memory;
 using MimeKit;
 using QRCoder;
 using System.Drawing;
@@ -650,5 +651,263 @@ namespace ChurchMinistry.Services
                  || (i.MinistryGroupId != null && groupIds.Contains(i.MinistryGroupId.Value))
                  || (i.Email != null && emails.Contains(i.Email.ToLower()))));
         }
+    }
+
+    // ─── Bible Service ───
+    // Reads EasyWorship Bible files (*.ewb) from App_Data/bibles. Layout: header
+    // "EasyWorship Bible Text", then 66 book records of 0xE0 bytes from 0x58, each with
+    // its chapter count at +0x33 and the offset/length (Int64) of its zlib-compressed
+    // text at +0xD0/+0xD8. The text is one verse per line: "1:1 In the beginning…".
+    public record BibleTranslation(string Code, string Abbrev, string Name);
+    public record BibleRef(int Book, int Chapter, int? Verse);
+    public record BibleVerseText(int Number, string Label, string Text);   // Label is "16", or "9-10" for combined verses
+    public record BibleChapter(int Book, string BookName, int Chapter, int ChapterCount,
+                               string Code, string Abbrev, List<BibleVerseText> Verses);
+    public record BibleBookInfo(int Number, string Name, int Chapters, string[] Aliases);   // for the book/chapter autocomplete
+
+    public interface IBibleService
+    {
+        IReadOnlyList<BibleTranslation> GetTranslations();
+        string? DefaultCode();
+        string BookName(int book);
+        IReadOnlyList<BibleBookInfo> GetBooks();
+        (BibleRef? Ref, string? Error) ParseReference(string? input);
+        Task<(BibleChapter? Chapter, string? Error)> GetChapterAsync(string? code, int book, int chapter);
+    }
+
+    public class BibleService : IBibleService
+    {
+        private const string Magic = "EasyWorship Bible Text";
+        private const int FirstRecord = 0x58, RecordSize = 0xE0, BookCount = 66;
+        private const string PreferredDefault = "kjv", FallbackDefault = "nkjv";
+
+        private static readonly Dictionary<string, string> KnownNames = new()
+        {
+            ["kjv"] = "King James Version", ["nkjv"] = "New King James Version",
+            ["niv"] = "New International Version", ["niva"] = "New International Version (Anglicised)",
+            ["esv"] = "English Standard Version", ["nlt"] = "New Living Translation",
+            ["amp"] = "Amplified Bible", ["msg"] = "The Message", ["nasb"] = "New American Standard Bible",
+            ["rsv"] = "Revised Standard Version", ["nrsv"] = "New Revised Standard Version",
+            ["gnt"] = "Good News Translation", ["darby"] = "Darby Translation",
+            ["lbla"] = "La Biblia de las Américas", ["nblh"] = "Nueva Biblia Latinoamericana de Hoy",
+            ["nvi"] = "Nueva Versión Internacional", ["nvi-p"] = "Nova Versão Internacional",
+            ["rvr"] = "Reina-Valera 1960", ["lsg"] = "Louis Segond",
+            ["nbv"] = "De Nieuwe Bijbelvertaling", ["nbg51"] = "NBG-vertaling 1951",
+            ["nb88-bm"] = "Norsk Bibel 88 (bokmål)", ["nb88-nn"] = "Norsk Bibel 88 (nynorsk)",
+            ["bibel2000"] = "Bibel 2000",
+        };
+
+        private static readonly string[] Books =
+        {
+            "Genesis", "Exodus", "Leviticus", "Numbers", "Deuteronomy", "Joshua", "Judges", "Ruth",
+            "1 Samuel", "2 Samuel", "1 Kings", "2 Kings", "1 Chronicles", "2 Chronicles", "Ezra",
+            "Nehemiah", "Esther", "Job", "Psalms", "Proverbs", "Ecclesiastes", "Song of Solomon",
+            "Isaiah", "Jeremiah", "Lamentations", "Ezekiel", "Daniel", "Hosea", "Joel", "Amos",
+            "Obadiah", "Jonah", "Micah", "Nahum", "Habakkuk", "Zephaniah", "Haggai", "Zechariah",
+            "Malachi", "Matthew", "Mark", "Luke", "John", "Acts", "Romans", "1 Corinthians",
+            "2 Corinthians", "Galatians", "Ephesians", "Philippians", "Colossians", "1 Thessalonians",
+            "2 Thessalonians", "1 Timothy", "2 Timothy", "Titus", "Philemon", "Hebrews", "James",
+            "1 Peter", "2 Peter", "1 John", "2 John", "3 John", "Jude", "Revelation"
+        };
+
+        // Short forms that aren't simply the start of a book's name (compared without spaces/dots)
+        private static readonly Dictionary<string, int> Aliases = new()
+        {
+            ["gn"] = 1, ["ex"] = 2, ["lv"] = 3, ["nm"] = 4, ["dt"] = 5, ["jos"] = 6, ["jdg"] = 7, ["jgs"] = 7,
+            ["ru"] = 8, ["ps"] = 19, ["psa"] = 19, ["psalm"] = 19, ["pss"] = 19, ["pr"] = 20, ["prv"] = 20,
+            ["qoh"] = 21, ["song"] = 22, ["songofsongs"] = 22, ["sos"] = 22, ["canticles"] = 22,
+            ["ezk"] = 26, ["jl"] = 29, ["ob"] = 31, ["jnh"] = 32, ["mi"] = 33, ["na"] = 34, ["hab"] = 35,
+            ["zep"] = 36, ["hg"] = 37, ["zec"] = 38, ["mt"] = 40, ["mk"] = 41, ["mrk"] = 41, ["lk"] = 42,
+            ["jn"] = 43, ["jhn"] = 43, ["ac"] = 44, ["rm"] = 45, ["php"] = 50, ["phil"] = 50,
+            ["phm"] = 57, ["philem"] = 57, ["jas"] = 59, ["jm"] = 59, ["jud"] = 65, ["jd"] = 65,
+            ["rv"] = 66, ["revelations"] = 66, ["apocalypse"] = 66,
+        };
+
+        static BibleService() => Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
+
+        private readonly string _folder;
+        private readonly IMemoryCache _cache;
+
+        public BibleService(IWebHostEnvironment env, IMemoryCache cache)
+        {
+            _folder = Path.Combine(env.ContentRootPath, "App_Data", "bibles");
+            _cache = cache;
+        }
+
+        public IReadOnlyList<BibleTranslation> GetTranslations()
+        {
+            if (!Directory.Exists(_folder)) return Array.Empty<BibleTranslation>();
+            // Only the EasyWorship 2009 format is read; newer (SQLite) .ewb files are skipped
+            return Directory.GetFiles(_folder, "*.ewb")
+                .Where(IsReadableFormat)
+                .Select(f => Path.GetFileNameWithoutExtension(f).ToLowerInvariant())
+                .OrderBy(c => c)
+                .Select(c => new BibleTranslation(c, c.ToUpperInvariant(),
+                    KnownNames.TryGetValue(c, out var name) ? name : c.ToUpperInvariant()))
+                .ToList();
+        }
+
+        public string? DefaultCode()
+        {
+            var codes = GetTranslations().Select(t => t.Code).ToList();
+            return codes.Contains(PreferredDefault) ? PreferredDefault
+                 : codes.Contains(FallbackDefault) ? FallbackDefault
+                 : codes.FirstOrDefault();
+        }
+
+        public string BookName(int book) => book >= 1 && book <= BookCount ? Books[book - 1] : "";
+
+        // Chapters per book (Protestant canon, as in the Bible files)
+        private static readonly int[] ChapterCounts =
+        {
+            50, 40, 27, 36, 34, 24, 21, 4, 31, 24, 22, 25, 29, 36, 10, 13, 10, 42, 150, 31, 12, 8,
+            66, 52, 5, 48, 12, 14, 3, 9, 1, 4, 7, 3, 3, 3, 2, 14, 4, 28, 16, 24, 21, 28, 16, 16,
+            13, 6, 6, 4, 4, 5, 3, 6, 4, 3, 1, 13, 5, 5, 3, 5, 1, 1, 1, 22
+        };
+
+        public IReadOnlyList<BibleBookInfo> GetBooks() => Enumerable.Range(1, BookCount)
+            .Select(i => new BibleBookInfo(i, Books[i - 1], ChapterCounts[i - 1],
+                Aliases.Where(a => a.Value == i).Select(a => a.Key).ToArray()))
+            .ToList();
+
+        public (BibleRef? Ref, string? Error) ParseReference(string? input)
+        {
+            var m = System.Text.RegularExpressions.Regex.Match(input ?? "",
+                @"^\s*(.+?)\.?\s*(\d+)\s*(?:[:.]\s*(\d+))?\s*$");
+            if (!m.Success)
+                return (null, "Type a book and chapter, e.g. John 1 or Psalm 23.");
+
+            var key = Compact(m.Groups[1].Value);
+            if (key.Length == 0)
+                return (null, "Type a book and chapter, e.g. John 1 or Psalm 23.");
+
+            int book;
+            if (Aliases.TryGetValue(key, out var aliased)) book = aliased;
+            else
+            {
+                var exact = Array.FindIndex(Books, b => Compact(b) == key);
+                if (exact >= 0) book = exact + 1;
+                else
+                {
+                    var matches = Enumerable.Range(1, BookCount).Where(i => Compact(Books[i - 1]).StartsWith(key)).ToList();
+                    if (matches.Count == 1) book = matches[0];
+                    else if (matches.Count > 1)
+                        return (null, $"\"{m.Groups[1].Value.Trim()}\" could be {string.Join(", ", matches.Take(5).Select(i => Books[i - 1]))}. Type more of the name.");
+                    else
+                        return (null, $"Couldn't find a book called \"{m.Groups[1].Value.Trim()}\".");
+                }
+            }
+
+            var chapter = int.Parse(m.Groups[2].Value);
+            int? verse = m.Groups[3].Success ? int.Parse(m.Groups[3].Value) : null;
+            return (new BibleRef(book, chapter, verse), null);
+        }
+
+        public async Task<(BibleChapter? Chapter, string? Error)> GetChapterAsync(string? code, int book, int chapter)
+        {
+            var translation = GetTranslations().FirstOrDefault(t => t.Code == code?.ToLowerInvariant());
+            if (translation == null) return (null, "That translation isn't available.");
+            if (book < 1 || book > BookCount) return (null, "Unknown book.");
+
+            BookText? text;
+            try { text = await LoadBookAsync(translation.Code, book); }
+            catch (Exception ex) when (ex is IOException or InvalidDataException or ArgumentException)
+            {
+                return (null, $"Couldn't read {Books[book - 1]} from {translation.Abbrev}: the file looks damaged. Try another translation.");
+            }
+            if (text == null || text.Chapters.Count == 0)
+                return (null, $"{Books[book - 1]} isn't in {translation.Abbrev}.");
+
+            var count = Math.Max(text.ExpectedChapters, text.Chapters.Keys.Max());
+            if (chapter < 1 || chapter > count)
+                return (null, $"{Books[book - 1]} has {count} chapter{(count == 1 ? "" : "s")}.");
+            if (!text.Chapters.TryGetValue(chapter, out var verses))
+                return (null, $"{translation.Abbrev}'s copy of {Books[book - 1]} is damaged from chapter {text.Chapters.Keys.Max() + 1} on. Try another translation.");
+
+            return (new BibleChapter(book, Books[book - 1], chapter, count,
+                translation.Code, translation.Abbrev, verses), null);
+        }
+
+        private record BookText(int ExpectedChapters, Dictionary<int, List<BibleVerseText>> Chapters);
+
+        // One decompressed book, by chapter; cached for a while since a service reads on through it
+        private async Task<BookText?> LoadBookAsync(string code, int book)
+        {
+            var cacheKey = $"bible:{code}:{book}";
+            if (_cache.TryGetValue(cacheKey, out BookText? cached)) return cached;
+
+            var bytes = await File.ReadAllBytesAsync(Path.Combine(_folder, code + ".ewb"));
+            if (bytes.Length < FirstRecord + BookCount * RecordSize
+                || Encoding.ASCII.GetString(bytes, 0, Magic.Length) != Magic)
+                throw new InvalidDataException("Not an EasyWorship Bible file");
+
+            var rec = FirstRecord + (book - 1) * RecordSize;
+            var expectedChapters = bytes[rec + 0x33];
+            var offset = BitConverter.ToInt64(bytes, rec + 0xD0);
+            var length = BitConverter.ToInt64(bytes, rec + 0xD8);
+            if (length <= 0) return null;
+            if (offset < 0 || offset >= bytes.Length) throw new InvalidDataException("Book is out of range");
+
+            // Each book's data follows a 10-byte "QK\x03\x04…" marker. The stored offset normally
+            // points just past it, but a few damaged files are off by a few bytes, so look nearby.
+            var start = (int)offset;
+            for (var p = Math.Max(0, start - 32); p <= Math.Min(bytes.Length - 12, start + 32); p++)
+                if (bytes[p] == 0x51 && bytes[p + 1] == 0x4B && bytes[p + 2] == 3 && bytes[p + 3] == 4) { start = p + 10; break; }
+            if (bytes[start] != 0x78) throw new InvalidDataException("No compressed data at the book's offset");
+
+            // Raw deflate after the 2-byte zlib header; keep whatever decompresses before any damage
+            var output = new MemoryStream();
+            using (var deflate = new System.IO.Compression.DeflateStream(
+                       new MemoryStream(bytes, start + 2, bytes.Length - start - 2), System.IO.Compression.CompressionMode.Decompress))
+            {
+                var buffer = new byte[81920];
+                try { int n; while ((n = await deflate.ReadAsync(buffer)) > 0) output.Write(buffer, 0, n); }
+                catch (InvalidDataException) when (output.Length > 0) { }
+            }
+            var raw = output.ToArray();
+
+            string text;
+            try { text = new UTF8Encoding(false, true).GetString(raw); }
+            catch (DecoderFallbackException) { text = Encoding.GetEncoding(1252).GetString(raw); }
+
+            // One verse per line: "3:16 For God…" or a combined "6:9-10 This is…". Verses must
+            // come in order, which also keeps out any scrambled text in a damaged file.
+            var chapters = new Dictionary<int, List<BibleVerseText>>();
+            int lastChapter = 0, lastVerse = 0;
+            foreach (var line in text.Split('\n'))
+            {
+                var m = System.Text.RegularExpressions.Regex.Match(line.Trim(), @"^(\d+):(\d+)(?:-(\d+))?\s+(\S.*)$");
+                if (!m.Success) continue;
+                int ch = int.Parse(m.Groups[1].Value), v = int.Parse(m.Groups[2].Value);
+                if (ch > expectedChapters || ch < lastChapter || (ch == lastChapter && v <= lastVerse)) continue;
+
+                var label = m.Groups[3].Success ? $"{v}-{m.Groups[3].Value}" : v.ToString();
+                if (!chapters.TryGetValue(ch, out var list)) chapters[ch] = list = new();
+                list.Add(new BibleVerseText(v, label, m.Groups[4].Value.Trim()));
+                lastChapter = ch;
+                lastVerse = m.Groups[3].Success ? int.Parse(m.Groups[3].Value) : v;
+            }
+
+            var result = new BookText(expectedChapters, chapters);
+            _cache.Set(cacheKey, result, new MemoryCacheEntryOptions
+            {
+                SlidingExpiration = TimeSpan.FromMinutes(30)
+            });
+            return result;
+        }
+
+        private static bool IsReadableFormat(string path)
+        {
+            try
+            {
+                using var file = File.OpenRead(path);
+                var head = new byte[Magic.Length];
+                return file.Read(head, 0, head.Length) == head.Length && Encoding.ASCII.GetString(head) == Magic;
+            }
+            catch (IOException) { return false; }
+        }
+
+        private static string Compact(string s) =>
+            new string(s.ToLowerInvariant().Where(char.IsLetterOrDigit).ToArray());
     }
 }
