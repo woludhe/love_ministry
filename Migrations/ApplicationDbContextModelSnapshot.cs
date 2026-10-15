@@ -950,6 +950,10 @@ namespace ChurchMinistry.Migrations
                     b.Property<string>("Description")
                         .HasColumnType("longtext");
 
+                    b.Property<string>("Icon")
+                        .HasMaxLength(60)
+                        .HasColumnType("varchar(60)");
+
                     b.Property<bool>("IsActive")
                         .HasColumnType("tinyint(1)");
 

@@ -193,8 +193,39 @@ namespace ChurchMinistry.ViewModels
         [Display(Name = "Meeting Day")] public string? MeetingDay { get; set; }
         [Display(Name = "Meeting Time")] public string? MeetingTime { get; set; }
         public string? Location { get; set; }
+        public string? Icon { get; set; }
         [Display(Name = "Leader")] public int? LeaderId { get; set; }
         [Display(Name = "Active")] public bool IsActive { get; set; } = true;
+    }
+
+    // Bootstrap Icons offered for groups; shown in the member list in place of the group name
+    public static class MinistryGroupIcons
+    {
+        public const string Default = "bi-people-fill";
+
+        public static readonly (string Css, string Label)[] All =
+        {
+            ("bi-people-fill", "People"), ("bi-person-hearts", "Fellowship"), ("bi-heart-fill", "Heart"),
+            ("bi-music-note-beamed", "Music"), ("bi-mic-fill", "Microphone"), ("bi-headphones", "Media"),
+            ("bi-book-fill", "Bible"), ("bi-journal-bookmark-fill", "Study"), ("bi-bookmark-heart-fill", "Devotion"),
+            ("bi-fire", "Fire"), ("bi-lightning-fill", "Power"), ("bi-brightness-high-fill", "Light"),
+            ("bi-sun-fill", "Sun"), ("bi-moon-stars-fill", "Night"), ("bi-star-fill", "Star"),
+            ("bi-gem", "Gem"), ("bi-feather", "Feather"), ("bi-droplet-fill", "Water"),
+            ("bi-flower1", "Flower"), ("bi-tree-fill", "Tree"), ("bi-house-heart-fill", "Home"),
+            ("bi-person-raised-hand", "Volunteers"), ("bi-person-arms-up", "Praise"), ("bi-hand-thumbs-up-fill", "Support"),
+            ("bi-chat-heart-fill", "Counselling"), ("bi-megaphone-fill", "Outreach"), ("bi-broadcast", "Broadcast"),
+            ("bi-camera-video-fill", "Video"), ("bi-palette-fill", "Creative"), ("bi-translate", "Languages"),
+            ("bi-globe-americas", "Missions"), ("bi-airplane-fill", "Travel"), ("bi-car-front-fill", "Transport"),
+            ("bi-shield-fill", "Protocol"), ("bi-flag-fill", "Flag"), ("bi-trophy-fill", "Sports"),
+            ("bi-mortarboard-fill", "Students"), ("bi-briefcase-fill", "Professionals"), ("bi-cash-coin", "Finance"),
+            ("bi-basket-fill", "Hospitality"), ("bi-cup-hot-fill", "Refreshments"), ("bi-gift-fill", "Gifts"),
+            ("bi-balloon-heart-fill", "Children"), ("bi-emoji-smile-fill", "Youth"), ("bi-gender-male", "Men"),
+            ("bi-gender-female", "Women"), ("bi-heart-pulse-fill", "Health"), ("bi-hospital", "Care"),
+            ("bi-tools", "Maintenance"), ("bi-calendar-heart-fill", "Events"), ("bi-bell-fill", "Ushers"),
+        };
+
+        public static bool IsValid(string? css) => css != null && All.Any(i => i.Css == css);
+        public static string For(MinistryGroup g) => IsValid(g.Icon) ? g.Icon! : Default;
     }
 
     // ─── Event ───

@@ -28,7 +28,7 @@
                     var meets = string.Join(" · ", new[] { g.MeetingDay, g.MeetingTime, g.Location }.Where(x => !string.IsNullOrWhiteSpace(x)));
                     <tr>
                         <td>
-                            <a asp-action="GroupDetails" asp-route-id="@g.Id" class="grp-name">@g.Name</a>
+                            <a asp-action="GroupDetails" asp-route-id="@g.Id" class="grp-name"><i class="bi @ChurchMinistry.ViewModels.MinistryGroupIcons.For(g) grp-name-icon"></i> @g.Name</a>
                             @if (!string.IsNullOrWhiteSpace(g.Description))
                             {
                                 <div class="grp-desc">@g.Description</div>
@@ -52,6 +52,7 @@
 <style>
 .grp-name  { font-weight:700;color:var(--text);text-decoration:none; }
 .grp-name:hover { color:var(--purple); }
+.grp-name-icon { color:var(--purple);margin-right:.25rem; }
 .grp-desc  { font-size:.78rem;color:var(--text-s);max-width:320px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }
 .grp-empty { border:1.5px dashed var(--border);border-radius:10px;padding:2rem;text-align:center;color:var(--text-s); }
 .grp-empty i { font-size:1.8rem;color:var(--purple);margin-bottom:.5rem; }

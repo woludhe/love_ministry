@@ -76,6 +76,7 @@ namespace ChurchMinistry.Models
         public string? MeetingDay { get; set; }
         public string? MeetingTime { get; set; }
         public string? Location { get; set; }
+        [MaxLength(60)] public string? Icon { get; set; }   // Bootstrap Icons class, e.g. "bi-music-note-beamed"
         public int? LeaderId { get; set; }
         public Member? Leader { get; set; }
         public bool IsActive { get; set; } = true;

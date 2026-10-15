@@ -1384,6 +1384,7 @@ namespace ChurchMinistry.Controllers
                 MeetingDay = group.MeetingDay,
                 MeetingTime = group.MeetingTime,
                 Location = group.Location,
+                Icon = group.Icon,
                 LeaderId = group.LeaderId,
                 IsActive = group.IsActive
             });
@@ -1497,6 +1498,8 @@ namespace ChurchMinistry.Controllers
                 ModelState.AddModelError(nameof(vm.Name), "A group with this name already exists.");
             if (vm.LeaderId != null && !await _db.Members.AnyAsync(m => m.Id == vm.LeaderId))
                 ModelState.AddModelError(nameof(vm.LeaderId), "Choose a leader from the list.");
+            if (!string.IsNullOrEmpty(vm.Icon) && !MinistryGroupIcons.IsValid(vm.Icon))
+                ModelState.AddModelError(nameof(vm.Icon), "Choose an icon from the list.");
         }
 
         private static void ApplyGroupForm(MinistryGroup group, MinistryGroupFormViewModel vm)
@@ -1506,6 +1509,7 @@ namespace ChurchMinistry.Controllers
             group.MeetingDay = string.IsNullOrWhiteSpace(vm.MeetingDay) ? null : vm.MeetingDay;
             group.MeetingTime = string.IsNullOrWhiteSpace(vm.MeetingTime) ? null : vm.MeetingTime;
             group.Location = string.IsNullOrWhiteSpace(vm.Location) ? null : vm.Location.Trim();
+            group.Icon = string.IsNullOrEmpty(vm.Icon) ? null : vm.Icon;
             group.LeaderId = vm.LeaderId;
             group.IsActive = vm.IsActive;
         }
