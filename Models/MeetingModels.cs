@@ -19,6 +19,8 @@ namespace ChurchMinistry.Models
         public RoomStatus Status { get; set; } = RoomStatus.Scheduled;
         public bool IsRecurring { get; set; }
         public string? RecurringPattern { get; set; }        // "weekly:Sunday:08:00"
+        // Id of the first meeting of a recurring series; every weekly meeting shares it
+        public int? SeriesId { get; set; }
         public bool WaitingRoomEnabled { get; set; } = true;
         public bool ChatEnabled { get; set; } = true;
         public bool RecordingEnabled { get; set; }
@@ -37,6 +39,44 @@ namespace ChurchMinistry.Models
         public ICollection<MeetingParticipant> Participants { get; set; } = new List<MeetingParticipant>();
         public ICollection<MeetingMessage> Messages { get; set; } = new List<MeetingMessage>();
         public ICollection<MeetingInvitation> Invitations { get; set; } = new List<MeetingInvitation>();
+
+        // ── Recurrence ("daily:08:00" or "weekly:Sunday:08:00", server local time) ──
+        // Day is null for a daily meeting
+        public (DayOfWeek? Day, TimeSpan Time)? ParseRecurrence()
+        {
+            if (!IsRecurring || string.IsNullOrEmpty(RecurringPattern)) return null;
+            if (RecurringPattern.StartsWith("daily:"))
+                return TimeSpan.TryParse(RecurringPattern["daily:".Length..], out var dailyTime)
+                    ? (null, dailyTime) : null;
+
+            var parts = RecurringPattern.Split(':', 3);
+            if (parts.Length != 3 || parts[0] != "weekly") return null;
+            if (!Enum.TryParse<DayOfWeek>(parts[1], true, out var day)) return null;
+            if (!TimeSpan.TryParse(parts[2], out var time)) return null;
+            return (day, time);
+        }
+
+        // First occurrence strictly after the given moment, or null when not recurring
+        public DateTime? NextOccurrenceUtc(DateTime afterUtc)
+        {
+            if (ParseRecurrence() is not { } rec) return null;
+            var after = afterUtc.ToLocalTime();
+            DateTime candidate;
+            if (rec.Day is { } day)
+            {
+                candidate = after.Date.AddDays(((int)day - (int)after.DayOfWeek + 7) % 7) + rec.Time;
+                if (candidate <= after) candidate = candidate.AddDays(7);
+            }
+            else
+            {
+                candidate = after.Date + rec.Time;
+                if (candidate <= after) candidate = candidate.AddDays(1);
+            }
+            return DateTime.SpecifyKind(candidate, DateTimeKind.Local).ToUniversalTime();
+        }
+
+        public string? RecurrenceLabel => ParseRecurrence() is { } rec
+            ? $"Every {(rec.Day?.ToString() ?? "day")} · {DateTime.Today.Add(rec.Time):h:mm tt}" : null;
     }
 
     public enum MeetingType { Prayer, BibleStudy, Worship, YouthService, GeneralService, CellGroup, OneOnOne }
@@ -89,6 +129,10 @@ namespace ChurchMinistry.Models
 
         // Email for external guests
         public string? Email { get; set; }
+
+        // Set for a group invite — access follows the group's current membership
+        public int? MinistryGroupId { get; set; }
+        public MinistryGroup? MinistryGroup { get; set; }
 
         public DateTime InvitedAt { get; set; } = DateTime.UtcNow;
 

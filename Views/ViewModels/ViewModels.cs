@@ -11,6 +11,34 @@ namespace ChurchMinistry.ViewModels
         public bool RememberMe { get; set; }
     }
 
+    public class ChangePasswordViewModel
+    {
+        [Required, DataType(DataType.Password), Display(Name = "Current Password")]
+        public string CurrentPassword { get; set; } = "";
+
+        [Required, DataType(DataType.Password), MinLength(8, ErrorMessage = "The new password must be at least 8 characters.")]
+        [Display(Name = "New Password")]
+        public string NewPassword { get; set; } = "";
+
+        [Required, DataType(DataType.Password), Display(Name = "Confirm New Password")]
+        [Compare(nameof(NewPassword), ErrorMessage = "The new passwords don't match.")]
+        public string ConfirmPassword { get; set; } = "";
+    }
+
+    public class ResetPasswordViewModel
+    {
+        [Required] public string Code { get; set; } = "";    // Base64Url reset token from the email link
+        [Required, EmailAddress] public string Email { get; set; } = "";
+
+        [Required, DataType(DataType.Password), MinLength(8, ErrorMessage = "The new password must be at least 8 characters.")]
+        [Display(Name = "New Password")]
+        public string NewPassword { get; set; } = "";
+
+        [Required, DataType(DataType.Password), Display(Name = "Confirm New Password")]
+        [Compare(nameof(NewPassword), ErrorMessage = "The new passwords don't match.")]
+        public string ConfirmPassword { get; set; } = "";
+    }
+
     public class RegisterViewModel
     {
         [Required] public string FirstName { get; set; } = "";
@@ -27,6 +55,7 @@ namespace ChurchMinistry.ViewModels
     public class MemberProfileViewModel
     {
         public int Id { get; set; }
+        public MemberStatus Status { get; set; }   // shown to Admin/Pastor; not edited by the form
         [Required] public string FirstName { get; set; } = "";
         [Required] public string LastName { get; set; } = "";
         [Required, EmailAddress] public string Email { get; set; } = "";
@@ -39,7 +68,6 @@ namespace ChurchMinistry.ViewModels
         public string? City { get; set; }
         public string? Country { get; set; }
         public string? Occupation { get; set; }
-        public int? MinistryGroupId { get; set; }
         public string? EmergencyContact { get; set; }
         public string? EmergencyPhone { get; set; }
         public IFormFile? ProfilePhotoFile { get; set; }
@@ -49,7 +77,9 @@ namespace ChurchMinistry.ViewModels
     public class MemberDashboardViewModel
     {
         public Member Member { get; set; } = null!;
-        public int AttendanceThisMonth { get; set; }
+        public int AttendanceThisMonth { get; set; }          // physical + virtual
+        public int PhysicalAttendanceThisMonth { get; set; }  // checked in at church
+        public int VirtualAttendanceThisMonth { get; set; }   // services joined online
         public decimal TotalGivingThisYear { get; set; }
         public int PrayerRequestsCount { get; set; }
         public List<Sermon> RecentSermons { get; set; } = new();
@@ -152,6 +182,19 @@ namespace ChurchMinistry.ViewModels
         public Dictionary<string, int> MonthlyAttendance { get; set; } = new();
         public Dictionary<string, decimal> GivingByType { get; set; } = new();
         public Dictionary<string, int> MembersByGroup { get; set; } = new();
+    }
+
+    // ─── Groups ───
+    public class MinistryGroupFormViewModel
+    {
+        public int Id { get; set; }
+        [Required, MaxLength(150)] public string Name { get; set; } = "";
+        public string? Description { get; set; }
+        [Display(Name = "Meeting Day")] public string? MeetingDay { get; set; }
+        [Display(Name = "Meeting Time")] public string? MeetingTime { get; set; }
+        public string? Location { get; set; }
+        [Display(Name = "Leader")] public int? LeaderId { get; set; }
+        [Display(Name = "Active")] public bool IsActive { get; set; } = true;
     }
 
     // ─── Event ───

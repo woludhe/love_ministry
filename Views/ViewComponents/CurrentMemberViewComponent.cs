@@ -43,7 +43,7 @@ namespace ChurchMinistry.ViewComponents
 
             var member = await _db.Members
                 .AsNoTracking()
-                .Include(m => m.MinistryGroup)
+                .Include(m => m.MinistryGroups)
                 .FirstOrDefaultAsync(m => m.UserId == user.Id);
 
             return new CurrentMemberViewModel
@@ -53,7 +53,8 @@ namespace ChurchMinistry.ViewComponents
                 ProfilePhoto = member?.ProfilePhoto ?? "/images/avatar-default.png",
                 MembershipType = member?.MembershipType ?? MembershipType.Regular,
                 MemberStatus = member?.Status ?? MemberStatus.Active,
-                MinistryGroup = member?.MinistryGroup?.Name,
+                MinistryGroup = member == null || member.MinistryGroups.Count == 0 ? null
+                    : string.Join(", ", member.MinistryGroups.OrderBy(g => g.Name).Select(g => g.Name)),
                 MemberId = member?.Id,
                 Email = user.Email ?? "",
                 IsAdmin = claimsPrincipal.IsInRole("Admin"),

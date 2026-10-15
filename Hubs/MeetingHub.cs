@@ -16,11 +16,14 @@ namespace ChurchMinistry.Hubs
         private readonly UserManager<ApplicationUser> _userManager;
         private readonly ILiveKitService _liveKit;
         private readonly IAttendanceService _attendance;
+        private readonly IMeetingAccessService _access;
+        private readonly IMeetingSeriesService _series;
 
         public MeetingHub(ApplicationDbContext db, UserManager<ApplicationUser> um, ILiveKitService liveKit,
-            IAttendanceService attendance)
+            IAttendanceService attendance, IMeetingAccessService access, IMeetingSeriesService series)
         {
-            _db = db; _userManager = um; _liveKit = liveKit; _attendance = attendance;
+            _db = db; _userManager = um; _liveKit = liveKit; _attendance = attendance; _access = access;
+            _series = series;
         }
 
         // ── Join meeting room ──────────────────────────────────
@@ -31,6 +34,13 @@ namespace ChurchMinistry.Hubs
                 .Include(r => r.Participants)
                 .FirstOrDefaultAsync(r => r.RoomCode == roomCode);
             if (room == null) return;
+
+            // Private meetings: invited people (directly or through a group) only
+            if (!await _access.CanAccessAsync(room, Context.User!))
+            {
+                await Clients.Caller.SendAsync("AccessDenied", "This is a private meeting. Only invited people can join.");
+                return;
+            }
 
             var user = await _userManager.GetUserAsync(Context.User!);
             var member = user == null ? null
@@ -165,6 +175,7 @@ namespace ChurchMinistry.Hubs
                 .FirstOrDefaultAsync(p => p.MeetingRoomId == room.Id && p.ConnectionId == Context.ConnectionId
                                        && p.LeftAt == null && p.IsAdmitted);
             if (participant == null || (!room.IsApproved && !participant.IsHost)) return null;
+            if (!await _access.CanAccessAsync(room, Context.User!)) return null;
 
             var metadata = Newtonsoft.Json.JsonConvert.SerializeObject(new
             {
@@ -407,6 +418,9 @@ namespace ChurchMinistry.Hubs
                     .Where(s => s.MeetingRoomCode == roomCode)
                     .Select(s => s.Id).ToListAsync();
                 await _attendance.CloseSermonAttendanceAsync(sermonIds);
+
+                // Recurring: next week's meeting (its own room code) is created now
+                await _series.CreateNextAsync(room);
             }
             _muteOnEntry.TryRemove(roomCode, out _);
             _spotlight.TryRemove(roomCode, out _);
@@ -527,6 +541,12 @@ namespace ChurchMinistry.Hubs
                 .ThenInclude(p => p.Member)
                 .FirstOrDefaultAsync(r => r.RoomCode == roomCode);
             if (room == null || room.Status == RoomStatus.Ended || room.Status == RoomStatus.Cancelled) return;
+
+            // A private meeting can be watched only when an admin has linked it to a
+            // published sermon (that is how the Live page streams it)
+            if (!room.IsPublic && !await _db.Sermons.AnyAsync(s =>
+                    s.IsOnlineMeeting && s.MeetingRoomCode == roomCode && s.IsPublished))
+                return;
 
             // A separate group from the meeting's, so meeting-only messages don't reach viewers
             await Groups.AddToGroupAsync(Context.ConnectionId, ViewersGroup(roomCode));

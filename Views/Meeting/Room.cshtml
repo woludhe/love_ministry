@@ -690,6 +690,8 @@ conn.on('SystemMessage',msg=>appendSystemMessage(msg));
 conn.on('WaitingRoomRequest',({connectionId,displayName,participantId})=>{addWaitingItem(connectionId,displayName,participantId);toast(`✋ ${displayName} is waiting`);});
 conn.on('MeetingEnded',()=>{clearInterval(timerInterval);room.disconnect();document.getElementById('endedOverlay').style.display='flex';});
 conn.on('Removed',()=>{clearInterval(timerInterval);room.disconnect();document.getElementById('endedOverlay').style.display='flex';});
+// Private meeting this user isn't invited to (e.g. an invite removed after the page loaded)
+conn.on('AccessDenied',msg=>{clearInterval(timerInterval);room.disconnect();conn.stop();window.location.href='/Meeting';});
 
 // Spotlight broadcast from admin
 conn.on('SpotlightChanged',cid=>{

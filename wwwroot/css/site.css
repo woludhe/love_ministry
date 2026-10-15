@@ -2797,6 +2797,40 @@ input:checked ~ .toggle-track {
     margin-bottom: .5rem;
 }
 
+.meet-sermon {
+    font-size: .82rem;
+    color: var(--text-s);
+    margin-bottom: .5rem;
+    display: flex;
+    align-items: center;
+    gap: .35rem;
+    flex-wrap: wrap;
+}
+
+    .meet-sermon i {
+        color: var(--purple);
+    }
+
+    .meet-sermon a {
+        color: var(--purple);
+        font-weight: 600;
+        text-decoration: none;
+    }
+
+        .meet-sermon a:hover {
+            text-decoration: underline;
+        }
+
+.meet-sermon-live {
+    background: var(--coral);
+    color: white;
+    font-size: .65rem;
+    font-weight: 800;
+    text-transform: uppercase;
+    padding: .05rem .4rem;
+    border-radius: 100px;
+}
+
 .meet-time {
     font-size: .82rem;
     color: var(--purple);

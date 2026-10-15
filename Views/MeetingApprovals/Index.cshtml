@@ -68,7 +68,7 @@
                         </span>
                         @if (room.IsRecurring)
                         {
-                            <span><i class="fas fa-rotate"></i> Recurring</span>
+                            <span><i class="fas fa-rotate"></i> @(room.RecurrenceLabel ?? "Recurring")</span>
                         }
                         @if (!string.IsNullOrEmpty(room.PassCode))
                         {

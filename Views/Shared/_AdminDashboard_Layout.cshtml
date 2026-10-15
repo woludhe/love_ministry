@@ -98,7 +98,22 @@
                 <div class="sidebar-logo">⚙ Admin Panel</div>
                 <nav class="sidebar-nav">
                     <a asp-controller="Admin" asp-action="Index" class="active"><i class="fas fa-tachometer-alt"></i> Dashboard</a>
-                    <a asp-controller="Admin" asp-action="Members"><i class="fas fa-users"></i> Members</a>
+                    @{
+                        var memberNavAction = ViewContext.RouteData.Values["action"]?.ToString();
+                        var inMembers = ViewContext.RouteData.Values["controller"]?.ToString() == "Admin"
+                                     && new[] { "Members", "Groups", "CreateGroup", "EditGroup", "GroupDetails" }.Contains(memberNavAction);
+                    }
+                    <details class="sidebar-group" open="@inMembers">
+                        <summary><i class="fas fa-users"></i> Members <i class="fas fa-chevron-down sidebar-caret"></i></summary>
+                        <a asp-controller="Admin" asp-action="Members"
+                           class="@(inMembers && memberNavAction == "Members" ? "active" : "")">
+                            <i class="fas fa-address-card"></i> All Members
+                        </a>
+                        <a asp-controller="Admin" asp-action="Groups"
+                           class="@(inMembers && memberNavAction != "Members" ? "active" : "")">
+                            <i class="fas fa-people-group"></i> Groups
+                        </a>
+                    </details>
                     <a asp-controller="Admin" asp-action="Attendance"><i class="fas fa-calendar-check"></i> Attendance</a>
                     <a asp-controller="Admin" asp-action="Givings"><i class="fas fa-hand-holding-heart"></i> Givings</a>
                     <a asp-controller="AdminPayment" asp-action="Index"><i class="fa-solid fa-money-bill"></i> Payment Settings</a>

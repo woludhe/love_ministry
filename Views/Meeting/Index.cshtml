@@ -66,6 +66,24 @@
                     <div class="meet-card meet-card-live">
                         <div class="meet-card-type @room.MeetingType.ToString().ToLower()">@room.MeetingType</div>
                         <h3>@room.Title</h3>
+                        @if (Model.LinkedSermons.TryGetValue(room.RoomCode, out var linked))
+                        {
+                            <p class="meet-sermon">
+                                <i class="fas fa-book-bible"></i> Sermon:
+                                @if (linked.IsPublished)
+                                {
+                                    <a href="/Media/Watch/@linked.Id">@linked.Title</a>
+                                }
+                                else
+                                {
+                                    <span>@linked.Title</span>
+                                }
+                                @if (linked.IsLive)
+                                {
+                                    <span class="meet-sermon-live">Live</span>
+                                }
+                            </p>
+                        }
                         <p class="meet-host"><i class="fas fa-user"></i> @(room.HostMember?.FullName ?? "Host")</p>
                         <div class="meet-card-meta">
                             <span><i class="fas fa-users"></i> @room.Participants.Count(p => p.LeftAt == null) joined</span>
@@ -115,6 +133,24 @@
                             </div>
                         </div>
                         <h3>@room.Title</h3>
+                        @if (Model.LinkedSermons.TryGetValue(room.RoomCode, out var linked))
+                        {
+                            <p class="meet-sermon">
+                                <i class="fas fa-book-bible"></i> Sermon:
+                                @if (linked.IsPublished)
+                                {
+                                    <a href="/Media/Watch/@linked.Id">@linked.Title</a>
+                                }
+                                else
+                                {
+                                    <span>@linked.Title</span>
+                                }
+                                @if (linked.IsLive)
+                                {
+                                    <span class="meet-sermon-live">Live</span>
+                                }
+                            </p>
+                        }
                         @if (room.ScheduledAt.HasValue)
                         {
                             <p class="meet-time">
@@ -124,11 +160,11 @@
                         }
                         @if (room.IsRecurring)
                         {
-                            <span class="recurring-badge"><i class="fas fa-rotate"></i> Recurring</span>
+                            <span class="recurring-badge"><i class="fas fa-rotate"></i> @(room.RecurrenceLabel ?? "Recurring")</span>
                         }
                         <div class="meet-card-actions">
                             <a asp-action="Room" asp-route-code="@room.RoomCode" class="btn-meet btn-meet-primary btn-sm">
-                                <i class="fas fa-video"></i> @(room.Status == RoomStatus.Live ? "Join Now" : "Open Room")
+                                <i class="fas fa-video"></i> @(room.Status == RoomStatus.Live ? "Join Now" : "Start Meeting")
                             </a>
                             <span class="room-code-badge">@room.RoomCode</span>
                         </div>
@@ -152,6 +188,24 @@
                         <div class="meet-card-type @room.MeetingType.ToString().ToLower()">@room.MeetingType</div>
                         <span class="meet-private-badge"><i class="fas fa-lock"></i> Private</span>
                         <h3>@room.Title</h3>
+                        @if (Model.LinkedSermons.TryGetValue(room.RoomCode, out var linked))
+                        {
+                            <p class="meet-sermon">
+                                <i class="fas fa-book-bible"></i> Sermon:
+                                @if (linked.IsPublished)
+                                {
+                                    <a href="/Media/Watch/@linked.Id">@linked.Title</a>
+                                }
+                                else
+                                {
+                                    <span>@linked.Title</span>
+                                }
+                                @if (linked.IsLive)
+                                {
+                                    <span class="meet-sermon-live">Live</span>
+                                }
+                            </p>
+                        }
                         <p class="meet-host"><i class="fas fa-user"></i> @(room.HostMember?.FullName ?? "Host")</p>
                         @if (room.ScheduledAt.HasValue)
                         {
@@ -195,6 +249,24 @@
                             </div>
                         </div>
                         <h3>@room.Title</h3>
+                        @if (Model.LinkedSermons.TryGetValue(room.RoomCode, out var linked))
+                        {
+                            <p class="meet-sermon">
+                                <i class="fas fa-book-bible"></i> Sermon:
+                                @if (linked.IsPublished)
+                                {
+                                    <a href="/Media/Watch/@linked.Id">@linked.Title</a>
+                                }
+                                else
+                                {
+                                    <span>@linked.Title</span>
+                                }
+                                @if (linked.IsLive)
+                                {
+                                    <span class="meet-sermon-live">Live</span>
+                                }
+                            </p>
+                        }
                         <p class="meet-host"><i class="fas fa-user"></i> @(room.HostMember?.FullName ?? "Host")</p>
                         @if (room.ScheduledAt.HasValue)
                         {
@@ -228,6 +300,24 @@
                     <div class="meet-card" style="border-left:3px solid var(--amber);opacity:.9">
                         <div class="meet-card-type @room.MeetingType.ToString().ToLower()">@room.MeetingType</div>
                         <h3>@room.Title</h3>
+                        @if (Model.LinkedSermons.TryGetValue(room.RoomCode, out var linked))
+                        {
+                            <p class="meet-sermon">
+                                <i class="fas fa-book-bible"></i> Sermon:
+                                @if (linked.IsPublished)
+                                {
+                                    <a href="/Media/Watch/@linked.Id">@linked.Title</a>
+                                }
+                                else
+                                {
+                                    <span>@linked.Title</span>
+                                }
+                                @if (linked.IsLive)
+                                {
+                                    <span class="meet-sermon-live">Live</span>
+                                }
+                            </p>
+                        }
                         @if (room.ScheduledAt.HasValue)
                         {
                             <p class="meet-time">
@@ -260,6 +350,24 @@
                     <div class="meet-card">
                         <div class="meet-card-type @room.MeetingType.ToString().ToLower()">@room.MeetingType</div>
                         <h3>@room.Title</h3>
+                        @if (Model.LinkedSermons.TryGetValue(room.RoomCode, out var linked))
+                        {
+                            <p class="meet-sermon">
+                                <i class="fas fa-book-bible"></i> Sermon:
+                                @if (linked.IsPublished)
+                                {
+                                    <a href="/Media/Watch/@linked.Id">@linked.Title</a>
+                                }
+                                else
+                                {
+                                    <span>@linked.Title</span>
+                                }
+                                @if (linked.IsLive)
+                                {
+                                    <span class="meet-sermon-live">Live</span>
+                                }
+                            </p>
+                        }
                         <p class="meet-host"><i class="fas fa-user"></i> @(room.HostMember?.FullName ?? "Host")</p>
                         @if (room.ScheduledAt.HasValue)
                         {
@@ -270,7 +378,7 @@
                         }
                         @if (room.IsRecurring)
                         {
-                            <span class="recurring-badge"><i class="fas fa-rotate"></i> Recurring</span>
+                            <span class="recurring-badge"><i class="fas fa-rotate"></i> @(room.RecurrenceLabel ?? "Recurring")</span>
                         }
                         <div class="meet-card-actions">
                             <a asp-action="Room" asp-route-code="@room.RoomCode" class="btn-meet btn-meet-outline btn-sm">
@@ -295,6 +403,24 @@
                     <div class="meet-card meet-card-past">
                         <div class="meet-card-type @room.MeetingType.ToString().ToLower()">@room.MeetingType</div>
                         <h3>@room.Title</h3>
+                        @if (Model.LinkedSermons.TryGetValue(room.RoomCode, out var linked))
+                        {
+                            <p class="meet-sermon">
+                                <i class="fas fa-book-bible"></i> Sermon:
+                                @if (linked.IsPublished)
+                                {
+                                    <a href="/Media/Watch/@linked.Id">@linked.Title</a>
+                                }
+                                else
+                                {
+                                    <span>@linked.Title</span>
+                                }
+                                @if (linked.IsLive)
+                                {
+                                    <span class="meet-sermon-live">Live</span>
+                                }
+                            </p>
+                        }
                         <div class="meet-card-meta">
                             <span><i class="fas fa-users"></i> @room.Participants.Count participants</span>
                             @if (room.EndedAt.HasValue)

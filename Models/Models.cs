@@ -52,10 +52,9 @@ namespace ChurchMinistry.Models
         // FK
         public string? UserId { get; set; }
         public ApplicationUser? User { get; set; }
-        public int? MinistryGroupId { get; set; }
-        public MinistryGroup? MinistryGroup { get; set; }
 
         // Navigation
+        public ICollection<MinistryGroup> MinistryGroups { get; set; } = new List<MinistryGroup>();
         public ICollection<AttendanceRecord> AttendanceRecords { get; set; } = new List<AttendanceRecord>();
         public ICollection<Giving> Givings { get; set; } = new List<Giving>();
         public ICollection<PrayerRequest> PrayerRequests { get; set; } = new List<PrayerRequest>();
@@ -82,6 +81,16 @@ namespace ChurchMinistry.Models
         public bool IsActive { get; set; } = true;
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
         public ICollection<Member> Members { get; set; } = new List<Member>();
+    }
+
+    // A member's place in a group; a member can be in several groups
+    public class MinistryGroupMember
+    {
+        public int MinistryGroupId { get; set; }
+        public MinistryGroup MinistryGroup { get; set; } = null!;
+        public int MemberId { get; set; }
+        public Member Member { get; set; } = null!;
+        public DateTime JoinedAt { get; set; } = DateTime.UtcNow;
     }
 
     // ─────────────────────────────────────────────

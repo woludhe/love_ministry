@@ -1,8 +1,16 @@
 @model ChurchMinistry.ViewModels.MemberProfileViewModel
 @{
-    ViewData["Title"] = "My Profile"; Layout = "~/Views/Shared/_MemberDashboard_Layout.cshtml";
+    var canManage = ViewBag.CanManage as bool? == true;
+    ViewData["Title"] = canManage ? "Edit Member" : "My Profile"; Layout = "~/Views/Shared/_MemberDashboard_Layout.cshtml";
+    var isActive = Model.Status == ChurchMinistry.Models.MemberStatus.Active;
 }
-<section class="page-header"><h1>My Profile</h1></section>
+<section class="page-header">
+    <h1>@(canManage ? $"Edit Member: {Model.FirstName} {Model.LastName}" : "My Profile")</h1>
+    @if (canManage)
+    {
+        <p><span class="member-status-badge @(isActive ? "status-active" : "status-inactive")">@Model.Status</span></p>
+    }
+</section>
 <div class="form-page">
     <form asp-action="Profile" method="post" enctype="multipart/form-data">
         <div asp-validation-summary="All" class="validation-summary"></div>
@@ -39,9 +47,76 @@
             <div class="form-group"><label asp-for="EmergencyPhone">Emergency Phone</label><input asp-for="EmergencyPhone" class="form-control" /></div>
         </div>
         <button type="submit" class="btn btn-primary">Save Changes</button>
-        <a asp-action="Dashboard" class="btn btn-outline">Cancel</a>
+        @if (canManage)
+        {
+            <a asp-controller="Admin" asp-action="Members" class="btn btn-outline">Cancel</a>
+        }
+        else
+        {
+            <a asp-action="Dashboard" class="btn btn-outline">Cancel</a>
+        }
     </form>
+
+    @if (canManage)
+    {
+        <div class="member-manage">
+            <h3><i class="fas fa-user-gear"></i> Manage Member</h3>
+
+            <div class="member-manage-row">
+                <div>
+                    <strong>@(isActive ? "Deactivate member" : "Reactivate member")</strong>
+                    <p>@(isActive
+                        ? "Marks the member Inactive and stops them signing in. Their records are kept and you can reactivate them at any time."
+                        : "Marks the member Active again and lets them sign in.")</p>
+                </div>
+                <form method="post" action="/profile/@Model.Id/status"
+                      data-confirm="@(isActive ? "Deactivate" : "Reactivate") @Model.FirstName @Model.LastName?"
+                      onsubmit="return confirm(this.dataset.confirm)">
+                    @Html.AntiForgeryToken()
+                    <input type="hidden" name="active" value="@(isActive ? "false" : "true")" />
+                    <button type="submit" class="btn @(isActive ? "btn-warning-outline" : "btn-primary")">
+                        <i class="fas @(isActive ? "fa-user-slash" : "fa-user-check")"></i>
+                        @(isActive ? "Deactivate" : "Reactivate")
+                    </button>
+                </form>
+            </div>
+
+            <div class="member-manage-row member-manage-danger">
+                <div>
+                    <strong>Delete member</strong>
+                    <p>Permanently removes the member and their login. Giving and prayer records are kept without their name.
+                       This can't be undone.</p>
+                </div>
+                <form method="post" action="/profile/@Model.Id/delete"
+                      data-confirm="Permanently delete @Model.FirstName @Model.LastName and their login? This cannot be undone."
+                      onsubmit="return confirm(this.dataset.confirm)">
+                    @Html.AntiForgeryToken()
+                    <button type="submit" class="btn btn-danger-solid">
+                        <i class="fas fa-trash"></i> Delete
+                    </button>
+                </form>
+            </div>
+        </div>
+    }
 </div>
+
+<style>
+.member-status-badge { display:inline-block;padding:.2rem .75rem;border-radius:100px;font-size:.8rem;font-weight:700; }
+.status-active       { background:#d1fae5;color:#065f46; }
+.status-inactive     { background:#fee2e2;color:#991b1b; }
+.member-manage       { margin-top:2.5rem;border:1.5px solid var(--border);border-radius:var(--radius);
+                       background:var(--white);padding:1.25rem; }
+.member-manage h3    { font-size:1rem;margin-bottom:.75rem; }
+.member-manage h3 i  { color:var(--purple); }
+.member-manage-row   { display:flex;justify-content:space-between;align-items:center;gap:1rem;
+                       padding:.9rem 0;border-top:1px solid var(--border);flex-wrap:wrap; }
+.member-manage-row p { font-size:.82rem;color:var(--text-s);margin:.2rem 0 0;max-width:460px; }
+.member-manage-danger strong { color:var(--coral); }
+.btn-warning-outline { background:transparent;color:#b45309;border:1.5px solid #f59e0b; }
+.btn-warning-outline:hover { background:#fef3c7; }
+.btn-danger-solid    { background:var(--coral);color:white;border:none; }
+.btn-danger-solid:hover { background:#dc2626;color:white; }
+</style>
 @section Scripts {
     <script>
         function previewPhoto(i) {

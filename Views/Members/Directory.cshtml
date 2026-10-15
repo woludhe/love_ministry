@@ -9,7 +9,7 @@
     <select name="group" class="form-control">
       <option value="">All Groups</option>
       @foreach (ChurchMinistry.Models.MinistryGroup g in (ViewBag.Groups ?? new List<ChurchMinistry.Models.MinistryGroup>())) {
-        <option value="@g.Id">@g.Name</option>
+        <option value="@g.Id" selected="@(Context.Request.Query["group"] == g.Id.ToString())">@g.Name</option>
       }
     </select>
     <button class="btn btn-primary">Search</button>
@@ -19,7 +19,9 @@
       <div class="directory-card">
         <img src="@(m.ProfilePhoto ?? "/images/avatar-default.png")" class="directory-photo" />
         <h3>@m.FullName</h3>
-        <p class="tag">@m.MinistryGroup?.Name</p>
+        @foreach (var g in m.MinistryGroups.OrderBy(g => g.Name)) {
+          <p class="tag">@g.Name</p>
+        }
         <p class="meta">@m.City, @m.Country</p>
       </div>
     }

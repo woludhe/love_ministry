@@ -630,6 +630,9 @@ namespace ChurchMinistry.Migrations
                     b.Property<int?>("MemberId")
                         .HasColumnType("int");
 
+                    b.Property<int?>("MinistryGroupId")
+                        .HasColumnType("int");
+
                     b.Property<string>("Token")
                         .IsRequired()
                         .HasColumnType("longtext");
@@ -639,6 +642,8 @@ namespace ChurchMinistry.Migrations
                     b.HasIndex("MeetingRoomId");
 
                     b.HasIndex("MemberId");
+
+                    b.HasIndex("MinistryGroupId");
 
                     b.ToTable("MeetingInvitations");
                 });
@@ -806,6 +811,9 @@ namespace ChurchMinistry.Migrations
                     b.Property<DateTime?>("ScheduledAt")
                         .HasColumnType("datetime(6)");
 
+                    b.Property<int?>("SeriesId")
+                        .HasColumnType("int");
+
                     b.Property<DateTime?>("StartedAt")
                         .HasColumnType("datetime(6)");
 
@@ -832,6 +840,8 @@ namespace ChurchMinistry.Migrations
 
                     b.HasIndex("RoomCode")
                         .IsUnique();
+
+                    b.HasIndex("SeriesId");
 
                     b.ToTable("MeetingRooms");
                 });
@@ -895,9 +905,6 @@ namespace ChurchMinistry.Migrations
                         .IsRequired()
                         .HasColumnType("longtext");
 
-                    b.Property<int?>("MinistryGroupId")
-                        .HasColumnType("int");
-
                     b.Property<string>("Notes")
                         .HasColumnType("longtext");
 
@@ -924,8 +931,6 @@ namespace ChurchMinistry.Migrations
 
                     b.HasIndex("Email")
                         .IsUnique();
-
-                    b.HasIndex("MinistryGroupId");
 
                     b.HasIndex("UserId")
                         .IsUnique();
@@ -970,6 +975,24 @@ namespace ChurchMinistry.Migrations
                     b.HasIndex("LeaderId");
 
                     b.ToTable("MinistryGroups");
+                });
+
+            modelBuilder.Entity("ChurchMinistry.Models.MinistryGroupMember", b =>
+                {
+                    b.Property<int>("MinistryGroupId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("MemberId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("JoinedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.HasKey("MinistryGroupId", "MemberId");
+
+                    b.HasIndex("MemberId");
+
+                    b.ToTable("MinistryGroupMembers");
                 });
 
             modelBuilder.Entity("ChurchMinistry.Models.Newsletter", b =>
@@ -1702,9 +1725,16 @@ namespace ChurchMinistry.Migrations
                         .WithMany()
                         .HasForeignKey("MemberId");
 
+                    b.HasOne("ChurchMinistry.Models.MinistryGroup", "MinistryGroup")
+                        .WithMany()
+                        .HasForeignKey("MinistryGroupId")
+                        .OnDelete(DeleteBehavior.Cascade);
+
                     b.Navigation("MeetingRoom");
 
                     b.Navigation("Member");
+
+                    b.Navigation("MinistryGroup");
                 });
 
             modelBuilder.Entity("ChurchMinistry.Models.MeetingMessage", b =>
@@ -1761,17 +1791,10 @@ namespace ChurchMinistry.Migrations
 
             modelBuilder.Entity("ChurchMinistry.Models.Member", b =>
                 {
-                    b.HasOne("ChurchMinistry.Models.MinistryGroup", "MinistryGroup")
-                        .WithMany("Members")
-                        .HasForeignKey("MinistryGroupId")
-                        .OnDelete(DeleteBehavior.SetNull);
-
                     b.HasOne("ChurchMinistry.Models.ApplicationUser", "User")
                         .WithOne("Member")
                         .HasForeignKey("ChurchMinistry.Models.Member", "UserId")
                         .OnDelete(DeleteBehavior.SetNull);
-
-                    b.Navigation("MinistryGroup");
 
                     b.Navigation("User");
                 });
@@ -1784,6 +1807,25 @@ namespace ChurchMinistry.Migrations
                         .OnDelete(DeleteBehavior.SetNull);
 
                     b.Navigation("Leader");
+                });
+
+            modelBuilder.Entity("ChurchMinistry.Models.MinistryGroupMember", b =>
+                {
+                    b.HasOne("ChurchMinistry.Models.Member", "Member")
+                        .WithMany()
+                        .HasForeignKey("MemberId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("ChurchMinistry.Models.MinistryGroup", "MinistryGroup")
+                        .WithMany()
+                        .HasForeignKey("MinistryGroupId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Member");
+
+                    b.Navigation("MinistryGroup");
                 });
 
             modelBuilder.Entity("ChurchMinistry.Models.Notification", b =>
@@ -1953,11 +1995,6 @@ namespace ChurchMinistry.Migrations
                     b.Navigation("Givings");
 
                     b.Navigation("PrayerRequests");
-                });
-
-            modelBuilder.Entity("ChurchMinistry.Models.MinistryGroup", b =>
-                {
-                    b.Navigation("Members");
                 });
 
             modelBuilder.Entity("ChurchMinistry.Models.PrayerRequest", b =>

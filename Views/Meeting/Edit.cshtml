@@ -66,9 +66,14 @@
 
         <div style="display:flex;gap:1.5rem;flex-wrap:wrap;color:whitesmoke;">
             <label style="display:flex;align-items:center;gap:.5rem;cursor:pointer;font-size:.88rem">
-                <input asp-for="IsPublic" type="checkbox"
+                <input asp-for="IsPublic" type="radio" value="true"
                        style="width:16px;height:16px;accent-color:#6366f1" />
-                Public meeting (visible to all members)
+                Public (visible to all members)
+            </label>
+            <label style="display:flex;align-items:center;gap:.5rem;cursor:pointer;font-size:.88rem">
+                <input asp-for="IsPublic" type="radio" value="false"
+                       style="width:16px;height:16px;accent-color:#6366f1" />
+                Private (invited people &amp; groups only)
             </label>
             <label style="display:flex;align-items:center;gap:.5rem;cursor:pointer;font-size:.88rem">
                 <input asp-for="WaitingRoomEnabled" type="checkbox"
@@ -82,9 +87,38 @@
             </label>
             <label style="display:flex;align-items:center;gap:.5rem;cursor:pointer;font-size:.88rem">
                 <input asp-for="IsRecurring" type="checkbox"
-                       style="width:16px;height:16px;accent-color:#6366f1" />
+                       style="width:16px;height:16px;accent-color:#6366f1"
+                       onchange="document.getElementById('recurringOpts').style.display=this.checked?'grid':'none'" />
                 Recurring meeting
             </label>
+        </div>
+
+        <div id="recurringOpts" style="display:@(Model.IsRecurring ? "grid" : "none");grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:.85rem">
+            <div class="mf">
+                <label class="ml">Repeats</label>
+                <select asp-for="RecurringFrequency" class="mi"
+                        onchange="document.getElementById('recurringDayGroup').style.display=this.value==='Daily'?'none':''">
+                    <option value="Daily">Daily</option>
+                    <option value="Weekly">Weekly</option>
+                </select>
+            </div>
+            <div class="mf" id="recurringDayGroup" style="@(Model.RecurringFrequency == "Daily" ? "display:none" : "")">
+                <label class="ml">Day of Week</label>
+                <select asp-for="RecurringDay" class="mi">
+                    @foreach (var d in new[] { "Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday" })
+                    {
+                        <option value="@d">@d</option>
+                    }
+                </select>
+            </div>
+            <div class="mf">
+                <label class="ml">Time</label>
+                <input asp-for="RecurringTime" type="time" class="mi" />
+            </div>
+            <p style="grid-column:1/-1;margin:0;font-size:.78rem;color:rgba(255,255,255,.45)">
+                A new meeting with its own room code is created for each day or week. Invitations carry over.
+                Changes here apply to this meeting and the ones after it.
+            </p>
         </div>
 
         <div style="display:flex;gap:.75rem;justify-content:flex-end;padding-top:.5rem;

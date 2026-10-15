@@ -4,269 +4,187 @@
     ViewData["Title"] = "Invite People";
     Layout = "~/Views/Shared/_Layout.cshtml";
     var allMembers = ViewBag.AllMembers as List<Member> ?? new();
+    var groups = ViewBag.Groups as List<ChurchMinistry.ViewModels.MeetingInviteGroupOption> ?? new();
 }
 
-<div class="inv-page">
+<section class="page-header">
+  <h1><i class="fas fa-user-plus"></i> Invite People</h1>
+  <p>
+    <strong>@Model.Title</strong> ·
+    @(Model.ScheduledAt?.ToLocalTime().ToString("ddd, dd MMM · h:mm tt") ?? "Unscheduled") ·
+    @(Model.IsPublic ? "Public" : "Private") meeting
+  </p>
+</section>
 
-    <div class="inv-header">
-        <a asp-action="Index" class="inv-back">
-            <i class="fas fa-arrow-left"></i> Meetings
-        </a>
-        <h1 class="inv-title">Invite People</h1>
-        <p class="inv-subtitle">
-            <strong>@Model.Title</strong> ·
-            @(Model.ScheduledAt?.ToLocalTime().ToString("ddd, dd MMM · h:mm tt") ?? "Unscheduled") ·
-            <span class="inv-code">@Model.RoomCode</span>
-        </p>
-    </div>
+<div class="form-page">
+  <form method="post" asp-action="SendInvites" asp-route-id="@Model.Id">
+    @Html.AntiForgeryToken()
 
-    @if (TempData["Success"] != null)
+    @if (Model.IsPublic)
     {
-        <div class="inv-alert inv-alert-success">
-            <i class="fas fa-check-circle"></i> @TempData["Success"]
-        </div>
+      <div class="inv-note">
+        <i class="fas fa-globe"></i>
+        This is a public meeting — every member can already join. Invitations just let people know about it.
+      </div>
     }
 
-    <div class="inv-layout">
-
-        @* ── Send invitations form ── *@
-        <div class="inv-card">
-            <h2 class="inv-section-title">
-                <i class="fas fa-paper-plane"></i> Send Invitations
-            </h2>
-
-            <form method="post" asp-action="SendInvites" asp-route-id="@Model.Id">
-                @Html.AntiForgeryToken()
-
-                @* Member picker *@
-                <div class="inv-field">
-                    <label class="inv-label">Invite Members</label>
-                    <div class="inv-search-wrap">
-                        <i class="fas fa-search inv-search-icon"></i>
-                        <input type="text" id="memberSearch" class="inv-input"
-                               placeholder="Search members by name..." autocomplete="off"
-                               oninput="filterMembers(this.value)" />
-                    </div>
-
-                    <div class="inv-member-list" id="memberList">
-                        @foreach (var m in allMembers)
-                        {
-                            var alreadyInvited = Model.Invitations.Any(i => i.MemberId == m.Id);
-                            <label class="inv-member-item @(alreadyInvited ? "inv-already" : "")">
-                                <input type="checkbox" name="memberIds" value="@m.Id"
-                                       @(alreadyInvited ? "disabled checked" : "") />
-                                <div class="inv-member-avatar">
-                                    @m.FullName.Substring(0, 1).ToUpper()
-                                </div>
-                                <div class="inv-member-info">
-                                    <span class="inv-member-name">@m.FullName</span>
-                                    <span class="inv-member-email">@m.Email</span>
-                                </div>
-                                @if (alreadyInvited)
-                                {
-                                    <span class="inv-sent-badge">
-                                        <i class="fas fa-check"></i> Invited
-                                    </span>
-                                }
-                            </label>
-                        }
-                    </div>
-                </div>
-
-                @* Raw email list *@
-                <div class="inv-field">
-                    <label class="inv-label">
-                        Invite by Email Address
-                        <span class="inv-hint">(for people not yet registered)</span>
-                    </label>
-                    <textarea name="emailList" class="inv-input inv-textarea" rows="3"
-                              placeholder="Enter email addresses separated by commas or new lines&#10;e.g. john@example.com, jane@example.com"></textarea>
-                </div>
-
-                @* Share link *@
-                <div class="inv-field">
-                    <label class="inv-label">Or Share Room Code</label>
-                    <div class="inv-share-row">
-                        <div class="inv-code-display">
-                            <i class="fas fa-key"></i>
-                            <span id="roomCodeText">@Model.RoomCode</span>
-                        </div>
-                        <button type="button" class="inv-copy-btn" onclick="copyCode()">
-                            <i class="fas fa-copy"></i> Copy Code
-                        </button>
-                        <button type="button" class="inv-copy-btn" onclick="copyLink()">
-                            <i class="fas fa-link"></i> Copy Link
-                        </button>
-                    </div>
-                </div>
-
-                <button type="submit" class="inv-submit-btn">
-                    <i class="fas fa-envelope"></i> Send Invitations
-                </button>
-            </form>
-        </div>
-
-        @* ── Already invited ── *@
-        <div class="inv-card">
-            <h2 class="inv-section-title">
+    @if (groups.Any())
+    {
+      <div class="form-group">
+        <label>Invite Groups <span class="inv-hint">— everyone in the group, including people who join it later</span></label>
+        <div class="form-options-grid">
+          @foreach (var g in groups)
+          {
+            var groupInvited = Model.Invitations.Any(i => i.MinistryGroupId == g.Id);
+            <label class="option-toggle @(groupInvited ? "inv-already" : "")">
+              <input type="checkbox" name="groupIds" value="@g.Id" @(groupInvited ? "disabled checked" : "") />
+              <div class="option-content">
                 <i class="fas fa-users"></i>
-                Already Invited
-                <span class="inv-count-badge">@Model.Invitations.Count</span>
-            </h2>
-
-            @if (!Model.Invitations.Any())
-            {
-                <div class="inv-empty">
-                    <i class="fas fa-user-plus fa-2x"></i>
-                    <p>No one invited yet. Use the form to send invitations.</p>
-                </div>
-            }
-            else
-            {
-                <div class="inv-invited-list">
-                    @foreach (var inv in Model.Invitations.OrderByDescending(i => i.InvitedAt))
-                    {
-                        <div class="inv-invited-item">
-                            <div class="inv-member-avatar inv-avatar-sm">
-                                @(inv.Member?.FullName?.Substring(0,1).ToUpper() ?? "?")
-                            </div>
-                            <div class="inv-member-info">
-                                <span class="inv-member-name">@(inv.Member?.FullName ?? "External Guest")</span>
-                                <span class="inv-member-email">
-                                    Invited @inv.InvitedAt.ToLocalTime().ToString("dd MMM · h:mm tt")
-                                </span>
-                            </div>
-                            <span class="inv-status-badge @(inv.AcceptedAt.HasValue ? "inv-accepted" : "inv-pending")">
-                                @(inv.AcceptedAt.HasValue ? "Accepted" : "Pending")
-                            </span>
-                        </div>
-                    }
-                </div>
-            }
+                <span>@g.Name</span>
+                <small>@g.MemberCount member@(g.MemberCount == 1 ? "" : "s")@(groupInvited ? " · Invited" : "")</small>
+              </div>
+            </label>
+          }
         </div>
+      </div>
+    }
+
+    <div class="form-group">
+      <label for="memberSearch">Invite Members</label>
+      <input type="text" id="memberSearch" class="form-control" placeholder="Search members by name or email..."
+             autocomplete="off" oninput="filterMembers(this.value)" />
+      <div class="form-options-grid inv-member-grid" id="memberList">
+        @foreach (var m in allMembers)
+        {
+          var alreadyInvited = Model.Invitations.Any(i => i.MemberId == m.Id);
+          <label class="option-toggle inv-member @(alreadyInvited ? "inv-already" : "")">
+            <input type="checkbox" name="memberIds" value="@m.Id" @(alreadyInvited ? "disabled checked" : "") />
+            <div class="option-content">
+              <i class="fas @(alreadyInvited ? "fa-user-check" : "fa-user")"></i>
+              <span class="inv-member-name">@m.FullName</span>
+              <small class="inv-member-email">@m.Email</small>
+            </div>
+          </label>
+        }
+      </div>
     </div>
+
+    <div class="form-group">
+      <label for="emailList">Invite by Email <span class="inv-hint">— for people not yet registered</span></label>
+      <textarea id="emailList" name="emailList" class="form-control" rows="3"
+                placeholder="Email addresses separated by commas or new lines&#10;e.g. john@example.com, jane@example.com"></textarea>
+    </div>
+
+    <div class="form-group">
+      <label>Or Share the Room Code</label>
+      <div class="inv-share-row">
+        <input class="form-control" value="@Model.RoomCode" readonly />
+        <button type="button" class="btn-meet btn-meet-primary" onclick="copyText(this, '@Model.RoomCode', 'Code copied!')">
+          <i class="fas fa-copy"></i> Copy Code
+        </button>
+        <button type="button" class="btn-meet btn-meet-primary" onclick="copyText(this, location.origin + '/meeting/room/@Model.RoomCode', 'Link copied!')">
+          <i class="fas fa-link"></i> Copy Link
+        </button>
+      </div>
+    </div>
+
+    <div style="display:flex;gap:1rem;margin-top:1.5rem">
+      <button type="submit" class="btn-meet btn-meet-primary">
+        <i class="fas fa-envelope"></i> Send Invitations
+      </button>
+      <a asp-action="Index" class="btn-meet btn-meet-ghost">Back to Meetings</a>
+    </div>
+  </form>
+
+  <div class="form-group" style="margin-top:2.5rem">
+    <label>Already Invited <span class="inv-count">@Model.Invitations.Count</span></label>
+
+    @if (!Model.Invitations.Any())
+    {
+      <div class="inv-empty">
+        <i class="fas fa-user-plus"></i> No one invited yet.
+      </div>
+    }
+    else
+    {
+      <div class="inv-invited-list">
+        @foreach (var inv in Model.Invitations.OrderByDescending(i => i.InvitedAt))
+        {
+          var isGroup = inv.MinistryGroupId != null;
+          var name = isGroup ? $"Group: {inv.MinistryGroup?.Name}"
+                   : inv.Member?.FullName ?? inv.Email ?? "External Guest";
+          <div class="inv-invited-item">
+            <i class="fas @(isGroup ? "fa-users" : inv.MemberId != null ? "fa-user" : "fa-envelope") inv-invited-icon"></i>
+            <div class="inv-invited-info">
+              <span>@name</span>
+              <small>Invited @inv.InvitedAt.ToLocalTime().ToString("dd MMM · h:mm tt")</small>
+            </div>
+            @if (!isGroup)
+            {
+              <span class="inv-status @(inv.AcceptedAt.HasValue ? "inv-accepted" : "inv-pending")">
+                @(inv.AcceptedAt.HasValue ? "Accepted" : "Pending")
+              </span>
+            }
+            <form method="post" asp-action="RemoveInvite" asp-route-id="@Model.Id" style="margin:0">
+              @Html.AntiForgeryToken()
+              <input type="hidden" name="invitationId" value="@inv.Id" />
+              <button type="submit" class="inv-remove-btn" title="Remove invitation">
+                <i class="fas fa-times"></i>
+              </button>
+            </form>
+          </div>
+        }
+      </div>
+    }
+  </div>
 </div>
 
 <style>
-:root{--inv-bg:#0f0f13;--inv-card:#18181f;--inv-border:rgba(255,255,255,.08);
-     --inv-text:rgba(255,255,255,.88);--inv-sub:rgba(255,255,255,.45);
-     --inv-purple:#6366f1;}
-.inv-page       { max-width:900px;margin:0 auto;padding:1.5rem 1rem;color:var(--inv-text); }
-.inv-back       { color:var(--inv-sub);font-size:.85rem;text-decoration:none;
-                  display:inline-flex;align-items:center;gap:.4rem;margin-bottom:.75rem; }
-.inv-back:hover { color:var(--inv-text); }
-.inv-title      { font-size:1.5rem;font-weight:800;margin-bottom:.3rem; }
-.inv-subtitle   { font-size:.88rem;color:var(--inv-sub); }
-.inv-code       { font-family:monospace;color:#a5b4fc;background:rgba(99,102,241,.12);
-                  padding:.1rem .4rem;border-radius:5px; }
-.inv-alert      { padding:.75rem 1rem;border-radius:10px;font-size:.88rem;
-                  margin:1rem 0;display:flex;align-items:center;gap:.6rem; }
-.inv-alert-success{background:rgba(34,197,94,.1);color:#86efac;border:1px solid rgba(34,197,94,.2);}
-
-.inv-layout     { display:grid;grid-template-columns:1fr 340px;gap:1.25rem;
-                  margin-top:1.25rem;align-items:start; }
-.inv-card       { background:var(--inv-card);border:1px solid var(--inv-border);
-                  border-radius:16px;padding:1.5rem; }
-.inv-section-title{ font-size:.9rem;font-weight:700;display:flex;align-items:center;
-                    gap:.5rem;margin-bottom:1.1rem; }
-.inv-section-title i{ color:var(--inv-purple); }
-.inv-count-badge{ background:rgba(99,102,241,.2);color:#a5b4fc;font-size:.7rem;
-                  font-weight:800;padding:.15rem .5rem;border-radius:100px; }
-.inv-field      { margin-bottom:1rem; }
-.inv-label      { display:block;font-size:.82rem;font-weight:600;
-                  color:var(--inv-sub);margin-bottom:.4rem; }
-.inv-hint       { font-weight:400;font-size:.75rem; }
-.inv-search-wrap{ position:relative;margin-bottom:.5rem; }
-.inv-search-icon{ position:absolute;left:.8rem;top:50%;transform:translateY(-50%);
-                  color:var(--inv-sub);font-size:.85rem; }
-.inv-input      { width:100%;background:rgba(255,255,255,.06);border:1px solid var(--inv-border);
-                  border-radius:9px;padding:.55rem .85rem;color:var(--inv-text);font-size:.88rem; }
-.inv-input:focus{ outline:none;border-color:rgba(99,102,241,.5);
-                  box-shadow:0 0 0 3px rgba(99,102,241,.1); }
-.inv-search-wrap .inv-input{ padding-left:2.4rem; }
-.inv-textarea   { resize:vertical;min-height:80px; }
-
-.inv-member-list{ max-height:320px;overflow-y:auto;border:1px solid var(--inv-border);
-                  border-radius:10px;margin-top:.25rem; }
-.inv-member-item{ display:flex;align-items:center;gap:.75rem;padding:.65rem .85rem;
-                  border-bottom:1px solid var(--inv-border);cursor:pointer;
-                  transition:background .12s; }
-.inv-member-item:last-child{ border-bottom:none; }
-.inv-member-item:hover{ background:rgba(255,255,255,.04); }
-.inv-member-item input{ width:16px;height:16px;accent-color:var(--inv-purple);flex-shrink:0; }
-.inv-already    { opacity:.5; }
-.inv-member-avatar{ width:32px;height:32px;border-radius:50%;background:var(--inv-purple);
-                    display:flex;align-items:center;justify-content:center;
-                    font-size:.78rem;font-weight:700;color:white;flex-shrink:0; }
-.inv-avatar-sm  { width:28px;height:28px;font-size:.72rem; }
-.inv-member-info{ flex:1;display:flex;flex-direction:column;gap:.05rem; }
-.inv-member-name{ font-size:.85rem;font-weight:600; }
-.inv-member-email{ font-size:.72rem;color:var(--inv-sub); }
-.inv-sent-badge { font-size:.68rem;font-weight:700;color:#86efac;
-                  background:rgba(34,197,94,.1);border:1px solid rgba(34,197,94,.2);
-                  padding:.15rem .45rem;border-radius:100px; }
-
-.inv-share-row  { display:flex;gap:.5rem;align-items:center;flex-wrap:wrap; }
-.inv-code-display{ background:rgba(99,102,241,.1);border:1px solid rgba(99,102,241,.25);
-                   border-radius:8px;padding:.5rem .85rem;font-size:.92rem;font-weight:700;
-                   color:#a5b4fc;display:flex;align-items:center;gap:.5rem;flex:1; }
-.inv-copy-btn   { background:rgba(255,255,255,.07);border:1px solid var(--inv-border);
-                  color:var(--inv-sub);border-radius:8px;padding:.5rem .85rem;
-                  font-size:.8rem;font-weight:600;cursor:pointer;
-                  display:flex;align-items:center;gap:.4rem;transition:all .15s; }
-.inv-copy-btn:hover{ background:rgba(255,255,255,.12);color:var(--inv-text); }
-
-.inv-submit-btn { width:100%;padding:.85rem;border-radius:12px;border:none;
-                  background:var(--inv-purple);color:white;font-size:.95rem;font-weight:700;
-                  cursor:pointer;display:flex;align-items:center;justify-content:center;
-                  gap:.6rem;transition:all .2s;margin-top:.25rem; }
-.inv-submit-btn:hover{ background:#4f46e5; }
-
-.inv-empty      { text-align:center;padding:2rem 1rem;color:var(--inv-sub); }
-.inv-empty p    { font-size:.85rem;margin:.75rem 0 0; }
-
-.inv-invited-list{ display:flex;flex-direction:column;gap:.1rem; }
-.inv-invited-item{ display:flex;align-items:center;gap:.65rem;padding:.6rem .25rem;
-                   border-bottom:1px solid var(--inv-border); }
+.inv-hint        { font-weight:400;color:var(--text-s);font-size:.8rem; }
+.inv-note        { background:var(--purple-l);color:var(--purple-d);border-radius:8px;
+                   padding:.75rem 1rem;font-size:.88rem;margin-bottom:1.25rem; }
+.inv-member-grid { max-height:340px;overflow-y:auto;margin-top:.6rem;padding:.1rem; }
+.option-toggle.inv-already { opacity:.6;cursor:default; }
+.inv-member .option-content { min-width:0; }
+.inv-member-email{ overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }
+.inv-share-row   { display:flex;gap:.6rem;flex-wrap:wrap; }
+.inv-share-row .form-control { flex:1;min-width:140px;font-weight:700;font-family:monospace;letter-spacing:.05em; }
+.inv-count       { background:var(--purple-l);color:var(--purple);font-size:.72rem;font-weight:800;
+                   padding:.1rem .5rem;border-radius:100px;margin-left:.3rem; }
+.inv-empty       { border:1.5px dashed var(--border);border-radius:10px;padding:1.25rem;
+                   text-align:center;color:var(--text-s);font-size:.88rem; }
+.inv-invited-list{ background:var(--white);border:1.5px solid var(--border);border-radius:10px; }
+.inv-invited-item{ display:flex;align-items:center;gap:.75rem;padding:.7rem .9rem;
+                   border-bottom:1px solid var(--border); }
 .inv-invited-item:last-child{ border-bottom:none; }
-.inv-status-badge{ font-size:.68rem;font-weight:700;padding:.2rem .5rem;
-                   border-radius:100px;flex-shrink:0; }
-.inv-accepted   { background:rgba(34,197,94,.12);color:#86efac;border:1px solid rgba(34,197,94,.2); }
-.inv-pending    { background:rgba(245,158,11,.1);color:#fbbf24;border:1px solid rgba(245,158,11,.2); }
-
-@@media(max-width:700px){
-    .inv-layout { grid-template-columns:1fr; }
-}
+.inv-invited-icon{ color:var(--purple);width:1.1rem;text-align:center; }
+.inv-invited-info{ flex:1;display:flex;flex-direction:column;min-width:0; }
+.inv-invited-info span { font-size:.88rem;font-weight:700;color:var(--text);overflow:hidden;text-overflow:ellipsis; }
+.inv-invited-info small{ font-size:.75rem;color:var(--text-s); }
+.inv-status      { font-size:.7rem;font-weight:700;padding:.15rem .55rem;border-radius:100px;flex-shrink:0; }
+.inv-accepted    { background:#d1fae5;color:#065f46; }
+.inv-pending     { background:#fef3c7;color:#92400e; }
+.inv-remove-btn  { background:none;border:none;color:var(--text-s);cursor:pointer;
+                   padding:.3rem .45rem;border-radius:6px; }
+.inv-remove-btn:hover{ color:var(--coral);background:#fee2e2; }
 </style>
 
 @section Scripts {
 <script>
 function filterMembers(query) {
     const q = query.toLowerCase();
-    document.querySelectorAll('.inv-member-item').forEach(item => {
+    document.querySelectorAll('#memberList .inv-member').forEach(item => {
         const name  = item.querySelector('.inv-member-name')?.textContent.toLowerCase() ?? '';
         const email = item.querySelector('.inv-member-email')?.textContent.toLowerCase() ?? '';
         item.style.display = (name.includes(q) || email.includes(q)) ? '' : 'none';
     });
 }
 
-function copyCode() {
-    navigator.clipboard.writeText('@Model.RoomCode');
-    showCopied('Code copied!');
-}
-
-function copyLink() {
-    const url = `${location.origin}/meeting/room/@Model.RoomCode`;
-    navigator.clipboard.writeText(url);
-    showCopied('Link copied!');
-}
-
-function showCopied(msg) {
-    const btn = event.currentTarget;
+function copyText(btn, text, msg) {
+    navigator.clipboard.writeText(text);
     const orig = btn.innerHTML;
     btn.innerHTML = `<i class="fas fa-check"></i> ${msg}`;
-    btn.style.color = '#86efac';
-    setTimeout(() => { btn.innerHTML = orig; btn.style.color = ''; }, 2000);
+    setTimeout(() => { btn.innerHTML = orig; }, 2000);
 }
 </script>
 }

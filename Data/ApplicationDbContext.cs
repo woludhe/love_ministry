@@ -10,6 +10,7 @@ namespace ChurchMinistry.Data
 
         public DbSet<Member> Members => Set<Member>();
         public DbSet<MinistryGroup> MinistryGroups => Set<MinistryGroup>();
+        public DbSet<MinistryGroupMember> MinistryGroupMembers => Set<MinistryGroupMember>();
         public DbSet<ServiceSession> ServiceSessions => Set<ServiceSession>();
         public DbSet<AttendanceRecord> AttendanceRecords => Set<AttendanceRecord>();
         public DbSet<Giving> Givings => Set<Giving>();
@@ -50,9 +51,17 @@ namespace ChurchMinistry.Data
                 e.Property(m => m.MembershipType).HasConversion<string>();
                 e.HasOne(m => m.User).WithOne(u => u.Member)
                     .HasForeignKey<Member>(m => m.UserId).OnDelete(DeleteBehavior.SetNull);
-                e.HasOne(m => m.MinistryGroup).WithMany(g => g.Members)
-                    .HasForeignKey(m => m.MinistryGroupId).OnDelete(DeleteBehavior.SetNull);
             });
+
+            // Group membership (many-to-many through MinistryGroupMembers)
+            builder.Entity<MinistryGroup>()
+                .HasMany(g => g.Members).WithMany(m => m.MinistryGroups)
+                .UsingEntity<MinistryGroupMember>(
+                    j => j.HasOne(x => x.Member).WithMany()
+                          .HasForeignKey(x => x.MemberId).OnDelete(DeleteBehavior.Cascade),
+                    j => j.HasOne(x => x.MinistryGroup).WithMany()
+                          .HasForeignKey(x => x.MinistryGroupId).OnDelete(DeleteBehavior.Cascade),
+                    j => j.HasKey(x => new { x.MinistryGroupId, x.MemberId }));
 
             // MinistryGroup self-ref leader
             builder.Entity<MinistryGroup>()
@@ -120,6 +129,7 @@ namespace ChurchMinistry.Data
                 e.HasOne(m => m.HostMember).WithMany()
                     .HasForeignKey(m => m.HostMemberId).OnDelete(DeleteBehavior.SetNull);
                 e.HasIndex(m => m.RoomCode).IsUnique();
+                e.HasIndex(m => m.SeriesId);
                 e.Property(m => m.ApprovalStatus).HasConversion<string>();
             });
 
@@ -137,6 +147,12 @@ namespace ChurchMinistry.Data
                     .HasForeignKey(m => m.MeetingRoomId).OnDelete(DeleteBehavior.Cascade);
                 e.HasOne(m => m.Member).WithMany()
                     .HasForeignKey(m => m.MemberId).OnDelete(DeleteBehavior.SetNull);
+            });
+
+            builder.Entity<MeetingInvitation>(e =>
+            {
+                e.HasOne(i => i.MinistryGroup).WithMany()
+                    .HasForeignKey(i => i.MinistryGroupId).OnDelete(DeleteBehavior.Cascade);
             });
 
             // Seed default roles

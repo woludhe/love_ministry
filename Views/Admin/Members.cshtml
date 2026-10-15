@@ -1,5 +1,6 @@
 @{
     ViewData["Title"] = "Manage Members"; Layout = "~/Views/Shared/_AdminDashboard_Layout.cshtml";
+    var groups = ViewBag.Groups as List<ChurchMinistry.Models.MinistryGroup> ?? new();
 }
 
 <div class="admin-main">
@@ -13,13 +14,20 @@
             <option value="">All Statuses</option>
             @foreach (var s in Enum.GetValues<ChurchMinistry.Models.MemberStatus>())
             {
-                <option>@s</option>
+                <option selected="@(Context.Request.Query["status"] == s.ToString())">@s</option>
+            }
+        </select>
+        <select name="group" class="form-control">
+            <option value="">All Groups</option>
+            @foreach (var g in groups)
+            {
+                <option value="@g.Id" selected="@(Context.Request.Query["group"] == g.Id.ToString())">@g.Name</option>
             }
         </select>
         <button class="btn btn-primary">Filter</button>
     </form>
     <table class="data-table">
-        <thead><tr><th>Photo</th><th>Name</th><th>Email</th><th>Phone</th><th>Group</th><th>Joined</th><th>Status</th><th>Actions</th></tr></thead>
+        <thead><tr><th>Photo</th><th>Name</th><th>Email</th><th>Phone</th><th>Groups</th><th>Joined</th><th>Status</th><th>Actions</th></tr></thead>
         <tbody>
             @foreach (ChurchMinistry.Models.Member m in (ViewBag.Members ?? new List<ChurchMinistry.Models.Member>()))
             {
@@ -28,7 +36,12 @@
                     <td>@m.FullName</td>
                     <td>@m.Email</td>
                     <td>@m.Phone</td>
-                    <td>@m.MinistryGroup?.Name</td>
+                    <td>
+                        @foreach (var g in m.MinistryGroups.OrderBy(g => g.Name))
+                        {
+                            <a asp-action="GroupDetails" asp-route-id="@g.Id" class="tag">@g.Name</a>
+                        }
+                    </td>
                     <td>@m.JoinDate.ToString("dd MMM yyyy")</td>
                     <td><span class="status-badge status-@m.Status.ToString().ToLower()">@m.Status</span></td>
                     <td>

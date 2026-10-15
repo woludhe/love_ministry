@@ -1,0 +1,5 @@
+@model ChurchMinistry.ViewModels.MinistryGroupFormViewModel
+@{
+    ViewData["Title"] = "Edit Group"; Layout = "~/Views/Shared/_AdminDashboard_Layout.cshtml";
+}
+@await Html.PartialAsync("_GroupForm", Model)

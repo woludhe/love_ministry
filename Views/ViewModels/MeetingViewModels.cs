@@ -9,7 +9,7 @@ namespace ChurchMinistry.ViewModels
         public string? Description { get; set; }
         public MeetingType MeetingType { get; set; } = MeetingType.Prayer;
 
-        [DisplayFormat(ApplyFormatInEditMode = true, DataFormatString = "{0:mm/dd/yyyy hh:mm tt}")]
+        [DisplayFormat(ApplyFormatInEditMode = true, DataFormatString = "{0:yyyy-MM-ddTHH:mm}")]   // the format datetime-local inputs read
         public DateTime? ScheduledAt { get; set; } = DateTime.Today;
         public bool WaitingRoomEnabled { get; set; } = true;
         public bool ChatEnabled { get; set; } = true;
@@ -17,6 +17,7 @@ namespace ChurchMinistry.ViewModels
         public bool IsPublic { get; set; } = true;
         public string? PassCode { get; set; }
         public bool IsRecurring { get; set; }
+        public string RecurringFrequency { get; set; } = "Weekly";   // Daily | Weekly
         public string? RecurringDay { get; set; }
         public string? RecurringTime { get; set; }
     }
@@ -36,10 +37,18 @@ namespace ChurchMinistry.ViewModels
         public int? CurrentMemberId { get; set; }
     }
 
+    // A ministry group offered on the meeting Invite page
+    public record MeetingInviteGroupOption(int Id, string Name, int MemberCount);
+
+    // A sermon streamed through a meeting room, shown on the lobby card
+    public record MeetingLinkedSermon(int Id, string Title, bool IsLive, bool IsPublished);
+
     public class MeetingLobbyViewModel
     {
         public List<MeetingRoom> ScheduledMeetings { get; set; } = new();
         public List<MeetingRoom> LiveMeetings { get; set; } = new();
         public List<MeetingRoom> PastMeetings { get; set; } = new();
+        // Linked sermon per room code
+        public Dictionary<string, MeetingLinkedSermon> LinkedSermons { get; set; } = new();
     }
 }

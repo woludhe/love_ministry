@@ -39,8 +39,14 @@ namespace ChurchMinistry.Services
             message.Body = new TextPart("html") { Text = WrapInTemplate(subject, htmlBody) };
 
             using var client = new SmtpClient();
-            bool enableSSL = settings["EnableSsl"] == "true" ? true : false;//Wendy EDIT
-            await client.ConnectAsync(settings["SmtpHost"], int.Parse(settings["SmtpPort"]!), MailKit.Security.SecureSocketOptions.None);
+            // EnableSsl: port 465 uses TLS from the start; other ports (587) upgrade with STARTTLS.
+            // Without SSL (e.g. a local relay on port 25) the connection stays plain.
+            var port = int.Parse(settings["SmtpPort"]!);
+            var enableSsl = bool.TryParse(settings["EnableSsl"], out var ssl) && ssl;
+            var socketOptions = !enableSsl ? MailKit.Security.SecureSocketOptions.None
+                : port == 465 ? MailKit.Security.SecureSocketOptions.SslOnConnect
+                : MailKit.Security.SecureSocketOptions.StartTls;
+            await client.ConnectAsync(settings["SmtpHost"], port, socketOptions);
             await client.AuthenticateAsync(settings["SmtpUser"], settings["SmtpPassword"]);
             await client.SendAsync(message);
             await client.DisconnectAsync(true);
@@ -458,5 +464,191 @@ namespace ChurchMinistry.Services
         public async Task<List<Notification>> GetUnreadAsync(int memberId)
             => await _db.Notifications.Where(n => n.MemberId == memberId && !n.IsRead)
                 .OrderByDescending(n => n.CreatedAt).ToListAsync();
+    }
+
+    // ─── Recurring meeting series ───
+    // Each week of a recurring meeting is its own MeetingRoom (own code, participants,
+    // chat, attendance), linked by SeriesId. Only the next one exists at any time.
+    public interface IMeetingSeriesService
+    {
+        // Creates the series' next meeting (next day or week) after this one, if it doesn't exist yet
+        Task<MeetingRoom?> CreateNextAsync(MeetingRoom current);
+        // Moves every series on whose latest meeting has ended or was missed
+        Task CatchUpAsync();
+        string GenerateRoomCode(MeetingType type);
+    }
+
+    public class MeetingSeriesService : IMeetingSeriesService
+    {
+        // A scheduled meeting this long past its start without being opened counts as missed
+        private static readonly TimeSpan MissedAfter = TimeSpan.FromHours(3);
+
+        private readonly ApplicationDbContext _db;
+        private readonly INotificationService _notifications;
+
+        public MeetingSeriesService(ApplicationDbContext db, INotificationService notifications)
+        {
+            _db = db; _notifications = notifications;
+        }
+
+        public async Task<MeetingRoom?> CreateNextAsync(MeetingRoom current)
+        {
+            if (!current.IsRecurring || current.SeriesId == null) return null;
+            if (await _db.MeetingRooms.AnyAsync(r => r.SeriesId == current.SeriesId && r.Id > current.Id))
+                return null;
+
+            var now = DateTime.UtcNow;
+            var after = current.ScheduledAt.HasValue && current.ScheduledAt.Value > now
+                ? current.ScheduledAt.Value : now;
+            var nextAt = current.NextOccurrenceUtc(after);
+            if (nextAt == null) return null;
+
+            var next = new MeetingRoom
+            {
+                Title              = current.Title,
+                Description        = current.Description,
+                MeetingType        = current.MeetingType,
+                RoomCode           = GenerateRoomCode(current.MeetingType),
+                HostUserId         = current.HostUserId,
+                HostMemberId       = current.HostMemberId,
+                ScheduledAt        = nextAt,
+                Status             = RoomStatus.Scheduled,
+                IsRecurring        = true,
+                RecurringPattern   = current.RecurringPattern,
+                SeriesId           = current.SeriesId,
+                WaitingRoomEnabled = current.WaitingRoomEnabled,
+                ChatEnabled        = current.ChatEnabled,
+                RecordingEnabled   = current.RecordingEnabled,
+                MaxParticipants    = current.MaxParticipants,
+                IsPublic           = current.IsPublic,
+                PassCode           = current.PassCode,
+                // The series was approved once
+                IsApproved         = current.IsApproved,
+                ApprovalStatus     = current.ApprovalStatus,
+                ApprovedByUserId   = current.ApprovedByUserId,
+                ApprovedAt         = current.ApprovedAt
+            };
+
+            var invitations = await _db.MeetingInvitations.AsNoTracking()
+                .Where(i => i.MeetingRoomId == current.Id).ToListAsync();
+            foreach (var inv in invitations)
+                next.Invitations.Add(new MeetingInvitation
+                {
+                    MemberId        = inv.MemberId,
+                    Email           = inv.Email,
+                    MinistryGroupId = inv.MinistryGroupId
+                });
+
+            _db.MeetingRooms.Add(next);
+            await _db.SaveChangesAsync();
+
+            if (!next.IsPublic && next.IsApproved)
+                await NotifyInviteesAsync(next, invitations);
+
+            return next;
+        }
+
+        // In-app notification only, to invited members and the current members of invited groups
+        private async Task NotifyInviteesAsync(MeetingRoom room, List<MeetingInvitation> invitations)
+        {
+            var memberIds = invitations.Where(i => i.MemberId != null).Select(i => i.MemberId!.Value).ToList();
+            var groupIds  = invitations.Where(i => i.MinistryGroupId != null).Select(i => i.MinistryGroupId!.Value).ToList();
+            if (groupIds.Count > 0)
+                memberIds.AddRange(await _db.Members
+                    .Where(m => m.MinistryGroups.Any(g => groupIds.Contains(g.Id))
+                             && m.Status == MemberStatus.Active)
+                    .Select(m => m.Id).ToListAsync());
+
+            var when = room.ScheduledAt?.ToLocalTime().ToString("ddd, dd MMM · h:mm tt");
+            foreach (var memberId in memberIds.Distinct().Where(id => id != room.HostMemberId))
+                await _notifications.CreateAsync(memberId,
+                    $"Meeting Invitation: {room.Title}",
+                    $"{room.Title} — next session {when}. Room code: {room.RoomCode}",
+                    $"/meeting/room/{room.RoomCode}");
+        }
+
+        public async Task CatchUpAsync()
+        {
+            var cutoff = DateTime.UtcNow - MissedAfter;
+            var due = await _db.MeetingRooms
+                .Where(r => r.IsRecurring && r.SeriesId != null
+                         && (r.Status == RoomStatus.Ended
+                          || (r.Status == RoomStatus.Scheduled && r.ScheduledAt < cutoff))
+                         && !_db.MeetingRooms.Any(o => o.SeriesId == r.SeriesId && o.Id > r.Id))
+                .ToListAsync();
+
+            foreach (var room in due)
+            {
+                // Nobody opened it: recorded as not held
+                if (room.Status == RoomStatus.Scheduled)
+                {
+                    room.Status = RoomStatus.Cancelled;
+                    await _db.SaveChangesAsync();
+                }
+                await CreateNextAsync(room);
+            }
+        }
+
+        public string GenerateRoomCode(MeetingType type)
+        {
+            var prefix = type switch
+            {
+                MeetingType.Prayer       => "PRAY",
+                MeetingType.BibleStudy   => "BSDY",
+                MeetingType.Worship      => "WRSP",
+                MeetingType.YouthService => "YWTH",
+                MeetingType.CellGroup    => "CELL",
+                _                        => "MEET"
+            };
+            // Codes must be unique; retry on the rare clash
+            for (var attempt = 0; ; attempt++)
+            {
+                var code = $"{prefix}-{Random.Shared.Next(1000, 10000)}";
+                if (attempt >= 20 || !_db.MeetingRooms.Any(r => r.RoomCode == code)) return code;
+            }
+        }
+    }
+
+    // ─── Meeting access (public vs private) ───
+    public interface IMeetingAccessService
+    {
+        // Public meetings are open to every signed-in member. A private one only to its
+        // host, Admins/Pastors, and people invited directly, by email or through a group.
+        Task<bool> CanAccessAsync(MeetingRoom room, System.Security.Claims.ClaimsPrincipal user);
+    }
+
+    public class MeetingAccessService : IMeetingAccessService
+    {
+        private readonly ApplicationDbContext _db;
+        public MeetingAccessService(ApplicationDbContext db) { _db = db; }
+
+        public async Task<bool> CanAccessAsync(MeetingRoom room, System.Security.Claims.ClaimsPrincipal user)
+        {
+            if (room.IsPublic) return true;
+            if (user.IsInRole("Admin") || user.IsInRole("Pastor")) return true;
+
+            var userId = user.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+            if (userId == null) return false;
+            if (room.HostUserId == userId) return true;
+
+            var member = await _db.Members.AsNoTracking().FirstOrDefaultAsync(m => m.UserId == userId);
+            if (member != null && room.HostMemberId == member.Id) return true;
+
+            var userEmail = await _db.Users.Where(u => u.Id == userId)
+                .Select(u => u.Email).FirstOrDefaultAsync();
+            var emails = new[] { member?.Email, userEmail }
+                .Where(e => !string.IsNullOrWhiteSpace(e))
+                .Select(e => e!.ToLower()).Distinct().ToList();
+            var memberId = member?.Id;
+            var groupIds = memberId == null ? new List<int>()
+                : await _db.MinistryGroupMembers.Where(gm => gm.MemberId == memberId)
+                    .Select(gm => gm.MinistryGroupId).ToListAsync();
+
+            // A group invite follows the group's current membership
+            return await _db.MeetingInvitations.AnyAsync(i => i.MeetingRoomId == room.Id
+                && ((memberId != null && i.MemberId == memberId)
+                 || (i.MinistryGroupId != null && groupIds.Contains(i.MinistryGroupId.Value))
+                 || (i.Email != null && emails.Contains(i.Email.ToLower()))));
+        }
     }
 }

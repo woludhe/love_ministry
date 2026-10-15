@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using System.Text;
 
 namespace ChurchMinistry.Controllers
 {
@@ -122,7 +123,9 @@ namespace ChurchMinistry.Controllers
             var result = await _signInManager.PasswordSignInAsync(vm.Email, vm.Password, vm.RememberMe, false);
             if (!result.Succeeded)
             {
-                ModelState.AddModelError("", "Invalid email or password.");
+                ModelState.AddModelError("", result.IsLockedOut
+                    ? "This account has been deactivated. Please contact the church office."
+                    : "Invalid email or password.");
                 return View(vm);
             }
 
@@ -196,6 +199,33 @@ namespace ChurchMinistry.Controllers
             return RedirectToAction("Index", "Home");
         }
 
+        // ── Change password (signed-in user) ──
+        [HttpGet, Authorize]
+        public IActionResult ChangePassword() => View(new ChangePasswordViewModel());
+
+        [HttpPost, Authorize, ValidateAntiForgeryToken]
+        public async Task<IActionResult> ChangePassword(ChangePasswordViewModel vm)
+        {
+            if (!ModelState.IsValid) return View(vm);
+
+            var user = await _userManager.GetUserAsync(User);
+            if (user == null) return RedirectToAction("Login");
+
+            var result = await _userManager.ChangePasswordAsync(user, vm.CurrentPassword, vm.NewPassword);
+            if (!result.Succeeded)
+            {
+                foreach (var e in result.Errors)
+                    ModelState.AddModelError(e.Code == "PasswordMismatch" ? nameof(vm.CurrentPassword) : "",
+                        e.Code == "PasswordMismatch" ? "Your current password is incorrect." : e.Description);
+                return View(vm);
+            }
+
+            // The password change renews the security stamp; keep this session signed in
+            await _signInManager.RefreshSignInAsync(user);
+            TempData["Success"] = "Your password has been changed.";
+            return RedirectToAction("ChangePassword");
+        }
+
         [HttpGet] public IActionResult ForgotPassword() => View();
 
         [HttpPost]
@@ -204,11 +234,67 @@ namespace ChurchMinistry.Controllers
             var user = await _userManager.FindByEmailAsync(email);
             if (user != null)
             {
+                // Base64Url keeps the token intact in a link (raw tokens contain + and /)
                 var token = await _userManager.GeneratePasswordResetTokenAsync(user);
-                var link = Url.Action("ResetPassword", "Account", new { token, email }, Request.Scheme);
-                await _email.SendEmailAsync(email, "Password Reset", $"<p>Click <a href='{link}'>here</a> to reset your password.</p>");
+                var code = Microsoft.AspNetCore.WebUtilities.WebEncoders.Base64UrlEncode(Encoding.UTF8.GetBytes(token));
+                var link = Url.Action("ResetPassword", "Account", new { code, email }, Request.Scheme)!;
+                await _email.SendEmailAsync(email, "Reset your password",
+                    $"<p>We received a request to reset your password.</p>" +
+                    $"<p><a href=\"{System.Net.WebUtility.HtmlEncode(link)}\">Choose a new password</a></p>" +
+                    $"<p>If you didn't ask for this, you can ignore this email; your password won't change.</p>");
             }
             TempData["Info"] = "If that email exists, a reset link has been sent.";
+            return RedirectToAction("Login");
+        }
+
+        // ── Reset password (from the emailed link) ──
+        [HttpGet]
+        public IActionResult ResetPassword(string? code, string? email)
+        {
+            if (string.IsNullOrEmpty(code) || string.IsNullOrEmpty(email))
+            {
+                TempData["Error"] = "That password reset link is invalid. Please request a new one.";
+                return RedirectToAction("ForgotPassword");
+            }
+            return View(new ResetPasswordViewModel { Code = code, Email = email });
+        }
+
+        [HttpPost, ValidateAntiForgeryToken]
+        public async Task<IActionResult> ResetPassword(ResetPasswordViewModel vm)
+        {
+            if (!ModelState.IsValid) return View(vm);
+
+            var user = await _userManager.FindByEmailAsync(vm.Email);
+            if (user == null)
+            {
+                // Don't reveal whether the email is registered
+                TempData["Success"] = "Your password has been reset. Please sign in.";
+                return RedirectToAction("Login");
+            }
+
+            string token;
+            try
+            {
+                token = Encoding.UTF8.GetString(
+                    Microsoft.AspNetCore.WebUtilities.WebEncoders.Base64UrlDecode(vm.Code));
+            }
+            catch (FormatException)
+            {
+                ModelState.AddModelError("", "That password reset link is invalid. Please request a new one.");
+                return View(vm);
+            }
+
+            var result = await _userManager.ResetPasswordAsync(user, token, vm.NewPassword);
+            if (!result.Succeeded)
+            {
+                foreach (var e in result.Errors)
+                    ModelState.AddModelError("", e.Code == "InvalidToken"
+                        ? "That password reset link has expired or was already used. Please request a new one."
+                        : e.Description);
+                return View(vm);
+            }
+
+            TempData["Success"] = "Your password has been reset. Please sign in.";
             return RedirectToAction("Login");
         }
     }
@@ -240,11 +326,26 @@ namespace ChurchMinistry.Controllers
             if (member == null) return RedirectToAction("Login", "Account");
 
             var now = DateTime.UtcNow;
+            var monthStart = new DateTime(now.Year, now.Month, 1, 0, 0, 0, DateTimeKind.Utc);
+
+            // Physical: checked in at a service. Virtual: online check-ins plus each
+            // sermon watched live or joined through a meeting (once per sermon)
+            var physical = await _db.AttendanceRecords
+                .CountAsync(a => a.MemberId == member.Id && a.CheckInTime >= monthStart
+                              && a.CheckInMethod != CheckInMethod.Online);
+            var virtualCheckIns = await _db.AttendanceRecords
+                .CountAsync(a => a.MemberId == member.Id && a.CheckInTime >= monthStart
+                              && a.CheckInMethod == CheckInMethod.Online);
+            var sermonsAttended = await _db.SermonAttendances
+                .Where(s => s.MemberId == member.Id && s.JoinedAt >= monthStart)
+                .Select(s => s.SermonId).Distinct().CountAsync();
+
             var vm = new MemberDashboardViewModel
             {
                 Member = member,
-                AttendanceThisMonth = await _db.AttendanceRecords
-                    .CountAsync(a => a.MemberId == member.Id && a.CheckInTime.Month == now.Month),
+                PhysicalAttendanceThisMonth = physical,
+                VirtualAttendanceThisMonth = virtualCheckIns + sermonsAttended,
+                AttendanceThisMonth = physical + virtualCheckIns + sermonsAttended,
                 TotalGivingThisYear = await _db.Givings
                     .Where(g => g.MemberId == member.Id && g.GivingDate.Year == now.Year && g.PaymentStatus == PaymentStatus.Successful)
                     .SumAsync(g => g.Amount),
@@ -279,7 +380,6 @@ namespace ChurchMinistry.Controllers
                 City = member.City,
                 Country = member.Country,
                 Occupation = member.Occupation,
-                MinistryGroupId = member.MinistryGroupId,
                 EmergencyContact = member.EmergencyContact,
                 ExistingPhoto = member.ProfilePhoto
             });
@@ -295,7 +395,7 @@ namespace ChurchMinistry.Controllers
             {
                 // Viewing another member's profile
                 member = await _db.Members
-                    .Include(m => m.MinistryGroup)
+                    .Include(m => m.MinistryGroups)
                     .FirstOrDefaultAsync(m => m.Id == id.Value);
                 if (member == null) return NotFound();
 
@@ -305,7 +405,11 @@ namespace ChurchMinistry.Controllers
 
                 // Admins and the member themselves can edit; others see read-only view
                 if (isOwnProfile || isAdmin)
+                {
+                    // Admin/Pastor editing someone else can also deactivate or delete them
+                    ViewBag.CanManage = isAdmin && !isOwnProfile;
                     return View("EditProfile", MapToViewModel(member));
+                }
 
                 return View("ViewProfile", member);
             }
@@ -352,7 +456,7 @@ namespace ChurchMinistry.Controllers
             member.Phone = vm.Phone; member.DateOfBirth = vm.DateOfBirth;
             member.Gender = vm.Gender; member.MaritalStatus = vm.MaritalStatus;
             member.Address = vm.Address; member.City = vm.City; member.Country = vm.Country;
-            member.Occupation = vm.Occupation; member.MinistryGroupId = vm.MinistryGroupId;
+            member.Occupation = vm.Occupation;
             member.EmergencyContact = vm.EmergencyContact; member.EmergencyPhone = vm.EmergencyPhone;
 
             await _db.SaveChangesAsync();
@@ -368,8 +472,102 @@ namespace ChurchMinistry.Controllers
             }
         }
 
+        // ── Deactivate / reactivate a member (Admin, Pastor) ──
+        // A deactivated member is marked Inactive and can't sign in until reactivated
+        [HttpPost("profile/{id}/status")]
+        [Authorize(Roles = "Admin,Pastor")]
+        [ValidateAntiForgeryToken]
+        public async Task<IActionResult> SetMemberActive(int id, bool active)
+        {
+            var member = await _db.Members.Include(m => m.User).FirstOrDefaultAsync(m => m.Id == id);
+            if (member == null) return NotFound();
+            if (await ManageBlockedReasonAsync(member) is { } blocked)
+            {
+                TempData["Error"] = blocked;
+                return RedirectToAction("Profile", new { id });
+            }
+
+            member.Status = active ? MemberStatus.Active : MemberStatus.Inactive;
+            await _db.SaveChangesAsync();
+
+            if (member.User != null)
+            {
+                await _userManager.SetLockoutEnabledAsync(member.User, true);
+                await _userManager.SetLockoutEndDateAsync(member.User, active ? null : DateTimeOffset.MaxValue);
+                // Sign them out of any open sessions
+                if (!active) await _userManager.UpdateSecurityStampAsync(member.User);
+            }
+
+            TempData["Success"] = active
+                ? $"{member.FullName} has been reactivated."
+                : $"{member.FullName} has been deactivated and can no longer sign in.";
+            return RedirectToAction("Profile", new { id });
+        }
+
+        // ── Delete a member (Admin, Pastor) ──
+        // Removes the member and their login. Giving and prayer records are kept
+        // without the member link; personal items (notifications, chat, forum posts,
+        // invitations, check-ins) are removed.
+        [HttpPost("profile/{id}/delete")]
+        [Authorize(Roles = "Admin,Pastor")]
+        [ValidateAntiForgeryToken]
+        public async Task<IActionResult> DeleteMember(int id)
+        {
+            var member = await _db.Members.Include(m => m.User).FirstOrDefaultAsync(m => m.Id == id);
+            if (member == null) return NotFound();
+            if (await ManageBlockedReasonAsync(member) is { } blocked)
+            {
+                TempData["Error"] = blocked;
+                return RedirectToAction("Profile", new { id });
+            }
+
+            var name = member.FullName;
+            var user = member.User;
+
+            await using var tx = await _db.Database.BeginTransactionAsync();
+            // Links the database doesn't clear by itself
+            await _db.Notifications.Where(n => n.MemberId == id).ExecuteDeleteAsync();
+            await _db.MeetingInvitations.Where(i => i.MemberId == id).ExecuteDeleteAsync();
+            await _db.EventRegistrations.Where(r => r.MemberId == id)
+                .ExecuteUpdateAsync(s => s.SetProperty(r => r.MemberId, (int?)null));
+            await _db.PrayerInteractions.Where(p => p.MemberId == id)
+                .ExecuteUpdateAsync(s => s.SetProperty(p => p.MemberId, (int?)null));
+
+            _db.Members.Remove(member);
+            await _db.SaveChangesAsync();
+
+            if (user != null)
+            {
+                var result = await _userManager.DeleteAsync(user);
+                if (!result.Succeeded)
+                {
+                    await tx.RollbackAsync();
+                    TempData["Error"] = "Could not delete the member's login: " +
+                        string.Join(" ", result.Errors.Select(e => e.Description));
+                    return RedirectToAction("Profile", new { id });
+                }
+            }
+            await tx.CommitAsync();
+
+            TempData["Success"] = $"{name} has been deleted.";
+            return RedirectToAction("Members", "Admin");
+        }
+
+        // Why the current user may not deactivate/delete this member, or null if they may
+        private async Task<string?> ManageBlockedReasonAsync(Member member)
+        {
+            var currentUserId = _userManager.GetUserId(User);
+            if (member.UserId != null && member.UserId == currentUserId)
+                return "You can't deactivate or delete your own account.";
+            if (member.User != null && !User.IsInRole("Admin")
+                && await _userManager.IsInRoleAsync(member.User, "Admin"))
+                return "Only an Admin can deactivate or delete an Admin.";
+            return null;
+        }
+
         private static MemberProfileViewModel MapToViewModel(Member m) => new()
         {
+            Status = m.Status,
             Id = m.Id,
             FirstName = m.FirstName,
             LastName = m.LastName,
@@ -382,7 +580,6 @@ namespace ChurchMinistry.Controllers
             City = m.City,
             Country = m.Country,
             Occupation = m.Occupation,
-            MinistryGroupId = m.MinistryGroupId,
             EmergencyContact = m.EmergencyContact,
             EmergencyPhone = m.EmergencyPhone,
             ExistingPhoto = m.ProfilePhoto
@@ -390,12 +587,12 @@ namespace ChurchMinistry.Controllers
 
         public async Task<IActionResult> Directory(string? search, string? group)
         {
-            var q = _db.Members.Include(m => m.MinistryGroup)
+            var q = _db.Members.Include(m => m.MinistryGroups)
                 .Where(m => m.Status == MemberStatus.Active).AsQueryable();
             if (!string.IsNullOrEmpty(search))
                 q = q.Where(m => m.FirstName.Contains(search) || m.LastName.Contains(search));
             if (!string.IsNullOrEmpty(group) && int.TryParse(group, out int gid))
-                q = q.Where(m => m.MinistryGroupId == gid);
+                q = q.Where(m => m.MinistryGroups.Any(g => g.Id == gid));
             ViewBag.Groups = await _db.MinistryGroups.Where(g => g.IsActive).ToListAsync();
             return View(await q.OrderBy(m => m.FirstName).ToListAsync());
         }
@@ -1108,14 +1305,17 @@ namespace ChurchMinistry.Controllers
 
 
         // ── Members management ──
-        public async Task<IActionResult> Members(string? search, string? status, int page = 1)
+        public async Task<IActionResult> Members(string? search, string? status, int? group, int page = 1)
         {
             const int ps = 25;
-            var q = _db.Members.Include(m => m.MinistryGroup).AsQueryable();
+            var q = _db.Members.Include(m => m.MinistryGroups).AsQueryable();
             if (!string.IsNullOrEmpty(search))
                 q = q.Where(m => m.FirstName.Contains(search) || m.LastName.Contains(search) || m.Email.Contains(search));
             if (Enum.TryParse<MemberStatus>(status, out var ms))
                 q = q.Where(m => m.Status == ms);
+            if (group != null)
+                q = q.Where(m => m.MinistryGroups.Any(g => g.Id == group));
+            ViewBag.Groups = await _db.MinistryGroups.OrderBy(g => g.Name).ToListAsync();
             ViewBag.Total = await q.CountAsync();
             ViewBag.Members = await q.OrderBy(m => m.FirstName).Skip((page - 1) * ps).Take(ps).ToListAsync();
             ViewBag.Page = page; ViewBag.TotalPages = (int)Math.Ceiling((double)ViewBag.Total / ps);
@@ -1128,6 +1328,196 @@ namespace ChurchMinistry.Controllers
             var member = await _db.Members.FindAsync(id);
             if (member != null) { member.Status = status; await _db.SaveChangesAsync(); }
             return Json(new { success = true });
+        }
+
+        // ── Ministry groups ──
+        public async Task<IActionResult> Groups()
+        {
+            ViewBag.Groups = await _db.MinistryGroups
+                .Include(g => g.Leader)
+                .OrderByDescending(g => g.IsActive).ThenBy(g => g.Name)
+                .ToListAsync();
+            ViewBag.MemberCounts = await _db.MinistryGroupMembers
+                .GroupBy(gm => gm.MinistryGroupId)
+                .ToDictionaryAsync(g => g.Key, g => g.Count());
+            return View();
+        }
+
+        [HttpGet]
+        public async Task<IActionResult> CreateGroup()
+        {
+            await LoadGroupLeadersAsync();
+            return View(new MinistryGroupFormViewModel());
+        }
+
+        [HttpPost, ValidateAntiForgeryToken]
+        public async Task<IActionResult> CreateGroup(MinistryGroupFormViewModel vm)
+        {
+            await ValidateGroupAsync(vm);
+            if (!ModelState.IsValid)
+            {
+                await LoadGroupLeadersAsync();
+                return View(vm);
+            }
+
+            var group = new MinistryGroup();
+            ApplyGroupForm(group, vm);
+            _db.MinistryGroups.Add(group);
+            await _db.SaveChangesAsync();
+            await EnsureLeaderIsMemberAsync(group);
+
+            TempData["Success"] = $"Group \"{group.Name}\" created. Now add its members.";
+            return RedirectToAction("GroupDetails", new { id = group.Id });
+        }
+
+        [HttpGet]
+        public async Task<IActionResult> EditGroup(int id)
+        {
+            var group = await _db.MinistryGroups.FindAsync(id);
+            if (group == null) return NotFound();
+            await LoadGroupLeadersAsync();
+            return View(new MinistryGroupFormViewModel
+            {
+                Id = group.Id,
+                Name = group.Name,
+                Description = group.Description,
+                MeetingDay = group.MeetingDay,
+                MeetingTime = group.MeetingTime,
+                Location = group.Location,
+                LeaderId = group.LeaderId,
+                IsActive = group.IsActive
+            });
+        }
+
+        [HttpPost, ValidateAntiForgeryToken]
+        public async Task<IActionResult> EditGroup(MinistryGroupFormViewModel vm)
+        {
+            var group = await _db.MinistryGroups.FindAsync(vm.Id);
+            if (group == null) return NotFound();
+
+            await ValidateGroupAsync(vm);
+            if (!ModelState.IsValid)
+            {
+                await LoadGroupLeadersAsync();
+                return View(vm);
+            }
+
+            ApplyGroupForm(group, vm);
+            await _db.SaveChangesAsync();
+            await EnsureLeaderIsMemberAsync(group);
+
+            TempData["Success"] = $"Group \"{group.Name}\" updated.";
+            return RedirectToAction("GroupDetails", new { id = group.Id });
+        }
+
+        public async Task<IActionResult> GroupDetails(int id)
+        {
+            var group = await _db.MinistryGroups.Include(g => g.Leader)
+                .FirstOrDefaultAsync(g => g.Id == id);
+            if (group == null) return NotFound();
+
+            ViewBag.Memberships = await _db.MinistryGroupMembers
+                .Include(gm => gm.Member)
+                .Where(gm => gm.MinistryGroupId == id)
+                .OrderBy(gm => gm.Member.FirstName).ThenBy(gm => gm.Member.LastName)
+                .ToListAsync();
+            ViewBag.Available = await _db.Members
+                .Where(m => m.Status == MemberStatus.Active && !m.MinistryGroups.Any(g => g.Id == id))
+                .OrderBy(m => m.FirstName).ThenBy(m => m.LastName)
+                .ToListAsync();
+            return View(group);
+        }
+
+        [HttpPost, ValidateAntiForgeryToken]
+        public async Task<IActionResult> AddGroupMembers(int id, List<int> memberIds)
+        {
+            var group = await _db.MinistryGroups.FindAsync(id);
+            if (group == null) return NotFound();
+
+            var existing = await _db.MinistryGroupMembers.Where(gm => gm.MinistryGroupId == id)
+                .Select(gm => gm.MemberId).ToListAsync();
+            var toAdd = await _db.Members
+                .Where(m => memberIds.Contains(m.Id) && !existing.Contains(m.Id))
+                .Select(m => m.Id).ToListAsync();
+
+            if (toAdd.Count == 0)
+            {
+                TempData["Error"] = "Select at least one member to add.";
+                return RedirectToAction("GroupDetails", new { id });
+            }
+
+            _db.MinistryGroupMembers.AddRange(toAdd.Select(memberId =>
+                new MinistryGroupMember { MinistryGroupId = id, MemberId = memberId }));
+            await _db.SaveChangesAsync();
+
+            TempData["Success"] = $"{toAdd.Count} member{(toAdd.Count == 1 ? "" : "s")} added to {group.Name}.";
+            return RedirectToAction("GroupDetails", new { id });
+        }
+
+        [HttpPost, ValidateAntiForgeryToken]
+        public async Task<IActionResult> RemoveGroupMember(int id, int memberId)
+        {
+            var group = await _db.MinistryGroups.FindAsync(id);
+            if (group == null) return NotFound();
+
+            var membership = await _db.MinistryGroupMembers.Include(gm => gm.Member)
+                .FirstOrDefaultAsync(gm => gm.MinistryGroupId == id && gm.MemberId == memberId);
+            if (membership != null)
+            {
+                _db.MinistryGroupMembers.Remove(membership);
+                if (group.LeaderId == memberId) group.LeaderId = null;
+                await _db.SaveChangesAsync();
+                TempData["Success"] = $"{membership.Member.FullName} removed from {group.Name}.";
+            }
+            return RedirectToAction("GroupDetails", new { id });
+        }
+
+        // Members keep their accounts; only their membership and the group's meeting invitations go
+        [HttpPost, ValidateAntiForgeryToken]
+        public async Task<IActionResult> DeleteGroup(int id)
+        {
+            var group = await _db.MinistryGroups.FindAsync(id);
+            if (group == null) return NotFound();
+            _db.MinistryGroups.Remove(group);
+            await _db.SaveChangesAsync();
+            TempData["Success"] = $"Group \"{group.Name}\" deleted.";
+            return RedirectToAction("Groups");
+        }
+
+        private async Task LoadGroupLeadersAsync()
+        {
+            ViewBag.Leaders = await _db.Members.Where(m => m.Status == MemberStatus.Active)
+                .OrderBy(m => m.FirstName).ThenBy(m => m.LastName).ToListAsync();
+        }
+
+        private async Task ValidateGroupAsync(MinistryGroupFormViewModel vm)
+        {
+            vm.Name = vm.Name?.Trim() ?? "";
+            if (await _db.MinistryGroups.AnyAsync(g => g.Name == vm.Name && g.Id != vm.Id))
+                ModelState.AddModelError(nameof(vm.Name), "A group with this name already exists.");
+            if (vm.LeaderId != null && !await _db.Members.AnyAsync(m => m.Id == vm.LeaderId))
+                ModelState.AddModelError(nameof(vm.LeaderId), "Choose a leader from the list.");
+        }
+
+        private static void ApplyGroupForm(MinistryGroup group, MinistryGroupFormViewModel vm)
+        {
+            group.Name = vm.Name;
+            group.Description = string.IsNullOrWhiteSpace(vm.Description) ? null : vm.Description.Trim();
+            group.MeetingDay = string.IsNullOrWhiteSpace(vm.MeetingDay) ? null : vm.MeetingDay;
+            group.MeetingTime = string.IsNullOrWhiteSpace(vm.MeetingTime) ? null : vm.MeetingTime;
+            group.Location = string.IsNullOrWhiteSpace(vm.Location) ? null : vm.Location.Trim();
+            group.LeaderId = vm.LeaderId;
+            group.IsActive = vm.IsActive;
+        }
+
+        // The leader always belongs to the group they lead
+        private async Task EnsureLeaderIsMemberAsync(MinistryGroup group)
+        {
+            if (group.LeaderId is not int leaderId) return;
+            if (await _db.MinistryGroupMembers.AnyAsync(gm => gm.MinistryGroupId == group.Id && gm.MemberId == leaderId))
+                return;
+            _db.MinistryGroupMembers.Add(new MinistryGroupMember { MinistryGroupId = group.Id, MemberId = leaderId });
+            await _db.SaveChangesAsync();
         }
 
         // ── Attendance management ──
