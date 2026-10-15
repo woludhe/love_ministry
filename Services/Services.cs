@@ -653,6 +653,164 @@ namespace ChurchMinistry.Services
         }
     }
 
+    // ─── Audio store ───
+    // Uploaded audio lives in wwwroot/uploads/audio/{type}/{file}: one folder per type
+    // (sermons, music, or any type an admin names). Files left in the top folder count as "Other".
+    public record AudioStoreFile(string Type, string TypeLabel, string Name, string Url, long Size, DateTime Modified);
+    public record AudioTypeInfo(string Slug, string Label);
+
+    public static class AudioStore
+    {
+        public const long MaxBytes = 200L * 1024 * 1024;
+        public static readonly string[] Extensions = { ".mp3", ".m4a", ".aac", ".ogg", ".wav" };
+        public static readonly string[] BuiltInTypes = { "sermons", "music" };
+
+        public static string Folder(IWebHostEnvironment env) => Path.Combine(env.WebRootPath, "uploads", "audio");
+
+        public static string Url(string type, string name) =>
+            string.IsNullOrEmpty(type) ? $"/uploads/audio/{name}" : $"/uploads/audio/{type}/{name}";
+
+        // "Worship Songs!" → "worship-songs"
+        public static string Slug(string? text, int maxLength)
+        {
+            var slug = System.Text.RegularExpressions.Regex.Replace((text ?? "").ToLowerInvariant(), @"[^a-z0-9]+", "-").Trim('-');
+            return slug.Length > maxLength ? slug[..maxLength].TrimEnd('-') : slug;
+        }
+
+        // "worship-songs" → "Worship Songs"; the top folder is "Other"
+        public static string TypeLabel(string slug) => slug.Length == 0 ? "Other"
+            : System.Globalization.CultureInfo.InvariantCulture.TextInfo.ToTitleCase(slug.Replace('-', ' '));
+
+        // Sermons and Music always, then any other type folders
+        public static List<AudioTypeInfo> ListTypes(IWebHostEnvironment env)
+        {
+            var root = Folder(env);
+            var custom = Directory.Exists(root)
+                ? new DirectoryInfo(root).GetDirectories().Select(d => d.Name)
+                    .Where(n => !BuiltInTypes.Contains(n) && n == Slug(n, 40)).OrderBy(n => n)
+                : Enumerable.Empty<string>();
+            return BuiltInTypes.Concat(custom).Select(s => new AudioTypeInfo(s, TypeLabel(s))).ToList();
+        }
+
+        // Every audio file, newest first
+        public static List<AudioStoreFile> ListFiles(IWebHostEnvironment env)
+        {
+            var root = Folder(env);
+            if (!Directory.Exists(root)) return new();
+
+            var folders = new[] { (Slug: "", Dir: new DirectoryInfo(root)) }
+                .Concat(new DirectoryInfo(root).GetDirectories()
+                    .Where(d => d.Name == Slug(d.Name, 40))
+                    .Select(d => (Slug: d.Name, Dir: d)));
+
+            return folders
+                .SelectMany(f => f.Dir.GetFiles()
+                    .Where(file => Extensions.Contains(file.Extension.ToLowerInvariant()))
+                    .Select(file => new AudioStoreFile(f.Slug, TypeLabel(f.Slug), file.Name,
+                        Url(f.Slug, file.Name), file.Length, file.LastWriteTime)))
+                .OrderByDescending(f => f.Modified)
+                .ToList();
+        }
+
+        // Only plain names inside the audio folders — never a path elsewhere
+        public static string? FilePath(IWebHostEnvironment env, string? type, string? name)
+        {
+            if (string.IsNullOrWhiteSpace(name) || name != Path.GetFileName(name)) return null;
+            if (!string.IsNullOrEmpty(type) && type != Slug(type, 40)) return null;
+            return Path.Combine(Folder(env), type ?? "", name);
+        }
+
+        // True when the url is a file in the audio library
+        public static bool IsLibraryUrl(IWebHostEnvironment env, string? url)
+        {
+            if (string.IsNullOrEmpty(url) || !url.StartsWith("/uploads/audio/")) return false;
+            var parts = url["/uploads/audio/".Length..].Split('/');
+            var path = parts.Length switch
+            {
+                1 => FilePath(env, "", parts[0]),
+                2 => FilePath(env, parts[0], parts[1]),
+                _ => null
+            };
+            return path != null && File.Exists(path);
+        }
+    }
+
+    // ─── Media links ───
+    // Works out what kind of player a sermon's video/audio/live-stream link needs
+    public static class MediaLinks
+    {
+        private static readonly string[] AudioExtensions = { ".mp3", ".aac", ".m4a", ".ogg", ".oga", ".opus", ".wav", ".flac" };
+        private static readonly System.Text.RegularExpressions.Regex YouTubeIdPattern = new("^[A-Za-z0-9_-]{11}$");
+
+        // youtube | youtube-channel | youtube-unsupported | facebook | hls | audio | file | none
+        public static string Kind(string? url)
+        {
+            var uri = ToUri(url);
+            if (uri == null) return "none";
+            if (IsYouTubeHost(uri))
+                return YouTubeVideoId(url) != null ? "youtube"
+                     : YouTubeChannelId(url) != null ? "youtube-channel"
+                     : "youtube-unsupported";
+            if (IsFacebook(url)) return "facebook";
+            if (IsHls(url)) return "hls";
+            if (IsAudioFile(url)) return "audio";
+            return "file";
+        }
+
+        // watch?v=ID, youtu.be/ID, /live/ID, /embed/ID, /shorts/ID, /v/ID (query strings ignored)
+        public static string? YouTubeVideoId(string? url)
+        {
+            var uri = ToUri(url);
+            if (uri == null || !IsYouTubeHost(uri)) return null;
+
+            string? id = null;
+            var segments = uri.AbsolutePath.Split('/', StringSplitOptions.RemoveEmptyEntries);
+            if (uri.Host.EndsWith("youtu.be")) id = segments.FirstOrDefault();
+            else if (segments.Length >= 2 && segments[0] is "live" or "embed" or "shorts" or "v") id = segments[1];
+            else id = Microsoft.AspNetCore.WebUtilities.QueryHelpers.ParseQuery(uri.Query).TryGetValue("v", out var v) ? v.ToString() : null;
+
+            return id != null && YouTubeIdPattern.IsMatch(id) ? id : null;
+        }
+
+        // youtube.com/channel/UC…(/live) — plays whatever the channel is streaming now
+        public static string? YouTubeChannelId(string? url)
+        {
+            var uri = ToUri(url);
+            if (uri == null || !IsYouTubeHost(uri)) return null;
+            var segments = uri.AbsolutePath.Split('/', StringSplitOptions.RemoveEmptyEntries);
+            return segments.Length >= 2 && segments[0] == "channel" && segments[1].StartsWith("UC") ? segments[1] : null;
+        }
+
+        public static bool IsFacebook(string? url)
+        {
+            var host = ToUri(url)?.Host ?? "";
+            return host == "fb.watch" || host == "facebook.com" || host.EndsWith(".facebook.com");
+        }
+
+        public static bool IsHls(string? url) =>
+            ToUri(url)?.AbsolutePath.EndsWith(".m3u8", StringComparison.OrdinalIgnoreCase) == true;
+
+        public static bool IsAudioFile(string? url)
+        {
+            var path = ToUri(url)?.AbsolutePath ?? "";
+            return AudioExtensions.Any(e => path.EndsWith(e, StringComparison.OrdinalIgnoreCase));
+        }
+
+        private static bool IsYouTubeHost(Uri uri) =>
+            uri.Host == "youtu.be" || uri.Host == "youtube.com" || uri.Host.EndsWith(".youtube.com")
+            || uri.Host.EndsWith("youtube-nocookie.com");
+
+        // Accepts links pasted without "https://"; relative links (uploaded files) resolve against the site
+        private static Uri? ToUri(string? url)
+        {
+            if (string.IsNullOrWhiteSpace(url)) return null;
+            url = url.Trim();
+            if (url.StartsWith("/")) return new Uri(new Uri("https://local.site"), url);
+            if (!url.Contains("://")) url = "https://" + url;
+            return Uri.TryCreate(url, UriKind.Absolute, out var uri) ? uri : null;
+        }
+    }
+
     // ─── Bible Service ───
     // Reads EasyWorship Bible files (*.ewb) from App_Data/bibles. Layout: header
     // "EasyWorship Bible Text", then 66 book records of 0xE0 bytes from 0x58, each with

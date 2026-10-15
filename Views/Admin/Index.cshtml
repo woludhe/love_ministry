@@ -11,6 +11,97 @@
         <span class="date-badge">@DateTime.Now.ToString("dddd, dd MMMM yyyy")</span>
     </div>
 
+    @{
+        var liveSermon = ViewBag.LiveSermon as ChurchMinistry.Models.Sermon;
+        var audience = ((int OnLivePage, int InMeeting)?)ViewBag.LiveAudience ?? (0, 0);
+    }
+    @if (liveSermon != null)
+    {
+        var isMeeting = liveSermon.IsOnlineMeeting;
+        var modeLabel = liveSermon.DeliveryMode switch
+        {
+            "meeting" => "Online meeting",
+            "live" => "Live stream",
+            "audio" => "Audio premiere",
+            _ => "Video premiere"
+        };
+        var started = liveSermon.LiveStartedAt is DateTime s
+            ? (DateTime.UtcNow - s) switch
+            {
+                var d when d.TotalMinutes < 1 => "just now",
+                var d when d.TotalHours < 1 => $"{(int)d.TotalMinutes} min ago",
+                var d when d.TotalDays < 1 => $"{(int)d.TotalHours} h {d.Minutes} min ago",
+                var d => $"{(int)d.TotalDays} days ago"
+            }
+            : null;
+
+        <div class="dash-live" id="dashLive" data-sermon-id="@liveSermon.Id" data-meeting="@isMeeting.ToString().ToLower()">
+            <div class="dash-live-main">
+                <span class="dash-live-badge"><span class="live-dot"></span> LIVE NOW</span>
+                <div class="dash-live-info">
+                    <strong>@liveSermon.Title</strong>
+                    <span>@string.Join(" · ", new[] { liveSermon.Speaker, modeLabel, started == null ? null : $"started {started}" }
+                                                  .Where(p => !string.IsNullOrWhiteSpace(p)))</span>
+                </div>
+            </div>
+            <div class="dash-live-count" aria-live="polite">
+                <span class="dash-live-num" id="dashLiveTotal">@(audience.OnLivePage + audience.InMeeting)</span>
+                <span class="dash-live-label">watching</span>
+                <small id="dashLiveSplit">
+                    @(isMeeting ? $"{audience.OnLivePage} on Live page · {audience.InMeeting} in meeting" : "on the Live page")
+                </small>
+            </div>
+            <div class="dash-live-actions">
+                <a asp-controller="LiveSettings" asp-action="Index" asp-route-sermonId="@liveSermon.Id" class="btn btn-primary btn-sm">
+                    <i class="fas fa-sliders"></i> Live Settings
+                </a>
+                <a asp-controller="Media" asp-action="Live" target="_blank" rel="noopener" class="btn btn-outline btn-sm">
+                    <i class="fas fa-eye"></i> View
+                </a>
+            </div>
+        </div>
+
+        <style>
+            .dash-live { display:flex;align-items:center;gap:1.25rem;flex-wrap:wrap;margin-bottom:1.5rem;padding:1rem 1.25rem;
+                         border-radius:14px;color:white;background:linear-gradient(135deg,#7f1d1d,#dc2626);
+                         box-shadow:0 10px 26px rgba(220,38,38,.25); }
+            .dash-live-main { flex:1;min-width:220px;display:flex;align-items:center;gap:.9rem; }
+            .dash-live-badge { display:inline-flex;align-items:center;gap:.4rem;flex-shrink:0;padding:.25rem .65rem;border-radius:100px;
+                               background:rgba(255,255,255,.18);font-size:.72rem;font-weight:800;letter-spacing:.06em; }
+            .dash-live-badge .live-dot { background:white; }
+            .dash-live-info { display:flex;flex-direction:column;min-width:0; }
+            .dash-live-info strong { font-size:1.05rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }
+            .dash-live-info span { font-size:.82rem;opacity:.85; }
+            .dash-live-count { display:grid;grid-template-columns:auto auto;align-items:baseline;column-gap:.4rem;
+                               padding:.4rem .9rem;border-radius:12px;background:rgba(0,0,0,.15); }
+            .dash-live-num { font-size:1.6rem;font-weight:800;line-height:1; }
+            .dash-live-label { font-size:.85rem;font-weight:600; }
+            .dash-live-count small { grid-column:1 / -1;font-size:.72rem;opacity:.85; }
+            .dash-live-actions { display:flex;gap:.5rem; }
+            .dash-live-actions .btn-primary { background:white;color:#b91c1c;border-color:white; }
+            .dash-live-actions .btn-outline { color:white;border-color:rgba(255,255,255,.5); }
+            .dash-live-actions .btn-outline:hover { background:rgba(255,255,255,.12); }
+        </style>
+        <script>
+            // Keep the watching count current while the dashboard is open
+            (function () {
+                const box = document.getElementById('dashLive');
+                const isMeeting = box.dataset.meeting === 'true';
+                async function refresh() {
+                    try {
+                        const res = await fetch(`/Admin/LiveSettings/${box.dataset.sermonId}/Audience`);
+                        if (!res.ok) return;
+                        const a = await res.json();
+                        document.getElementById('dashLiveTotal').textContent = a.total;
+                        document.getElementById('dashLiveSplit').textContent = isMeeting
+                            ? `${a.onLivePage} on Live page · ${a.inMeeting} in meeting` : 'on the Live page';
+                    } catch { }
+                }
+                setInterval(refresh, 15000);
+            })();
+        </script>
+    }
+
     <!-- KPI Cards -->
     <div class="kpi-grid">
         <div class="kpi-card kpi-purple">

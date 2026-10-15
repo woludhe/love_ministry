@@ -636,7 +636,9 @@
             await callToggle(id);
         }
         async function callToggle(id) {
-            await fetch('/Admin/ToggleLive/' + id, { method: 'POST' });
+            const res = await fetch('/Admin/ToggleLive/' + id, { method: 'POST' });
+            const data = await res.json().catch(() => ({}));
+            if (data.error) { alert(data.error); return; }
             location.reload();
         }    </script>
 }

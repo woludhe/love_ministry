@@ -18,23 +18,43 @@ namespace ChurchMinistry.Hubs
         public LiveSessionHub(ApplicationDbContext db) { _db = db; }
 
         // ── Viewers join the room for a sermon ─────────────────
-        public async Task JoinLiveRoom(int sermonId)
+        // Live page viewers call JoinLiveRoom; people in the sermon's meeting room call JoinLiveRoomFromMeeting
+        public Task JoinLiveRoom(int sermonId) => JoinAsync(sermonId, inMeeting: false);
+        public Task JoinLiveRoomFromMeeting(int sermonId) => JoinAsync(sermonId, inMeeting: true);
+
+        private async Task JoinAsync(int sermonId, bool inMeeting)
         {
             await Groups.AddToGroupAsync(Context.ConnectionId, $"live-{sermonId}");
             await LogAttendanceAsync(sermonId);
+            LiveAudience.Join(Context.ConnectionId, sermonId, inMeeting);
+            await BroadcastAudienceAsync(sermonId);
         }
 
         public async Task LeaveLiveRoom(int sermonId)
         {
             await Groups.RemoveFromGroupAsync(Context.ConnectionId, $"live-{sermonId}");
             await CloseAttendanceAsync();
+            if (LiveAudience.Leave(Context.ConnectionId) is int left) await BroadcastAudienceAsync(left);
         }
 
         public override async Task OnDisconnectedAsync(Exception? exception)
         {
             await CloseAttendanceAsync();
+            if (LiveAudience.Leave(Context.ConnectionId) is int left) await BroadcastAudienceAsync(left);
             await base.OnDisconnectedAsync(exception);
         }
+
+        // ── Audience count for admins (Live Settings) ──────────
+        // Joins the admin to the count's updates and returns the current numbers
+        [Authorize(Roles = "Admin,Pastor")]
+        public async Task<object> WatchAudience(int sermonId)
+        {
+            await Groups.AddToGroupAsync(Context.ConnectionId, $"live-audience-{sermonId}");
+            return LiveAudience.Summary(sermonId);
+        }
+
+        private Task BroadcastAudienceAsync(int sermonId) =>
+            Clients.Group($"live-audience-{sermonId}").SendAsync("AudienceChanged", LiveAudience.Summary(sermonId));
 
         // ── Attendance tracking ────────────────────────────────
         // Start a log row for this connection if the sermon tracks attendance
@@ -245,6 +265,38 @@ namespace ChurchMinistry.Hubs
                     ? Context.User.Identity.Name
                     : "Guest"
             });
+        }
+    }
+
+    /// <summary>
+    /// Who is connected to each live sermon right now: people watching on the Live page and
+    /// people inside the sermon's meeting room. Counts open connections, so a person with
+    /// two tabs open counts twice. Held in memory (one web server).
+    /// </summary>
+    public static class LiveAudience
+    {
+        private record Entry(int SermonId, bool InMeeting);
+        private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, Entry> _connections = new();
+
+        public static void Join(string connectionId, int sermonId, bool inMeeting) =>
+            _connections[connectionId] = new Entry(sermonId, inMeeting);
+
+        // The sermon the connection was watching, if any
+        public static int? Leave(string connectionId) =>
+            _connections.TryRemove(connectionId, out var e) ? e.SermonId : null;
+
+        public static (int OnLivePage, int InMeeting) Count(int sermonId)
+        {
+            int live = 0, meeting = 0;
+            foreach (var e in _connections.Values)
+                if (e.SermonId == sermonId) { if (e.InMeeting) meeting++; else live++; }
+            return (live, meeting);
+        }
+
+        public static object Summary(int sermonId)
+        {
+            var (live, meeting) = Count(sermonId);
+            return new { total = live + meeting, onLivePage = live, inMeeting = meeting };
         }
     }
 }

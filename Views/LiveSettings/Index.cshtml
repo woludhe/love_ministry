@@ -18,6 +18,14 @@
             <div style="display:flex;align-items:center;gap:.6rem;margin-bottom:.4rem">
                 <span class="live-dot"></span>
                 <span style="font-size:.78rem;font-weight:700;letter-spacing:.08em;opacity:.8">ON AIR</span>
+                <span class="ls-online" id="lsOnline" aria-live="polite"
+                      title="@(sermon?.IsOnlineMeeting == true ? "People on the Live page plus people in the meeting room" : "People on the Live page")">
+                    <i class="fas fa-users"></i> <strong id="lsOnlineTotal">0</strong> online
+                    @if (sermon?.IsOnlineMeeting == true)
+                    {
+                        <small id="lsOnlineSplit"></small>
+                    }
+                </span>
             </div>
             <h1 style="font-size:1.5rem;margin-bottom:.25rem">Live Settings</h1>
             <p>@sermon?.Title &nbsp;·&nbsp; @sermon?.Speaker</p>
@@ -246,6 +254,12 @@
             @* {{-- ═══ RIGHT COLUMN ═══ --}} *@
             <div class="ls-col">
 
+                @* {{-- Background music: online meeting services only --}} *@
+                @if (sermon?.IsOnlineMeeting == true)
+                {
+                    <partial name="_MusicCard" model="sermonId" />
+                }
+
                 @* {{-- Giving panel --}} *@
                 <div class="ls-card">
                     <div class="ls-card-header">
@@ -269,19 +283,6 @@
                             <input asp-for="GivingCta" class="form-control"
                                    placeholder="Support this ministry - give today!"
                                    oninput="pushGivingCta(this.value)" />
-                        </div>
-
-                        <div class="form-group">
-                            <label class="ls-field-label">Panel position</label>
-                            <div class="ls-position-group">
-                                @foreach (var pos in Enum.GetValues<ChurchMinistry.Models.GivingPanelPosition>())
-                                {
-                                    <label class="ls-position-option">
-                                        <input type="radio" asp-for="GivingPanelPosition" value="@pos" />
-                                        <span>@pos</span>
-                                    </label>
-                                }
-                            </div>
                         </div>
 
                         <div class="ls-field-label" style="margin-bottom:.6rem">Payment methods</div>
@@ -398,7 +399,17 @@
             .withUrl('/liveSessionHub')
             .withAutomaticReconnect()
             .build();
-        conn.start().catch(console.error);
+        // How many are online: updates as people join and leave
+        function showAudience(a) {
+            if (!a) return;
+            document.getElementById('lsOnlineTotal').textContent = a.total;
+            const split = document.getElementById('lsOnlineSplit');
+            if (split) split.textContent = `${a.onLivePage} on Live page · ${a.inMeeting} in meeting`;
+        }
+        conn.on('AudienceChanged', showAudience);
+        const watchAudience = () => conn.invoke('WatchAudience', SERMON_ID).then(showAudience).catch(console.error);
+        conn.onreconnected(watchAudience);
+        conn.start().then(watchAudience).catch(console.error);
 
         // ── Bible: look up a chapter, click a verse to show it ────
         const TRANSLATION_KEY = 'ls-bible-translation';
@@ -829,6 +840,13 @@
     </script>
 
     <style>
+        /* ── Online count (header) ─────────────────── */
+        .ls-online { display:inline-flex;align-items:center;gap:.35rem;margin-left:.4rem;padding:.2rem .65rem;border-radius:100px;
+                     background:rgba(255,255,255,.18);font-size:.78rem;font-weight:600; }
+        .ls-online strong { font-size:.9rem; }
+        .ls-online small { opacity:.85;font-weight:500; }
+        .ls-online small:not(:empty)::before { content:'·';margin-right:.35rem; }
+
         /* ── Page layout ───────────────────────────── */
         .live-settings-page {
             max-width: 1100px;
@@ -1254,35 +1272,6 @@
             background: #1e40af;
             color: white;
         }
-
-        /* ── Position group ────────────────────────── */
-        .ls-position-group {
-            display: flex;
-            gap: .4rem;
-        }
-
-        .ls-position-option {
-            display: flex;
-            align-items: center;
-            gap: .35rem;
-            padding: .4rem .75rem;
-            border: 1px solid var(--border);
-            border-radius: 8px;
-            cursor: pointer;
-            font-size: .82rem;
-            font-weight: 500;
-            transition: all .15s;
-        }
-
-            .ls-position-option:has(input:checked) {
-                border-color: var(--purple);
-                background: var(--purple-l);
-                color: var(--purple);
-            }
-
-            .ls-position-option input {
-                display: none;
-            }
 
         /* ── Field label ───────────────────────────── */
         .ls-field-label {

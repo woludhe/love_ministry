@@ -34,12 +34,36 @@ namespace ChurchMinistry.Models
         // Prayer FAB
         public bool ShowPrayerButton     { get; set; } = false;
 
+        // Background music (meeting-type sermons; Live page viewers only).
+        // Every viewer works out the same track and position from the anchor:
+        // position = (now - MusicAnchorAt) wrapped around the playlist's total length.
+        public string? MusicPlaylistJson { get; set; }              // [{ url, title, duration }] in play order
+        [MaxLength(10)] public string MusicState { get; set; } = "stopped";   // stopped | playing | paused
+        public DateTime? MusicAnchorAt   { get; set; }              // UTC moment position 0 would have played
+        public double MusicPausedAt      { get; set; }              // seconds into the playlist while paused
+        public int  MusicVolume          { get; set; } = 40;        // 0–100
+        public bool MusicShuffle         { get; set; } = false;
+        public bool MusicDuckOnSpeech    { get; set; } = true;      // lower the music while someone in the meeting talks
+
+        public static List<MusicTrack> ReadPlaylist(string? json)
+        {
+            if (string.IsNullOrWhiteSpace(json)) return new();
+            try
+            {
+                return System.Text.Json.JsonSerializer.Deserialize<List<MusicTrack>>(json,
+                    new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true }) ?? new();
+            }
+            catch (System.Text.Json.JsonException) { return new(); }
+        }
+
         public DateTime CreatedAt        { get; set; } = DateTime.UtcNow;
         public DateTime UpdatedAt        { get; set; } = DateTime.UtcNow;
 
         public ICollection<LiveBibleVerse> BibleVerses { get; set; } = new List<LiveBibleVerse>();
         public ICollection<LiveAnnouncement> Announcements { get; set; } = new List<LiveAnnouncement>();
     }
+
+    public record MusicTrack(string Url, string Title, double Duration);
 
     public enum MarqueeSpeed    { Slow, Normal, Fast }
     public enum GivingPanelPosition { Sidebar, BottomBar, Floating }

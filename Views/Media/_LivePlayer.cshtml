@@ -1,0 +1,78 @@
+@model ChurchMinistry.Models.Sermon
+@using ChurchMinistry.Services
+@*
+    Player for a live sermon that isn't an online meeting. live-player.js builds the right player:
+    - Live stream link: YouTube / Facebook / HLS / audio stream, played at the live edge
+    - Video or audio sermon: a premiere — everyone hears the same moment, counted from Go Live
+*@
+@{
+    var mode = Model.DeliveryMode;                       // live | video | audio
+    var url = mode == "live" ? Model.LiveStreamUrl
+            : mode == "audio" ? Model.AudioUrl
+            : Model.VideoUrl;
+    var kind = MediaLinks.Kind(url);
+    // An audio sermon plays as audio unless it's a YouTube/Facebook link
+    if (mode == "audio" && kind is "file" or "hls") kind = kind == "hls" ? "hls-audio" : "audio";
+
+    var started = Model.LiveStartedAt.HasValue
+        ? new DateTimeOffset(DateTime.SpecifyKind(Model.LiveStartedAt.Value, DateTimeKind.Utc)).ToUnixTimeMilliseconds().ToString()
+        : "";
+    var isPrivileged = User.IsInRole("Admin") || User.IsInRole("Pastor");
+}
+
+<div id="livePlayer" class="lp"
+     data-kind="@kind"
+     data-src="@url"
+     data-youtube-id="@MediaLinks.YouTubeVideoId(url)"
+     data-youtube-channel="@MediaLinks.YouTubeChannelId(url)"
+     data-premiere="@((mode != "live").ToString().ToLowerInvariant())"
+     data-started="@started"
+     data-server-now="@DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()"
+     data-artwork="@Model.ThumbnailUrl"
+     data-title="@Model.Title"
+     data-watch-url="@Url.Action("Watch", "Media", new { id = Model.Id })">
+
+    <div class="lp-stage" id="lpStage"></div>
+
+    @* Audio: sermon artwork with a moving equaliser *@
+    <div class="lp-artwork" id="lpArtwork" style="display:none">
+        @if (!string.IsNullOrEmpty(Model.ThumbnailUrl))
+        {
+            <div class="lp-artwork-bg" style="background-image:url('@Model.ThumbnailUrl')"></div>
+            <img src="@Model.ThumbnailUrl" alt="" class="lp-artwork-img" />
+        }
+        else
+        {
+            <div class="lp-artwork-icon"><i class="fas fa-headphones"></i></div>
+        }
+        <div class="lp-eq" aria-hidden="true"><span></span><span></span><span></span><span></span><span></span></div>
+        <p class="lp-artwork-title">@Model.Title</p>
+    </div>
+
+    @* Browsers only start sound after a tap *@
+    <button type="button" class="lp-tap" id="lpTap" style="display:none">
+        <span class="lp-tap-icon"><i class="fas fa-volume-up"></i></span>
+        <span id="lpTapLabel">Tap for sound</span>
+    </button>
+
+    <div class="lp-message" id="lpEnded" style="display:none">
+        <i class="fas fa-church fa-2x"></i>
+        <h3>This service has ended</h3>
+        <p>Thank you for joining us.</p>
+        <a href="@Url.Action("Watch", "Media", new { id = Model.Id })" class="btn btn-primary btn-sm">
+            <i class="fas fa-play"></i> Watch the recording
+        </a>
+    </div>
+
+    <div class="lp-message" id="lpWaiting">
+        <i class="fas fa-broadcast-tower fa-2x"></i>
+        <p>@(kind is "none" or "youtube-unsupported" ? "Stream starting soon…" : "Connecting…")</p>
+        @if (kind == "youtube-unsupported" && isPrivileged)
+        {
+            <small class="lp-admin-note">
+                Admin: this YouTube link can't be embedded. Edit the sermon and paste the link from YouTube's
+                Share button (youtube.com/live/… or youtu.be/…).
+            </small>
+        }
+    </div>
+</div>

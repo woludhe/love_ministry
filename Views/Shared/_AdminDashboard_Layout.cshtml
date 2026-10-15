@@ -118,7 +118,22 @@
                     <a asp-controller="Admin" asp-action="Attendance"><i class="fas fa-calendar-check"></i> Attendance</a>
                     <a asp-controller="Admin" asp-action="Givings"><i class="fas fa-hand-holding-heart"></i> Givings</a>
                     <a asp-controller="AdminPayment" asp-action="Index"><i class="fa-solid fa-money-bill"></i> Payment Settings</a>
-                    <a asp-controller="Admin" asp-action="Sermons"><i class="fas fa-video"></i> Sermons</a>
+                    @{
+                        var sermonNavAction = ViewContext.RouteData.Values["action"]?.ToString();
+                        var inSermons = ViewContext.RouteData.Values["controller"]?.ToString() == "Admin"
+                                     && new[] { "Sermons", "AddSermon", "EditSermon", "AudioLibrary" }.Contains(sermonNavAction);
+                    }
+                    <details class="sidebar-group" open="@inSermons">
+                        <summary><i class="fas fa-video"></i> Sermons <i class="fas fa-chevron-down sidebar-caret"></i></summary>
+                        <a asp-controller="Admin" asp-action="Sermons"
+                           class="@(inSermons && sermonNavAction != "AudioLibrary" ? "active" : "")">
+                            <i class="fas fa-list"></i> All Sermons
+                        </a>
+                        <a asp-controller="Admin" asp-action="AudioLibrary"
+                           class="@(sermonNavAction == "AudioLibrary" ? "active" : "")">
+                            <i class="fas fa-music"></i> Audio Library
+                        </a>
+                    </details>
                     <a asp-controller="Admin" asp-action="Events"><i class="fas fa-calendar"></i> Events</a>
                     <a asp-controller="MeetingApprovals" asp-action="Index">
                         <i class="fas fa-clock"></i> Meeting Approvals

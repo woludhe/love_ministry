@@ -524,6 +524,12 @@ img {
     margin-bottom: 1.5rem;
 }
 
+/* Sermon form: a video/stream link the Live page can't play */
+.meta.link-warn {
+    color: #b45309;
+    font-weight: 600;
+}
+
 .status-badge {
     display: inline-block;
     padding: .2rem .6rem;

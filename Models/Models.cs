@@ -173,6 +173,7 @@ namespace ChurchMinistry.Models
         public string? ScriptureReference { get; set; }
         public string? Tags { get; set; }
         public bool IsLive { get; set; }
+        public DateTime? LiveStartedAt { get; set; }   // when Go Live was clicked; premieres play from here
         public string? LiveStreamUrl { get; set; }
         public bool IsPublished { get; set; } = true;
         public int ViewCount { get; set; }

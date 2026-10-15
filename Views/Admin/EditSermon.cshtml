@@ -93,15 +93,15 @@
                 <div class="form-group">
                     <label asp-for="VideoUrl">Video URL</label>
                     <input asp-for="VideoUrl" class="form-control"
-                           placeholder="https://youtube.com/watch?v=..." />
+                           placeholder="https://youtu.be/... or a Facebook video link"
+                           oninput="checkVideoLink(this)" />
+                    <small class="meta">YouTube or Facebook video link, or a direct .mp4 link. When the sermon goes live it plays as a premiere: everyone watches the same moment.</small>
+                    <small class="meta link-warn" style="display:none"></small>
                 </div>
             </div>
 
             <div class="delivery-panel" data-mode="audio">
-                <div class="form-group">
-                    <label asp-for="AudioUrl">Audio URL</label>
-                    <input asp-for="AudioUrl" class="form-control" />
-                </div>
+                <partial name="_AudioPicker" model="Model" />
             </div>
 
             @* {{-- Meeting room picker --}} *@
@@ -181,9 +181,11 @@
                         Live Stream URL
                     </label>
                     <input asp-for="LiveStreamUrl" class="form-control"
-                           placeholder="https://youtube.com/live/... or RTMP stream URL" />
+                           placeholder="https://youtube.com/live/... or a Facebook Live link"
+                           oninput="checkVideoLink(this)" />
+                    <small class="meta link-warn" style="display:none"></small>
                     <small class="meta">
-                        YouTube Live, Facebook Live, or any HLS/RTMP stream URL
+                        YouTube Live or Facebook Live link, or an HLS (.m3u8) stream. Streaming from OBS? Stream to YouTube or Facebook Live and paste its link here.
                     </small>
                 </div>
             </div>
@@ -263,6 +265,20 @@
 
 @section Scripts {
     <script>
+        // Warn about links the Live page can't play
+        function checkVideoLink(input) {
+            const warn = input.parentElement.querySelector('.link-warn');
+            const v = input.value.trim().toLowerCase();
+            let msg = '';
+            if (/youtube\.com\/(@@|c\/|user\/)/.test(v))
+                msg = 'This YouTube link can\'t be embedded. Use the link from YouTube\'s Share button (youtu.be/… or youtube.com/live/…).';
+            else if (v.startsWith('rtmp'))
+                msg = 'Browsers can\'t play RTMP. Stream to YouTube or Facebook Live from OBS and paste that link instead.';
+            warn.textContent = msg;
+            warn.style.display = msg ? 'block' : 'none';
+        }
+        document.querySelectorAll('[oninput^="checkVideoLink"]').forEach(checkVideoLink);
+
         async function toggleActive(id, isActive) {
             const msg = (isActive
                 ? 'Deactivate this sermon? It will be hidden from the public, even if it is live.'
@@ -295,7 +311,7 @@
             document.querySelectorAll('.delivery-panel').forEach(p => {
                 const on = p.dataset.mode === mode;
                 p.style.display = on ? 'block' : 'none';
-                const main = p.querySelector('input.form-control, select.form-control');
+                const main = p.querySelector('[data-main]') ?? p.querySelector('input.form-control, select.form-control');
                 if (main) main.required = on;
             });
         }

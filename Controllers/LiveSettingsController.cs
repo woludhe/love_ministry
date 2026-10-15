@@ -25,7 +25,7 @@ namespace ChurchMinistry.Controllers
 
         // ── Settings page for a given sermon ──────────────────
         [HttpGet("Admin/LiveSettings/{sermonId}")]
-        public async Task<IActionResult> Index(int sermonId)
+        public async Task<IActionResult> Index(int sermonId, [FromServices] IWebHostEnvironment env)
         {
             var sermon = await _db.Sermons.FindAsync(sermonId);
             if (sermon == null) return NotFound();
@@ -41,6 +41,14 @@ namespace ChurchMinistry.Controllers
             ViewBag.BibleTranslations = _bible.GetTranslations();
             ViewBag.DefaultTranslation = _bible.DefaultCode();
             ViewBag.BibleBooks = _bible.GetBooks();
+
+            // Background music is offered for online meeting services only
+            if (sermon.IsOnlineMeeting)
+            {
+                ViewBag.MusicFiles = AudioStore.ListFiles(env);
+                ViewBag.MusicTypes = AudioStore.ListTypes(env);
+                ViewBag.MusicState = MusicJson(session);
+            }
 
             return View(session);
         }
@@ -60,7 +68,6 @@ namespace ChurchMinistry.Controllers
             session.MarqueeSpeed = form.MarqueeSpeed;
             session.ShowGivingPanel = form.ShowGivingPanel;
             session.GivingCta = form.GivingCta;
-            session.GivingPanelPosition = form.GivingPanelPosition;
             session.ShowMtn = form.ShowMtn;
             session.ShowAirtel = form.ShowAirtel;
             session.ShowMpesa = form.ShowMpesa;
@@ -298,7 +305,6 @@ namespace ChurchMinistry.Controllers
                 showPrayerButton = session.ShowPrayerButton,
                 givingCta = session.GivingCta,
                 marqueeSpeed = session.MarqueeSpeed.ToString().ToLower(),
-                givingPanelPos = session.GivingPanelPosition.ToString().ToLower(),
                 showMtn = session.ShowMtn,
                 showAirtel = session.ShowAirtel,
                 showMpesa = session.ShowMpesa,
@@ -309,9 +315,143 @@ namespace ChurchMinistry.Controllers
                     verseText = session.ActiveVerse.VerseText,
                     translation = session.ActiveVerse.Translation
                 },
-                activeAnnouncement = session.Announcements.FirstOrDefault()?.Text
+                activeAnnouncement = session.Announcements.FirstOrDefault()?.Text,
+                music = MusicJson(session)
             });
         }
+
+        // ── How many are connected right now (admin dashboard polls this) ──
+        [HttpGet("Admin/LiveSettings/{sermonId}/Audience")]
+        public IActionResult Audience(int sermonId) => Json(LiveAudience.Summary(sermonId));
+
+        // ── Background music (meeting-type sermons) ────────────
+        // action: play (playlist + index) | pause | resume | next | prev | jump (index) | stop | clear | volume | duck
+        [HttpPost("Admin/LiveSettings/{sermonId}/Music")]
+        public async Task<IActionResult> Music(int sermonId, string action, string? playlist, int? index,
+                                               int? volume, bool? shuffle, bool? duck, [FromServices] IWebHostEnvironment env)
+        {
+            var sermon = await _db.Sermons.FindAsync(sermonId);
+            if (sermon == null) return NotFound();
+            if (!sermon.IsOnlineMeeting)
+                return Json(new { success = false, message = "Background music is only for online meeting services." });
+
+            var session = await GetOrCreateSessionAsync(sermonId);
+            var tracks = LiveSession.ReadPlaylist(session.MusicPlaylistJson);
+            var now = DateTime.UtcNow;
+
+            switch (action)
+            {
+                case "play":
+                {
+                    // Only files from the audio library, with a known length
+                    var chosen = LiveSession.ReadPlaylist(playlist)
+                        .Where(t => t.Duration > 0 && AudioStore.IsLibraryUrl(env, t.Url))
+                        .Take(200).ToList();
+                    if (chosen.Count == 0)
+                        return Json(new { success = false, message = "Choose at least one track from the Audio Library." });
+
+                    var start = Math.Clamp(index ?? 0, 0, chosen.Count - 1);
+                    if (shuffle == true)
+                    {
+                        // The chosen track first, the rest in a random order that everyone shares
+                        var first = chosen[start];
+                        chosen = new[] { first }.Concat(chosen.Where((_, i) => i != start).OrderBy(_ => Random.Shared.Next())).ToList();
+                        start = 0;
+                    }
+                    tracks = chosen;
+                    session.MusicPlaylistJson = System.Text.Json.JsonSerializer.Serialize(tracks,
+                        new System.Text.Json.JsonSerializerOptions { PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase });
+                    session.MusicShuffle = shuffle == true;
+                    session.MusicState = "playing";
+                    session.MusicAnchorAt = now.AddSeconds(-StartOfTrack(tracks, start));
+                    break;
+                }
+                case "pause" when session.MusicState == "playing":
+                    session.MusicPausedAt = MusicPosition(session, tracks, now);
+                    session.MusicState = "paused";
+                    break;
+                case "resume" when session.MusicState == "paused" && tracks.Count > 0:
+                    session.MusicAnchorAt = now.AddSeconds(-session.MusicPausedAt);
+                    session.MusicState = "playing";
+                    break;
+                case "next" or "prev" or "jump" when session.MusicState != "stopped" && tracks.Count > 0:
+                {
+                    var position = MusicPosition(session, tracks, now);
+                    var (current, offset) = LocateTrack(tracks, position);
+                    var target = action switch
+                    {
+                        "next" => (current + 1) % tracks.Count,
+                        // Back to the start of this track, or the one before if it's only just begun
+                        "prev" => offset > 3 ? current : (current - 1 + tracks.Count) % tracks.Count,
+                        _ => Math.Clamp(index ?? current, 0, tracks.Count - 1)
+                    };
+                    var targetStart = StartOfTrack(tracks, target);
+                    if (session.MusicState == "playing") session.MusicAnchorAt = now.AddSeconds(-targetStart);
+                    else session.MusicPausedAt = targetStart;
+                    break;
+                }
+                case "stop":
+                case "clear":   // stop and empty the playlist (frees its files for deleting)
+                    session.MusicState = "stopped";
+                    session.MusicAnchorAt = null;
+                    session.MusicPausedAt = 0;
+                    if (action == "clear") session.MusicPlaylistJson = null;
+                    break;
+                case "volume" when volume != null:
+                    session.MusicVolume = Math.Clamp(volume.Value, 0, 100);
+                    break;
+                case "duck" when duck != null:
+                    session.MusicDuckOnSpeech = duck.Value;
+                    break;
+                default:
+                    return Json(new { success = false, message = "Nothing to do: start the music first." });
+            }
+
+            session.UpdatedAt = now;
+            await _db.SaveChangesAsync();
+
+            var state = MusicJson(session);
+            await _hub.Clients.Group($"live-{sermonId}").SendAsync("MusicChanged", state);
+            return Json(new { success = true, music = state });
+        }
+
+        // Seconds into the playlist right now (wrapping round when it loops)
+        private static double MusicPosition(LiveSession s, List<MusicTrack> tracks, DateTime now)
+        {
+            var total = tracks.Sum(t => t.Duration);
+            if (total <= 0) return 0;
+            if (s.MusicState == "paused") return s.MusicPausedAt;
+            if (s.MusicAnchorAt == null) return 0;
+            var elapsed = (now - s.MusicAnchorAt.Value).TotalSeconds;
+            return ((elapsed % total) + total) % total;
+        }
+
+        private static double StartOfTrack(List<MusicTrack> tracks, int index) => tracks.Take(index).Sum(t => t.Duration);
+
+        private static (int Index, double Offset) LocateTrack(List<MusicTrack> tracks, double position)
+        {
+            for (var i = 0; i < tracks.Count; i++)
+            {
+                if (position < tracks[i].Duration) return (i, position);
+                position -= tracks[i].Duration;
+            }
+            return (0, 0);
+        }
+
+        private static object MusicJson(LiveSession s) => new
+        {
+            state = s.MusicState,
+            playlist = LiveSession.ReadPlaylist(s.MusicPlaylistJson)
+                .Select(t => new { url = t.Url, title = t.Title, duration = t.Duration }),
+            anchorMs = s.MusicAnchorAt.HasValue
+                ? new DateTimeOffset(DateTime.SpecifyKind(s.MusicAnchorAt.Value, DateTimeKind.Utc)).ToUnixTimeMilliseconds()
+                : (long?)null,
+            pausedAt = s.MusicPausedAt,
+            volume = s.MusicVolume,
+            shuffle = s.MusicShuffle,
+            duck = s.MusicDuckOnSpeech,
+            serverNow = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()
+        };
 
         // ── Helper ─────────────────────────────────────────────
         private async Task<LiveSession> GetOrCreateSessionAsync(int sermonId)

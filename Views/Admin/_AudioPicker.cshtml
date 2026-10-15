@@ -1,0 +1,102 @@
+@model ChurchMinistry.Models.Sermon
+@using ChurchMinistry.Controllers
+@* Sermon form, Audio option: pick from the Audio Library, upload a file, or paste a link *@
+@{
+    var audioFiles = ViewBag.AudioFiles as List<AdminController.AudioFileInfo> ?? new();
+    // Sermons first, then the other types
+    var groups = audioFiles.GroupBy(f => f.TypeLabel)
+        .OrderBy(g => g.First().Type == "sermons" ? 0 : 1).ThenBy(g => g.Key);
+}
+<div class="form-group">
+    <label asp-for="AudioUrl">Audio</label>
+
+    <div class="ap-row">
+        <select id="apLibrary" class="form-control" aria-label="Choose from the Audio Library">
+            <option value="">Choose from the Audio Library…</option>
+            @foreach (var g in groups)
+            {
+                <optgroup label="@g.Key" data-type="@g.First().Type">
+                    @foreach (var f in g)
+                    {
+                        <option value="@f.Url" selected="@(Model.AudioUrl == f.Url)">@f.Name (@(f.Size >= 1024 * 1024 ? $"{f.Size / 1024d / 1024d:0.0} MB" : $"{Math.Max(1, f.Size / 1024)} KB"))</option>
+                    }
+                </optgroup>
+            }
+        </select>
+        <label class="btn btn-outline btn-sm ap-upload-btn">
+            <i class="fas fa-upload"></i> Upload
+            <input type="file" id="apFile" accept=".mp3,.m4a,.aac,.ogg,.wav" hidden />
+        </label>
+    </div>
+    <div class="ap-progress" id="apProgress" style="display:none"><div></div></div>
+    <small class="meta ap-status" id="apStatus" style="display:none"></small>
+
+    <input asp-for="AudioUrl" class="form-control" data-main placeholder="…or paste a link: https://…/sermon.mp3" style="margin-top:.5rem" />
+    <small class="meta">
+        An audio file or a live radio stream link. Manage uploads in
+        <a asp-action="AudioLibrary" target="_blank">Audio Library</a>.
+    </small>
+</div>
+
+<style>
+.ap-row { display:flex;gap:.5rem;align-items:center; }
+.ap-row select { flex:1;min-width:0; }
+.ap-upload-btn { flex-shrink:0;margin:0;cursor:pointer; }
+.ap-progress { height:6px;border-radius:3px;background:var(--border);margin-top:.5rem;overflow:hidden; }
+.ap-progress > div { height:100%;width:0;background:var(--purple);transition:width .2s; }
+.ap-status { display:block;margin:.35rem 0 0; }
+.ap-status.ap-error { color:#dc2626;font-weight:600; }
+</style>
+
+<script src="~/js/audio-upload.js" asp-append-version="true"></script>
+<script>
+(function () {
+    const library = document.getElementById('apLibrary');
+    const urlInput = document.getElementById('AudioUrl');
+    const fileInput = document.getElementById('apFile');
+    const progress = document.getElementById('apProgress');
+    const bar = progress.querySelector('div');
+    const status = document.getElementById('apStatus');
+
+    library.addEventListener('change', () => { if (library.value) urlInput.value = library.value; });
+    urlInput.addEventListener('input', () => {
+        library.value = [...library.options].some(o => o.value && o.value === urlInput.value) ? urlInput.value : '';
+    });
+
+    fileInput.addEventListener('change', async () => {
+        const file = fileInput.files[0];
+        fileInput.value = '';
+        if (!file) return;
+
+        status.className = 'meta ap-status';
+        status.style.display = 'block';
+        status.textContent = `Uploading ${file.name}…`;
+        progress.style.display = 'block';
+        bar.style.width = '0';
+
+        const result = await uploadAudioFile(file, 'sermons', p => {
+            bar.style.width = `${Math.round(p * 100)}%`;
+            status.textContent = p < 1 ? `Uploading ${file.name}… ${Math.round(p * 100)}%` : 'Saving…';
+        });
+        progress.style.display = 'none';
+
+        if (!result.success) {
+            status.classList.add('ap-error');
+            status.textContent = result.message;
+            return;
+        }
+        // Into the Sermons group, which comes first
+        let group = library.querySelector('optgroup[data-type="sermons"]');
+        if (!group) {
+            group = document.createElement('optgroup');
+            group.label = result.typeLabel;
+            group.dataset.type = 'sermons';
+            library.insertBefore(group, library.querySelector('optgroup'));   // before the other types (or at the end)
+        }
+        group.prepend(new Option(`${result.name} (${formatFileSize(result.size)})`, result.url));
+        library.value = result.url;
+        urlInput.value = result.url;
+        status.textContent = `Uploaded ${result.name}. Remember to save the sermon.`;
+    });
+})();
+</script>

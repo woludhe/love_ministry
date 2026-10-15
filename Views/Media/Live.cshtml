@@ -87,6 +87,15 @@
                                     </div>
                                 }
 
+                                @* Background music playing (from Live Settings), with a mute for this viewer *@
+                                <div class="music-chip" id="musicChip" style="display:none">
+                                    <i class="fas fa-music"></i>
+                                    <span id="musicChipTitle"></span>
+                                    <button type="button" id="musicChipMute" title="Mute music" aria-label="Mute music">
+                                        <i class="fas fa-volume-high"></i>
+                                    </button>
+                                </div>
+
                                 <div id="autoplayUnblock"
                                      style="display:none;position:absolute;inset:0;z-index:40;
                                         align-items:center;justify-content:center;
@@ -106,30 +115,7 @@
                         }
                         else
                         {
-                            @if (!string.IsNullOrEmpty(Model.LiveStreamUrl))
-                            {
-                                @if (Model.LiveStreamUrl.Contains("youtube"))
-                                {
-                                    var ytId = Model.LiveStreamUrl.Contains("v=")
-                                    ? Model.LiveStreamUrl.Split("v=")[1].Split("&")[0]
-                                    : Model.LiveStreamUrl.Split("/").Last();
-                                    <iframe src="https://www.youtube.com/embed/@ytId?autoplay=1&rel=0"
-                                            style="position:absolute;inset:0;width:100%;height:100%"
-                                            frameborder="0" allowfullscreen allow="autoplay"></iframe>
-                                }
-                                else
-                                {
-                                    <video src="@Model.LiveStreamUrl" controls autoplay playsinline
-                                           style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover"></video>
-                                }
-                            }
-                            else
-                            {
-                                <div class="live-placeholder">
-                                    <i class="fas fa-broadcast-tower fa-3x"></i>
-                                    <p>Stream starting soon...</p>
-                                </div>
-                            }
+                            <partial name="_LivePlayer" model="Model" />
                             <div class="live-verse-overlay" id="verseOverlay" style="display:none">
                                 <p class="live-verse-text" id="verseText"></p>
                                 <span class="live-verse-ref" id="verseRef"></span>
@@ -230,7 +216,7 @@
                                placeholder="Custom amount" min="1" step="1" />
                     </div>
 
-                    <a href="/Giving/Give" id="givingBtn" class="btn btn-primary btn-full"
+                    <a href="/Giving/Give" id="givingBtn" class="btn btn-primary btn-full" target="_blank" rel="noopener"
                        style="display:none">
                         <i class="fas fa-heart"></i> Give Now
                     </a>
@@ -634,6 +620,14 @@
     {
         <script src="~/js/wake-lock.js" asp-append-version="true"></script>
     }
+    @if (Model != null && !isOnline)
+    {
+        <script src="~/js/live-player.js" asp-append-version="true"></script>
+    }
+    @if (Model != null && isOnline)
+    {
+        <script src="~/js/live-music.js" asp-append-version="true"></script>
+    }
     <script src="https://cdnjs.cloudflare.com/ajax/libs/microsoft-signalr/8.0.0/signalr.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/livekit-client@2.22.3/dist/livekit-client.umd.js"
             integrity="sha384-G/xxtkVytOx/ia9Q8MXxM+V0ohsaY1fZAgVP3iSGTPz4wJ0s3+ulJNKXh/gnzEDZ" crossorigin="anonymous"></script>
@@ -799,6 +793,10 @@
                 .on(LK.RoomEvent.TrackMuted, (pub, p) => showRemoteVideo(p.identity))
                 .on(LK.RoomEvent.TrackUnmuted, (pub, p) => showRemoteVideo(p.identity))
                 .on(LK.RoomEvent.AudioPlaybackStatusChanged, () => { if (!mediaRoom.canPlaybackAudio) showAutoplayUnblock(); })
+                // Someone in the meeting is talking: background music dips if Live Settings says so
+                .on(LK.RoomEvent.ActiveSpeakersChanged, speakers => {
+                    if (typeof LiveMusicPlayer !== 'undefined' && LiveMusicPlayer) LiveMusicPlayer.setSpeaking(speakers.length > 0);
+                })
                 // The media room was closed (the hub's MeetingEnded normally arrives first)
                 .on(LK.RoomEvent.Disconnected, reason => {
                     if (reason === LK.DisconnectReason.ROOM_DELETED) showMeetingEnded();
@@ -892,6 +890,7 @@
             document.getElementById('guestVideoGrid')?.querySelectorAll('video')
                 .forEach(v => { if (v.paused) v.play().catch(() => { }); });
             mediaRoom?.startAudio().catch(() => { });
+            if (typeof LiveMusicPlayer !== 'undefined' && LiveMusicPlayer) LiveMusicPlayer.unblock();
         }
         function showAutoplayUnblock() {
             const o = document.getElementById('autoplayUnblock');
@@ -1157,6 +1156,9 @@
                     toggleEl('givingSidebar', s.showGivingPanel);
                     if (s.showPrayerButton) document.getElementById('prayerFab').style.display = 'flex';
                     if (s.marqueeSpeed) setMarqueeSpeed(s.marqueeSpeed);
+                    // Background music (meeting services): follows Live Settings from here on
+                    if (IS_ONLINE && typeof LiveMusicPlayer !== 'undefined' && LiveMusicPlayer)
+                        LiveMusicPlayer.start(liveConn, s.music, { onBlocked: showAutoplayUnblock });
                 } catch { }
             }
 

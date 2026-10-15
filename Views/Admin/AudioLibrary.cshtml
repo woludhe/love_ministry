@@ -1,0 +1,217 @@
+@using ChurchMinistry.Controllers
+@using ChurchMinistry.Services
+@{
+    ViewData["Title"] = "Audio Library"; Layout = "~/Views/Shared/_AdminDashboard_Layout.cshtml";
+    var allFiles = ViewBag.AudioFiles as List<AdminController.AudioFileInfo> ?? new();
+    var types = ViewBag.AudioTypes as List<AudioTypeInfo> ?? new();
+    var selected = ViewBag.SelectedType as string;
+    var maxMb = (long)(ViewBag.MaxAudioMb ?? 200L);
+    var extensions = ViewBag.AudioExtensions as string[] ?? Array.Empty<string>();
+
+    // Tabs: every type, plus "Other" if files sit outside a type folder
+    var tabs = types.Select(t => (t.Slug, t.Label)).ToList();
+    if (allFiles.Any(f => f.Type == "")) tabs.Add(("", "Other"));
+    var files = selected == null ? allFiles : allFiles.Where(f => f.Type == selected).ToList();
+    var uploadType = selected is { Length: > 0 } && types.Any(t => t.Slug == selected) ? selected : "sermons";
+    string Size(long b) => b >= 1024 * 1024 ? $"{b / 1024d / 1024d:0.0} MB" : $"{Math.Max(1, b / 1024)} KB";
+}
+
+<div class="admin-main">
+    <div class="admin-topbar">
+        <h1>Audio Library (@allFiles.Count)</h1>
+    </div>
+
+    @Html.AntiForgeryToken()
+
+    <div class="al-upload">
+        <div class="al-type-row">
+            <label for="alType">Type</label>
+            <select id="alType" class="form-control">
+                @foreach (var t in types)
+                {
+                    <option value="@t.Slug" selected="@(t.Slug == uploadType)">@t.Label</option>
+                }
+                <option value="__new">+ New type…</option>
+            </select>
+            <input type="text" id="alNewType" class="form-control" placeholder="Name of the new type, e.g. Worship Songs"
+                   maxlength="40" style="display:none" />
+        </div>
+        <label class="al-drop" id="alDrop">
+            <input type="file" id="alInput" accept="@string.Join(",", extensions)" multiple hidden />
+            <i class="fas fa-cloud-arrow-up"></i>
+            <strong>Upload audio</strong>
+            <span>Click to choose files, or drop them here. @string.Join(", ", extensions.Select(e => e.TrimStart('.').ToUpperInvariant())) up to @maxMb MB each.</span>
+        </label>
+    </div>
+    <div id="alQueue" class="al-queue"></div>
+
+    <nav class="al-tabs" aria-label="Audio types">
+        <a asp-action="AudioLibrary" class="@(selected == null ? "active" : "")">All <span>@allFiles.Count</span></a>
+        @foreach (var (slug, label) in tabs)
+        {
+            <a asp-action="AudioLibrary" asp-route-type="@slug" class="@(selected == slug ? "active" : "")">
+                @label <span>@allFiles.Count(f => f.Type == slug)</span>
+            </a>
+        }
+    </nav>
+
+    @if (!files.Any())
+    {
+        <div class="al-empty">
+            <i class="fas fa-music"></i>
+            <p>@(selected == null ? "No audio uploaded yet." : "Nothing of this type yet.") Sermon audio can be picked in a sermon's Audio option, and music in a meeting service's Live Settings.</p>
+        </div>
+    }
+    else
+    {
+        <table class="data-table">
+            <thead><tr><th>File</th><th>Type</th><th>Size</th><th>Uploaded</th><th>Used by</th><th></th></tr></thead>
+            <tbody>
+                @foreach (var f in files)
+                {
+                    <tr>
+                        <td>
+                            <div class="al-name">@f.Name</div>
+                            <audio controls preload="none" src="@f.Url" class="al-player"></audio>
+                        </td>
+                        <td><span class="tag">@f.TypeLabel</span></td>
+                        <td style="white-space:nowrap">@Size(f.Size)</td>
+                        <td style="white-space:nowrap">@f.Modified.ToString("dd MMM yyyy")</td>
+                        <td>
+                            @if (f.UsedBy.Any())
+                            {
+                                @string.Join(", ", f.UsedBy)
+                            }
+                            else
+                            {
+                                <span style="color:var(--text-s)">—</span>
+                            }
+                        </td>
+                        <td style="white-space:nowrap">
+                            <button type="button" class="btn btn-outline btn-xs" onclick="copyAudioLink(this, '@f.Url')">
+                                <i class="fas fa-link"></i> Copy link
+                            </button>
+                            <form asp-action="DeleteAudio" method="post" style="display:inline">
+                                <input type="hidden" name="type" value="@f.Type" />
+                                <input type="hidden" name="name" value="@f.Name" />
+                                <input type="hidden" name="returnType" value="@selected" />
+                                <button type="submit" class="btn btn-outline btn-xs al-delete"
+                                        disabled="@f.UsedBy.Any()"
+                                        title="@(f.UsedBy.Any() ? "In use" : "Delete")"
+                                        data-confirm="Delete @f.Name? This can't be undone.">
+                                    <i class="fas fa-trash"></i>
+                                </button>
+                            </form>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
+</div>
+
+<style>
+.al-upload  { background:var(--white);border:1px solid var(--border);border-radius:12px;padding:1rem;margin-bottom:1rem; }
+.al-type-row { display:flex;align-items:center;gap:.6rem;flex-wrap:wrap;margin-bottom:.75rem; }
+.al-type-row label { font-weight:600;font-size:.88rem; }
+.al-type-row select { width:auto;min-width:160px; }
+.al-type-row input { flex:1;min-width:200px; }
+.al-drop    { display:flex;flex-direction:column;align-items:center;gap:.35rem;padding:1.5rem 1rem;
+              border:2px dashed var(--border);border-radius:12px;text-align:center;cursor:pointer;transition:all .15s; }
+.al-drop i  { font-size:1.8rem;color:var(--purple); }
+.al-drop span { font-size:.82rem;color:var(--text-s); }
+.al-drop:hover, .al-drop.al-over { border-color:var(--purple);background:var(--purple-l); }
+.al-queue   { display:flex;flex-direction:column;gap:.5rem;margin-bottom:1.25rem; }
+.al-item    { background:var(--white);border:1px solid var(--border);border-radius:10px;padding:.6rem .85rem;font-size:.85rem; }
+.al-item-top { display:flex;justify-content:space-between;gap:.75rem; }
+.al-item-name { font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0; }
+.al-bar     { height:6px;border-radius:3px;background:var(--border);margin-top:.45rem;overflow:hidden; }
+.al-bar > div { height:100%;width:0;background:var(--purple);transition:width .2s; }
+.al-item.al-done .al-bar > div { background:#10b981; }
+.al-item.al-failed { border-color:#fca5a5; }
+.al-item.al-failed .al-item-status { color:#dc2626; }
+.al-tabs    { display:flex;gap:.35rem;flex-wrap:wrap;margin-bottom:1rem;border-bottom:1px solid var(--border); }
+.al-tabs a  { padding:.5rem .85rem;font-size:.88rem;font-weight:600;color:var(--text-s);text-decoration:none;
+              border-bottom:2px solid transparent;margin-bottom:-1px; }
+.al-tabs a span { font-size:.72rem;background:var(--purple-l);color:var(--purple);border-radius:100px;padding:.05rem .45rem;margin-left:.2rem; }
+.al-tabs a:hover { color:var(--text); }
+.al-tabs a.active { color:var(--purple);border-bottom-color:var(--purple); }
+.al-name    { font-weight:600;margin-bottom:.35rem;overflow-wrap:anywhere; }
+.al-player  { width:100%;max-width:340px;height:34px; }
+.al-delete:disabled { opacity:.4;cursor:not-allowed; }
+.al-empty   { border:1.5px dashed var(--border);border-radius:10px;padding:2rem;text-align:center;color:var(--text-s); }
+.al-empty i { font-size:1.8rem;color:var(--purple);margin-bottom:.5rem; }
+</style>
+
+@section Scripts {
+<script src="~/js/audio-upload.js" asp-append-version="true"></script>
+<script>
+const MAX_BYTES = @(maxMb) * 1024 * 1024;
+const drop = document.getElementById('alDrop');
+const input = document.getElementById('alInput');
+const queue = document.getElementById('alQueue');
+const typeSelect = document.getElementById('alType');
+const newType = document.getElementById('alNewType');
+
+typeSelect.addEventListener('change', () => {
+    const isNew = typeSelect.value === '__new';
+    newType.style.display = isNew ? '' : 'none';
+    if (isNew) newType.focus();
+});
+
+// The type picked, or the new type's name (its folder is created on upload)
+function chosenType() {
+    if (typeSelect.value !== '__new') return typeSelect.value;
+    const name = newType.value.trim();
+    if (!name) { newType.focus(); return null; }
+    return name;
+}
+
+drop.addEventListener('click', e => { if (chosenType() === null) e.preventDefault(); });
+input.addEventListener('change', () => { uploadAll([...input.files]); input.value = ''; });
+['dragenter', 'dragover'].forEach(t => drop.addEventListener(t, e => { e.preventDefault(); drop.classList.add('al-over'); }));
+['dragleave', 'drop'].forEach(t => drop.addEventListener(t, e => { e.preventDefault(); drop.classList.remove('al-over'); }));
+drop.addEventListener('drop', e => uploadAll([...e.dataTransfer.files]));
+
+// One at a time so each file gets the full size limit
+async function uploadAll(files) {
+    const type = chosenType();
+    if (!files.length || type === null) return;
+    let lastType = null;
+    for (const file of files) {
+        const item = document.createElement('div');
+        item.className = 'al-item';
+        item.innerHTML = `<div class="al-item-top"><span class="al-item-name"></span><span class="al-item-status">Waiting…</span></div>
+                          <div class="al-bar"><div></div></div>`;
+        item.querySelector('.al-item-name').textContent = `${file.name} (${formatFileSize(file.size)})`;
+        queue.appendChild(item);
+        const status = item.querySelector('.al-item-status');
+        const bar = item.querySelector('.al-bar > div');
+
+        if (file.size > MAX_BYTES) {
+            item.classList.add('al-failed'); status.textContent = `Larger than @(maxMb) MB`; continue;
+        }
+        const result = await uploadAudioFile(file, type, p => {
+            bar.style.width = `${Math.round(p * 100)}%`;
+            status.textContent = p < 1 ? `${Math.round(p * 100)}%` : 'Saving…';
+        });
+        if (result.success) {
+            lastType = result.type;
+            item.classList.add('al-done'); bar.style.width = '100%';
+            status.textContent = `Uploaded to ${result.typeLabel}`;
+        } else {
+            item.classList.add('al-failed'); status.textContent = result.message;
+        }
+    }
+    // Show the type the files went into
+    if (lastType) setTimeout(() => { location.href = `/Admin/AudioLibrary?type=${encodeURIComponent(lastType)}`; }, 1200);
+}
+
+function copyAudioLink(btn, url) {
+    navigator.clipboard.writeText(location.origin + url);
+    const orig = btn.innerHTML;
+    btn.innerHTML = '<i class="fas fa-check"></i> Copied';
+    setTimeout(() => { btn.innerHTML = orig; }, 1800);
+}
+</script>
+}

@@ -569,6 +569,29 @@ namespace ChurchMinistry.Migrations
                         .IsRequired()
                         .HasColumnType("longtext");
 
+                    b.Property<DateTime?>("MusicAnchorAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<bool>("MusicDuckOnSpeech")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<double>("MusicPausedAt")
+                        .HasColumnType("double");
+
+                    b.Property<string>("MusicPlaylistJson")
+                        .HasColumnType("longtext");
+
+                    b.Property<bool>("MusicShuffle")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<string>("MusicState")
+                        .IsRequired()
+                        .HasMaxLength(10)
+                        .HasColumnType("varchar(10)");
+
+                    b.Property<int>("MusicVolume")
+                        .HasColumnType("int");
+
                     b.Property<int>("SermonId")
                         .HasColumnType("int");
 
@@ -1271,6 +1294,9 @@ namespace ChurchMinistry.Migrations
 
                     b.Property<bool>("IsPublished")
                         .HasColumnType("tinyint(1)");
+
+                    b.Property<DateTime?>("LiveStartedAt")
+                        .HasColumnType("datetime(6)");
 
                     b.Property<string>("LiveStreamUrl")
                         .HasColumnType("longtext");

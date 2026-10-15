@@ -112,6 +112,14 @@
                       padding:.25rem .8rem; border-radius:100px;
                       font-size:.75rem; font-weight:700; pointer-events:none; }
 
+    /* ── Background music name (top right; the spotlight label is top left) ── */
+    #musicChip { position:absolute; top:.75rem; right:.75rem; z-index:10; max-width:min(60%, 300px);
+                 align-items:center; gap:.4rem; padding:.25rem .8rem; border-radius:100px;
+                 background:rgba(0,0,0,.6); backdrop-filter:blur(6px); color:#fff;
+                 font-size:.75rem; font-weight:600; pointer-events:none; }
+    #musicChip i { color:#a5b4fc; flex-shrink:0; }
+    #musicChipTitle { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+
     /* ── Verse overlay ── */
     .meet-main { position: relative; }
     #verseOverlay { animation: verseIn .5s ease; }
@@ -345,6 +353,11 @@
       <i class="fas fa-star"></i> <span id="spotlightName"></span>
     </div>
 
+    <!-- Background music: shows the song only; it isn't played in the room -->
+    <div id="musicChip" style="display:none" title="Background music for Live page viewers (not played in the meeting)">
+      <i class="fas fa-music"></i> <span id="musicChipTitle"></span>
+    </div>
+
     <!-- Verse overlay — projected from LiveSettings -->
     <div id="verseOverlay" style="display:none;position:absolute;bottom:var(--controls-h, 80px);left:0;right:0;
          background:linear-gradient(transparent,rgba(0,0,0,.88));
@@ -425,6 +438,7 @@
      style="display:none"></div>
 
 <script src="~/js/wake-lock.js" asp-append-version="true"></script>
+<script src="~/js/live-music.js" asp-append-version="true"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/microsoft-signalr/8.0.0/signalr.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/livekit-client@2.22.3/dist/livekit-client.umd.js"
         integrity="sha384-G/xxtkVytOx/ia9Q8MXxM+V0ohsaY1fZAgVP3iSGTPz4wJ0s3+ulJNKXh/gnzEDZ" crossorigin="anonymous"></script>
@@ -1027,6 +1041,26 @@ if (liveConn) {
         if (!s.showVerseOverlay || !s.activeVerse)
             document.getElementById('verseOverlay').style.display = 'none';
     });
+    liveConn.on('MusicChanged', showMusic);
+    setInterval(renderMusicChip, 2000);   // the song changes on its own as the playlist runs
+}
+
+// Background music from Live Settings: named here, but only Live page viewers hear it
+// (playing it in the room would go back into the call through people's microphones)
+let musicState = null, musicSkew = 0;
+function showMusic(s) {
+    if (!s) return;
+    musicState = s;
+    musicSkew = (s.serverNow || Date.now()) - Date.now();
+    renderMusicChip();
+}
+function renderMusicChip() {
+    const chip = document.getElementById('musicChip');
+    if (!musicState || musicState.state === 'stopped' || !musicState.playlist?.length) { chip.style.display = 'none'; return; }
+    const pos = LiveMusicMath.positionNow(musicState, Date.now(), musicSkew);
+    const track = musicState.playlist[LiveMusicMath.locate(musicState.playlist, pos).index];
+    document.getElementById('musicChipTitle').textContent = (musicState.state === 'paused' ? 'Paused: ' : '') + track.title;
+    chip.style.display = 'flex';
 }
 
 // Joins (or re-joins) the room, then re-sends our media state, since the
@@ -1067,11 +1101,11 @@ window.__meet = { room, peerInfo, get spotlightId(){return spotlightId;}, get my
     // Connect to LiveSession hub to receive verse projections
     if (liveConn) {
         await liveConn.start();
-        await liveConn.invoke('JoinLiveRoom', SERMON_ID);
+        await liveConn.invoke('JoinLiveRoomFromMeeting', SERMON_ID);
         reportAttendanceLocation();
         // A reconnect gets a new connection id — join again so overlays and attendance continue
         liveConn.onreconnected(async () => {
-            await liveConn.invoke('JoinLiveRoom', SERMON_ID);
+            await liveConn.invoke('JoinLiveRoomFromMeeting', SERMON_ID);
             reportAttendanceLocation();
         });
         // Load current verse if one is already active
@@ -1084,6 +1118,7 @@ window.__meet = { room, peerInfo, get spotlightId(){return spotlightId;}, get my
                     `${s.activeVerse.reference} (${s.activeVerse.translation})`;
                 document.getElementById('verseOverlay').style.display = 'block';
             }
+            showMusic(s.music);
         } catch {}
     }
 })();

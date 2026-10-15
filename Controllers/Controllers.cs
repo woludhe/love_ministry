@@ -1090,6 +1090,11 @@ namespace ChurchMinistry.Controllers
                 MembersByGroup = await _db.MinistryGroups.Where(x => x.IsActive).Include(g => g.Members)
                     .ToDictionaryAsync(g => g.Name, g => g.Members.Count)
             };
+
+            // The service that's live right now, with how many are watching
+            var liveSermon = await _db.Sermons.FirstOrDefaultAsync(s => s.IsLive);
+            ViewBag.LiveSermon = liveSermon;
+            if (liveSermon != null) ViewBag.LiveAudience = ChurchMinistry.Hubs.LiveAudience.Count(liveSermon.Id);
             return View(vm);
         }
 
@@ -1693,9 +1698,10 @@ namespace ChurchMinistry.Controllers
 
         // ── Add Sermon GET ──────────────────────────────────────────
         [HttpGet]
-        public async Task<IActionResult> AddSermon()
+        public async Task<IActionResult> AddSermon([FromServices] IWebHostEnvironment env)
         {
             await PopulateMeetingRoomsAsync();
+            ViewBag.AudioFiles = await ListAudioFilesAsync(env);
             return View(new Sermon());
         }
 
@@ -1727,11 +1733,12 @@ namespace ChurchMinistry.Controllers
 
         // ── Edit Sermon GET ─────────────────────────────────────────
         [HttpGet]
-        public async Task<IActionResult> EditSermon(int id)
+        public async Task<IActionResult> EditSermon(int id, [FromServices] IWebHostEnvironment env)
         {
             var sermon = await _db.Sermons.FindAsync(id);
             if (sermon == null) return NotFound();
             await PopulateMeetingRoomsAsync();
+            ViewBag.AudioFiles = await ListAudioFilesAsync(env);
             return View(sermon);
         }
 
@@ -1789,6 +1796,125 @@ namespace ChurchMinistry.Controllers
             s.IsOnlineMeeting = mode == "meeting";
         }
 
+        // ── Audio library (files and type folders: Services/AudioStore) ──
+        public async Task<IActionResult> AudioLibrary(string? type, [FromServices] IWebHostEnvironment env)
+        {
+            ViewBag.AudioFiles = await ListAudioFilesAsync(env);
+            ViewBag.AudioTypes = AudioStore.ListTypes(env);
+            ViewBag.SelectedType = type;
+            ViewBag.MaxAudioMb = AudioStore.MaxBytes / 1024 / 1024;
+            ViewBag.AudioExtensions = AudioStore.Extensions;
+            return View();
+        }
+
+        // One file per request so each can be up to 200 MB; the page uploads them in turn with progress.
+        // A new type gets its folder here.
+        [HttpPost, ValidateAntiForgeryToken]
+        [RequestSizeLimit(AudioStore.MaxBytes + 10 * 1024 * 1024)]
+        [RequestFormLimits(MultipartBodyLengthLimit = AudioStore.MaxBytes + 10 * 1024 * 1024)]
+        public async Task<IActionResult> UploadAudio(IFormFile? file, string? type, [FromServices] IWebHostEnvironment env)
+        {
+            if (file == null || file.Length == 0)
+                return Json(new { success = false, message = "Choose an audio file to upload." });
+
+            var ext = Path.GetExtension(file.FileName).ToLowerInvariant();
+            if (!AudioStore.Extensions.Contains(ext))
+                return Json(new { success = false, message = $"{file.FileName}: only {string.Join(", ", AudioStore.Extensions)} files can be uploaded." });
+            if (file.Length > AudioStore.MaxBytes)
+                return Json(new { success = false, message = $"{file.FileName} is larger than {AudioStore.MaxBytes / 1024 / 1024} MB." });
+
+            var typeSlug = AudioStore.Slug(type, 40);
+            if (typeSlug.Length == 0)
+                return Json(new { success = false, message = "Choose what type of audio this is." });
+            var folder = Path.Combine(AudioStore.Folder(env), typeSlug);
+            Directory.CreateDirectory(folder);
+
+            // Keep a readable name ("sunday-service-12-oct.mp3"), adding -2, -3… if it's taken
+            var stem = AudioStore.Slug(Path.GetFileNameWithoutExtension(file.FileName), 80);
+            if (stem.Length == 0) stem = "audio";
+            var name = stem + ext;
+            for (var n = 2; System.IO.File.Exists(Path.Combine(folder, name)); n++) name = $"{stem}-{n}{ext}";
+
+            await using (var stream = new FileStream(Path.Combine(folder, name), FileMode.CreateNew))
+                await file.CopyToAsync(stream);
+
+            return Json(new
+            {
+                success = true, name, type = typeSlug, typeLabel = AudioStore.TypeLabel(typeSlug),
+                url = AudioStore.Url(typeSlug, name), size = file.Length
+            });
+        }
+
+        [HttpPost, ValidateAntiForgeryToken]
+        public async Task<IActionResult> DeleteAudio(string? type, string name, string? returnType, [FromServices] IWebHostEnvironment env)
+        {
+            var path = AudioStore.FilePath(env, type, name);
+            if (path == null || !System.IO.File.Exists(path))
+            {
+                TempData["Error"] = "That file no longer exists.";
+                return RedirectToAction("AudioLibrary", new { type = returnType });
+            }
+
+            var usedBy = (await AudioUsageAsync()).GetValueOrDefault(AudioStore.Url(type ?? "", name)) ?? new List<string>();
+            if (usedBy.Count > 0)
+            {
+                TempData["Error"] = $"{name} is used by: {string.Join(", ", usedBy)}. Change those first.";
+                return RedirectToAction("AudioLibrary", new { type = returnType });
+            }
+
+            System.IO.File.Delete(path);
+
+            // A custom type disappears with its last file (Sermons and Music always stay)
+            var folder = Path.GetDirectoryName(path)!;
+            var typeGone = !string.IsNullOrEmpty(type) && !AudioStore.BuiltInTypes.Contains(type)
+                           && !Directory.EnumerateFileSystemEntries(folder).Any();
+            if (typeGone) Directory.Delete(folder);
+
+            TempData["Success"] = $"{name} deleted.";
+            return RedirectToAction("AudioLibrary", new { type = typeGone && returnType == type ? null : returnType });
+        }
+
+        public record AudioFileInfo(string Type, string TypeLabel, string Name, string Url, long Size, DateTime Modified, List<string> UsedBy);
+
+        private async Task<List<AudioFileInfo>> ListAudioFilesAsync(IWebHostEnvironment env)
+        {
+            var usage = await AudioUsageAsync();
+            return AudioStore.ListFiles(env)
+                .Select(f => new AudioFileInfo(f.Type, f.TypeLabel, f.Name, f.Url, f.Size, f.Modified,
+                    usage.GetValueOrDefault(f.Url) ?? new List<string>()))
+                .ToList();
+        }
+
+        // url → what uses it: sermons' audio and live services' background music playlists
+        private async Task<Dictionary<string, List<string>>> AudioUsageAsync()
+        {
+            var usage = new Dictionary<string, List<string>>();
+            void Add(string url, string what)
+            {
+                if (!usage.TryGetValue(url, out var list)) usage[url] = list = new List<string>();
+                if (!list.Contains(what)) list.Add(what);
+            }
+
+            foreach (var s in await _db.Sermons.Where(s => s.AudioUrl != null && s.AudioUrl.StartsWith("/uploads/audio/"))
+                         .Select(s => new { s.AudioUrl, s.Title }).ToListAsync())
+                Add(s.AudioUrl!, s.Title);
+
+            foreach (var ls in await _db.LiveSessions.Where(l => l.MusicPlaylistJson != null)
+                         .Select(l => new { l.MusicPlaylistJson, l.Sermon.Title }).ToListAsync())
+                foreach (var track in LiveSession.ReadPlaylist(ls.MusicPlaylistJson))
+                    Add(track.Url, $"background music for {ls.Title}");
+
+            return usage;
+        }
+
+        private static string? MissingLiveContent(Sermon s) => s.DeliveryMode switch
+        {
+            "meeting" => string.IsNullOrEmpty(s.MeetingRoomCode) ? "Choose a meeting room for this sermon before going live." : null,
+            "live" => null,   // DeliveryMode is only "live" when LiveStreamUrl is set
+            "audio" => null,  // likewise for AudioUrl
+            _ => string.IsNullOrEmpty(s.VideoUrl) ? "Add a video, audio or live stream link to this sermon before going live." : null
+        };
+
         private async Task PopulateMeetingRoomsAsync()
         {
             ViewBag.MeetingRooms = await _db.MeetingRooms
@@ -1807,13 +1933,20 @@ namespace ChurchMinistry.Controllers
 
             bool isCurrentlyLive = sermon.IsLive;
 
+            // Nothing to show viewers → don't go live
+            if (!isCurrentlyLive && MissingLiveContent(sermon) is { } missing)
+                return Json(new { isLive = false, error = missing });
+
             // Always clear any live sermon first (only one can be live at a time)
             var stopped = await _db.Sermons.Where(s => s.IsLive).ToListAsync();
-            foreach (var s in stopped) s.IsLive = false;
+            foreach (var s in stopped) { s.IsLive = false; s.LiveStartedAt = null; }
 
             // If it was NOT live before → go live. If it WAS live → leave it off (stop).
             if (!isCurrentlyLive)
+            {
                 sermon.IsLive = true;
+                sermon.LiveStartedAt = DateTime.UtcNow;   // premieres start playing from here
+            }
 
             await _db.SaveChangesAsync();
 

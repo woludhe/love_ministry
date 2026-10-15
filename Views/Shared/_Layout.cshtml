@@ -1,4 +1,11 @@
 @inject Microsoft.Extensions.Configuration.IConfiguration Config
+@{
+    // On the Live page, Give opens in a new tab so viewers stay in the service
+    var onLivePage = ViewContext.RouteData.Values["controller"]?.ToString() == "Media"
+                     && ViewContext.RouteData.Values["action"]?.ToString() == "Live";
+    var giveTarget = onLivePage ? "_blank" : null;
+    var giveRel = onLivePage ? "noopener" : null;
+}
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -170,7 +177,7 @@
                 @if (User.Identity?.IsAuthenticated == true)
                 {
                     <li><a asp-controller="Community" asp-action="Index">Community</a></li>
-                    <li><a asp-controller="Giving" asp-action="Give" class="btn-give">Give</a></li>
+                    <li><a asp-controller="Giving" asp-action="Give" class="btn-give" target="@giveTarget" rel="@giveRel">Give</a></li>
 
                     <li class="nav-user">
                         <a asp-controller="Members" asp-action="Dashboard">
@@ -219,7 +226,7 @@
                 }
                 else
                 {
-                    <li><a asp-controller="Giving" asp-action="Give" class="btn-give">Give Online</a></li>
+                    <li><a asp-controller="Giving" asp-action="Give" class="btn-give" target="@giveTarget" rel="@giveRel">Give Online</a></li>
                     <li><a asp-controller="Account" asp-action="Login">Login</a></li>
                     <li><a asp-controller="Account" asp-action="Register" class="btn-join">Join Us</a></li>
                 }
@@ -262,7 +269,7 @@
                     <li><a asp-controller="Media" asp-action="Index">Sermons</a></li>
                     <li><a asp-controller="Events" asp-action="Index">Events</a></li>
                     <li><a asp-controller="Prayer" asp-action="Submit">Prayer Request</a></li>
-                    <li><a asp-controller="Giving" asp-action="Give">Give Online</a></li>
+                    <li><a asp-controller="Giving" asp-action="Give" target="@giveTarget" rel="@giveRel">Give Online</a></li>
                     <li><a asp-controller="Newsletter" asp-action="Index">Newsletter</a></li>
                 </ul>
             </div>
