@@ -72,6 +72,7 @@ namespace ChurchMinistry.ViewModels
         public string? EmergencyPhone { get; set; }
         public IFormFile? ProfilePhotoFile { get; set; }
         public string? ExistingPhoto { get; set; }
+        public List<MinistryGroup> Groups { get; set; } = new();   // shown only; managed under Admin > Groups
     }
 
     public class MemberDashboardViewModel

@@ -106,7 +106,15 @@
                 <div class="member-avatar">
                     <img src="@(me.ProfilePhoto ?? "/images/avatar-default.png")" alt="Profile" />
                     <h3>@me.FullName</h3>
-                    <span class="badge-member">@me.MembershipType</span>
+                    @if (me.Groups.Any())
+                    {
+                        <div class="member-avatar-groups">
+                            @foreach (var g in me.Groups)
+                            {
+                                <span class="group-icon" title="@g.Name" role="img" aria-label="@g.Name"><i class="bi @ChurchMinistry.ViewModels.MinistryGroupIcons.For(g)"></i></span>
+                            }
+                        </div>
+                    }
                 </div>
                 <nav class="sidebar-nav">
                     <a asp-controller="Members" asp-action="Dashboard" class="active"><i class="fas fa-home"></i> Dashboard</a>

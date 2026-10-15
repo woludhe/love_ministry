@@ -1398,6 +1398,14 @@ input:checked ~ .toggle-track {
         margin-top: .5rem;
     }
 
+.member-avatar-groups {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: .3rem;
+    margin-top: .4rem;
+}
+
 .badge-member {
     background: var(--purple-l);
     color: var(--purple);
@@ -2076,6 +2084,27 @@ input:checked ~ .toggle-track {
     justify-content: center;
     gap: .25rem;
     margin: .35rem 0 .4rem;
+}
+
+.profile-groups {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
+    gap: .3rem;
+    margin: -1rem 0 1.5rem;
+}
+
+.vp-identity .profile-groups {
+    justify-content: flex-start;
+    margin: .4rem 0;
+}
+
+.profile-groups-label {
+    font-size: .78rem;
+    font-weight: 600;
+    color: var(--text-s);
+    margin-right: .2rem;
 }
 
 /* Ministry group icon badge (name shown on hover) */

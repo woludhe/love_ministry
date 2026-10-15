@@ -23,10 +23,7 @@
             {
                 <p class="meta" style="margin-top:.4rem"><i class="fas fa-briefcase"></i> @Model.Occupation</p>
             }
-            @if (Model.MinistryGroups.Count > 0)
-            {
-                <p class="meta"><i class="fas fa-users"></i> @string.Join(", ", Model.MinistryGroups.OrderBy(g => g.Name).Select(g => g.Name))</p>
-            }
+            <partial name="_GroupIcons" model="Model.MinistryGroups" />
             <p class="meta"><i class="fas fa-calendar"></i> Member since @Model.JoinDate.ToString("MMMM yyyy")</p>
         </div>
         @if (User.IsInRole("Admin") || User.IsInRole("Pastor"))

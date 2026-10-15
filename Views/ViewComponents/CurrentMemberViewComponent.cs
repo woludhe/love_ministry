@@ -55,6 +55,7 @@ namespace ChurchMinistry.ViewComponents
                 MemberStatus = member?.Status ?? MemberStatus.Active,
                 MinistryGroup = member == null || member.MinistryGroups.Count == 0 ? null
                     : string.Join(", ", member.MinistryGroups.OrderBy(g => g.Name).Select(g => g.Name)),
+                Groups = member?.MinistryGroups.OrderBy(g => g.Name).ToList() ?? new(),
                 MemberId = member?.Id,
                 Email = user.Email ?? "",
                 IsAdmin = claimsPrincipal.IsInRole("Admin"),
@@ -71,6 +72,7 @@ namespace ChurchMinistry.ViewComponents
         public MembershipType MembershipType { get; set; } = MembershipType.Regular;
         public MemberStatus MemberStatus { get; set; } = MemberStatus.Active;
         public string? MinistryGroup { get; set; }
+        public List<MinistryGroup> Groups { get; set; } = new();
         public int? MemberId { get; set; }
         public string Email { get; set; } = "";
         public bool IsAdmin { get; set; }

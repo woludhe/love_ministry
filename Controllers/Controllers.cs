@@ -381,9 +381,13 @@ namespace ChurchMinistry.Controllers
                 Country = member.Country,
                 Occupation = member.Occupation,
                 EmergencyContact = member.EmergencyContact,
-                ExistingPhoto = member.ProfilePhoto
+                ExistingPhoto = member.ProfilePhoto,
+                Groups = await GroupsOfAsync(member.Id)
             });
         }
+
+        private Task<List<MinistryGroup>> GroupsOfAsync(int memberId) =>
+            _db.MinistryGroups.Where(g => g.Members.Any(m => m.Id == memberId)).ToListAsync();
 
         //View any member's profile by ID (read-only for others, editable for self/admin)
         [HttpGet("profile/{id}")]
@@ -418,14 +422,20 @@ namespace ChurchMinistry.Controllers
                 // No id supplied → load own profile for editing
                 member = await GetCurrentMemberAsync();
                 if (member == null) return NotFound();
-                return View("EditProfile", MapToViewModel(member));
+                var vm = MapToViewModel(member);
+                vm.Groups = await GroupsOfAsync(member.Id);
+                return View("EditProfile", vm);
             }
         }
 
         [HttpPost("profile/{id}")]
         public async Task<IActionResult> Profile(int? id, MemberProfileViewModel vm)
         {
-            if (!ModelState.IsValid) return View("EditProfile", vm);
+            if (!ModelState.IsValid)
+            {
+                vm.Groups = await GroupsOfAsync(vm.Id);
+                return View("EditProfile", vm);
+            }
 
             // Admins can edit any member; regular members can only edit themselves
             Member? member;
@@ -582,7 +592,8 @@ namespace ChurchMinistry.Controllers
             Occupation = m.Occupation,
             EmergencyContact = m.EmergencyContact,
             EmergencyPhone = m.EmergencyPhone,
-            ExistingPhoto = m.ProfilePhoto
+            ExistingPhoto = m.ProfilePhoto,
+            Groups = m.MinistryGroups.ToList()   // filled when the member was loaded with its groups
         };
 
         public async Task<IActionResult> Directory(string? search, string? group)

@@ -1,0 +1,12 @@
+@model IEnumerable<ChurchMinistry.Models.MinistryGroup>
+@* A member's groups as icon badges, name on hover *@
+@if (Model.Any())
+{
+    <div class="profile-groups">
+        <span class="profile-groups-label">Groups</span>
+        @foreach (var g in Model.OrderBy(g => g.Name))
+        {
+            <span class="group-icon" title="@g.Name" role="img" aria-label="@g.Name"><i class="bi @ChurchMinistry.ViewModels.MinistryGroupIcons.For(g)"></i></span>
+        }
+    </div>
+}
