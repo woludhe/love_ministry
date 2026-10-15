@@ -19,8 +19,12 @@
       <div class="directory-card">
         <img src="@(m.ProfilePhoto ?? "/images/avatar-default.png")" class="directory-photo" />
         <h3>@m.FullName</h3>
-        @foreach (var g in m.MinistryGroups.OrderBy(g => g.Name)) {
-          <p class="tag">@g.Name</p>
+        @if (m.MinistryGroups.Any()) {
+          <div class="directory-groups">
+            @foreach (var g in m.MinistryGroups.OrderBy(g => g.Name)) {
+              <span class="group-icon" title="@g.Name" role="img" aria-label="@g.Name"><i class="bi @ChurchMinistry.ViewModels.MinistryGroupIcons.For(g)"></i></span>
+            }
+          </div>
         }
         <p class="meta">@m.City, @m.Country</p>
       </div>

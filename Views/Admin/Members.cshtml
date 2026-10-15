@@ -39,7 +39,7 @@
                     <td class="mem-groups">
                         @foreach (var g in m.MinistryGroups.OrderBy(g => g.Name))
                         {
-                            <a asp-action="GroupDetails" asp-route-id="@g.Id" class="mem-group-icon"
+                            <a asp-action="GroupDetails" asp-route-id="@g.Id" class="group-icon"
                                title="@g.Name" aria-label="@g.Name"><i class="bi @ChurchMinistry.ViewModels.MinistryGroupIcons.For(g)"></i></a>
                         }
                     </td>
@@ -56,8 +56,6 @@
 
 <style>
 .mem-groups     { white-space:nowrap; }
-.mem-group-icon { display:inline-flex;align-items:center;justify-content:center;width:1.9rem;height:1.9rem;
-                  border-radius:50%;background:var(--purple-l);color:var(--purple);font-size:.95rem;
-                  margin-right:.2rem;text-decoration:none;transition:all .15s; }
-.mem-group-icon:hover { background:var(--purple);color:white; }
+.mem-groups .group-icon { margin-right:.2rem; }
+.mem-groups .group-icon:hover { background:var(--purple);color:white; }
 </style>

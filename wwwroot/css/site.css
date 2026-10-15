@@ -2070,6 +2070,29 @@ input:checked ~ .toggle-track {
     margin-bottom: .25rem;
 }
 
+.directory-groups {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: .25rem;
+    margin: .35rem 0 .4rem;
+}
+
+/* Ministry group icon badge (name shown on hover) */
+.group-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.9rem;
+    height: 1.9rem;
+    border-radius: 50%;
+    background: var(--purple-l);
+    color: var(--purple);
+    font-size: .95rem;
+    text-decoration: none;
+    transition: all .15s;
+}
+
 /* --- Profile Photo --- */
 .profile-photo-section {
     text-align: center;
