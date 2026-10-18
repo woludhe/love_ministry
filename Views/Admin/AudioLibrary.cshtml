@@ -11,7 +11,7 @@
     // Tabs: every type, plus "Other" if files sit outside a type folder
     var tabs = types.Select(t => (t.Slug, t.Label)).ToList();
     if (allFiles.Any(f => f.Type == "")) tabs.Add(("", "Other"));
-    var files = selected == null ? allFiles : allFiles.Where(f => f.Type == selected).ToList();
+    var files = ViewBag.PageFiles as List<AdminController.AudioFileInfo> ?? new();
     var uploadType = selected is { Length: > 0 } && types.Any(t => t.Slug == selected) ? selected : "sermons";
     string Size(long b) => b >= 1024 * 1024 ? $"{b / 1024d / 1024d:0.0} MB" : $"{Math.Max(1, b / 1024)} KB";
 }
@@ -107,6 +107,7 @@
                 }
             </tbody>
         </table>
+        <partial name="_Pager" model="(PagerModel)ViewBag.Pager" />
     }
 </div>
 

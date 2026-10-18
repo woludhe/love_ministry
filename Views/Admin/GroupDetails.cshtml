@@ -29,7 +29,7 @@
         </div>
     </div>
 
-    <h2 class="grp-section">Members <span class="grp-count">@memberships.Count</span></h2>
+    <h2 class="grp-section">Members <span class="grp-count">@(((PagerModel)ViewBag.Pager).Total)</span></h2>
     @if (!memberships.Any())
     {
         <div class="grp-empty"><i class="fas fa-user-plus"></i> No members yet. Add some below.</div>
@@ -64,6 +64,7 @@
                 }
             </tbody>
         </table>
+        <partial name="_Pager" model="(PagerModel)ViewBag.Pager" />
     }
 
     <h2 class="grp-section" style="margin-top:2rem">Add Members</h2>

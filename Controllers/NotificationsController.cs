@@ -1,5 +1,6 @@
 using ChurchMinistry.Data;
 using ChurchMinistry.Models;
+using ChurchMinistry.ViewModels;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
@@ -26,18 +27,20 @@ namespace ChurchMinistry.Controllers
         }
 
         // Full notifications page
-        public async Task<IActionResult> Index()
+        public async Task<IActionResult> Index(int page = 1)
         {
             var member = await GetMemberAsync();
             if (member == null) return RedirectToAction("Login", "Account");
 
+            var pager = new PagerModel(page, "notifications");
             var notifications = await _db.Notifications
                 .Where(n => n.MemberId == member.Id)
                 .OrderByDescending(n => n.CreatedAt)
-                .ToListAsync();
+                .ToPageAsync(pager);
+            ViewBag.Pager = pager;
 
-            // Mark all as read when page is viewed
-            var unread = notifications.Where(n => !n.IsRead).ToList();
+            // Mark all as read when page is viewed (not just this page)
+            var unread = await _db.Notifications.Where(n => n.MemberId == member.Id && !n.IsRead).ToListAsync();
             unread.ForEach(n => n.IsRead = true);
             if (unread.Any()) await _db.SaveChangesAsync();
 

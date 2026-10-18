@@ -22,7 +22,7 @@ public class MediaController : Controller
     public async Task<IActionResult> Index(
         string? search, string? speaker, string? series, int page = 1)
     {
-        const int pageSize = 12;
+        const int pageSize = PagerModel.DefaultPageSize;
         var q = _db.Sermons.Where(s => s.IsPublished).AsQueryable();
 
         if (!string.IsNullOrEmpty(search))

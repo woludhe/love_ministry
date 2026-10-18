@@ -1,25 +1,16 @@
 @{
     ViewData["Title"] = "Event Registrations";
-    Layout = "~/Views/Shared/_Layout.cshtml";
+    Layout = "~/Views/Shared/_AdminDashboard_Layout.cshtml";
     var ev = ViewBag.Event as ChurchMinistry.Models.ChurchEvent;
     var registrations = ViewBag.Registrations as List<ChurchMinistry.Models.EventRegistration>
                         ?? new List<ChurchMinistry.Models.EventRegistration>();
+    var pageRegistrations = ViewBag.PageRegistrations as List<ChurchMinistry.Models.EventRegistration>
+                            ?? new List<ChurchMinistry.Models.EventRegistration>();
+    var pager = (PagerModel)ViewBag.Pager;
+    string? status = ViewBag.Status;
     bool isPaid = ev?.TicketPrice.HasValue == true && ev.TicketPrice > 0;
 }
 @using ChurchMinistry.Models
-
-<div class="admin-layout">
-  <aside class="admin-sidebar">
-    <div class="sidebar-logo">⚙ Admin Panel</div>
-    <nav class="sidebar-nav">
-      <a asp-controller="Admin" asp-action="Index"><i class="fas fa-tachometer-alt"></i> Dashboard</a>
-      <a asp-controller="Admin" asp-action="Members"><i class="fas fa-users"></i> Members</a>
-      <a asp-controller="Admin" asp-action="Events" class="active"><i class="fas fa-calendar"></i> Events</a>
-      <a asp-controller="Admin" asp-action="Sermons"><i class="fas fa-video"></i> Sermons</a>
-      <a asp-controller="Admin" asp-action="Givings"><i class="fas fa-hand-holding-heart"></i> Givings</a>
-      <a asp-controller="Admin" asp-action="Reports"><i class="fas fa-chart-bar"></i> Reports</a>
-    </nav>
-  </aside>
 
   <div class="admin-main">
 
@@ -126,26 +117,26 @@
     {
       <div style="display:flex;gap:.35rem;background:var(--white);border:1px solid var(--border);
            border-radius:10px;padding:.25rem;width:fit-content;margin-bottom:1.25rem">
-        <button class="filter-tab active" onclick="filterTable('all', this)">All</button>
-        <button class="filter-tab" onclick="filterTable('Successful', this)">
+        <a asp-route-id="@ev?.Id" class="filter-tab @(string.IsNullOrEmpty(status) ? "active" : "")">All</a>
+        <a asp-route-id="@ev?.Id" asp-route-status="Successful" class="filter-tab @(status == "Successful" ? "active" : "")">
           <i class="fas fa-check" style="color:var(--green)"></i> Paid
-        </button>
-        <button class="filter-tab" onclick="filterTable('Pending', this)">
+        </a>
+        <a asp-route-id="@ev?.Id" asp-route-status="Pending" class="filter-tab @(status == "Pending" ? "active" : "")">
           <i class="fas fa-clock" style="color:var(--amber)"></i> Pending
-        </button>
-        <button class="filter-tab" onclick="filterTable('Failed', this)">
+        </a>
+        <a asp-route-id="@ev?.Id" asp-route-status="Failed" class="filter-tab @(status == "Failed" ? "active" : "")">
           <i class="fas fa-times" style="color:var(--coral)"></i> Failed
-        </button>
+        </a>
       </div>
     }
 
     @* {{-- Registrations table --}} *@
     <div class="table-card">
-      @if (!registrations.Any())
+      @if (!pageRegistrations.Any())
       {
         <div style="text-align:center;padding:3rem;color:var(--text-s)">
           <i class="fas fa-users fa-2x" style="color:var(--border);display:block;margin-bottom:1rem"></i>
-          <p>No registrations yet for this event.</p>
+          <p>@(registrations.Any() ? "No registrations match this filter." : "No registrations yet for this event.")</p>
         </div>
       }
       else
@@ -172,12 +163,12 @@
             </tr>
           </thead>
           <tbody>
-          @{ int i = 1; }
-          @foreach (var r in registrations.OrderByDescending(r => r.RegisteredAt))
+          @{ int i = pager.First; }
+          @foreach (var r in pageRegistrations)
           {
             <tr class="reg-row" data-status="@r.PaymentStatus">
               <td>@(i++)</td>
-              <td>
+              <td class="cell-title">
                 <div style="display:flex;align-items:center;gap:.5rem">
                   @if (r.Member != null)
                   {
@@ -260,32 +251,28 @@
           }
           </tbody>
         </table>
+        <partial name="_Pager" model="pager" />
       }
     </div>
 
   </div>
-</div>
 
 @section Scripts {
 <script>
-// ── Filter tabs ───────────────────────────────────────────
-function filterTable(status, btn) {
-    document.querySelectorAll('.filter-tab').forEach(b => b.classList.remove('active'));
-    btn.classList.add('active');
-    document.querySelectorAll('.reg-row').forEach(row => {
-        row.style.display = (status === 'all' || row.dataset.status === status) ? '' : 'none';
-    });
-}
+// ── CSV Export (every registration, not just the page on screen) ──
+const csvHeader = @Json.Serialize(isPaid
+    ? new[] { "#", "Name", "Email", "Phone", "Registered", "Amount", "Payment Status", "Paid At", "Reference" }
+    : new[] { "#", "Name", "Email", "Phone", "Registered", "Status" });
+const csvRows = @Json.Serialize(registrations.Select((r, n) => isPaid
+    ? new[] { (n + 1).ToString(), r.Name, r.Email, r.Phone ?? "", r.RegisteredAt.ToString("dd MMM yyyy, h:mm tt"),
+              r.AmountPaid > 0 ? "UGX " + r.AmountPaid.ToString("N0") : "-", r.PaymentStatus.ToString(),
+              r.PaidAt?.ToString("dd MMM, h:mm tt") ?? "-", r.FlutterwaveRef ?? "-" }
+    : new[] { (n + 1).ToString(), r.Name, r.Email, r.Phone ?? "", r.RegisteredAt.ToString("dd MMM yyyy, h:mm tt"),
+              r.IsConfirmed ? "Confirmed" : "Pending" }));
 
-// ── CSV Export ────────────────────────────────────────────
 function exportCsv() {
-    const table  = document.getElementById('regTable');
-    if (!table) return;
-    const rows   = Array.from(table.querySelectorAll('tr'));
-    const csv    = rows.map(row =>
-        Array.from(row.querySelectorAll('th,td'))
-            .map(cell => `"${cell.innerText.replace(/"/g, '""').trim()}"`)
-            .join(',')
+    const csv = [csvHeader, ...csvRows].map(row =>
+        row.map(cell => `"${String(cell ?? '').replace(/"/g, '""')}"`).join(',')
     ).join('\n');
 
     const blob = new Blob([csv], { type: 'text/csv' });
@@ -307,7 +294,7 @@ function exportCsv() {
 .filter-tab.active  { background:var(--purple); color:white; }
 
 @@media print {
-  .admin-sidebar, .admin-topbar > div:last-child, .filter-tab { display:none !important; }
+  .admin-sidebar, .admin-topbar > div:last-child, .filter-tab, .sidebar-toggle { display:none !important; }
   .admin-main { padding:0 !important; }
 }
 </style>

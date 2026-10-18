@@ -29,9 +29,10 @@
                     <thead><tr><th>#</th><th>Name</th><th>Email</th><th>Check-in Time</th><th>Method</th></tr></thead>
                     <tbody>
                         @{
-                            int i = 1;
+                            var pager = (PagerModel)ViewBag.Pager;
+                            int i = pager.First;
                         }
-                        @foreach (var a in Model.AttendanceRecords.OrderBy(a => a.CheckInTime))
+                        @foreach (AttendanceRecord a in ViewBag.Attendees)
                         {
                             <tr>
                                 <td>@(i++)</td>
@@ -43,6 +44,7 @@
                         }
                     </tbody>
                 </table>
+                <partial name="_Pager" model="pager" />
             </div>
         }
         else

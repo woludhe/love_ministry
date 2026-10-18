@@ -356,8 +356,25 @@ namespace ChurchMinistry.Controllers
                     .OrderBy(e => e.StartDate).Take(3).ToListAsync(),
                 Notifications = await _db.Notifications
                     .Where(n => n.MemberId == member.Id && !n.IsRead)
-                    .OrderByDescending(n => n.CreatedAt).Take(10).ToListAsync()
+                    .OrderByDescending(n => n.CreatedAt).Take(10).ToListAsync(),
+                LiveSermon = await _db.Sermons.FirstOrDefaultAsync(s => s.IsLive && s.IsPublished)
             };
+            // Live meetings — public ones, plus private ones this member is invited to directly,
+            // through one of their groups or by email (same rules as the Meetings page) —
+            // except the live sermon's own room (already linked above)
+            var liveSermonRoom = vm.LiveSermon?.MeetingRoomCode;
+            var email = member.Email.ToLower();
+            var groupIds = await _db.MinistryGroupMembers.Where(gm => gm.MemberId == member.Id)
+                .Select(gm => gm.MinistryGroupId).ToListAsync();
+            vm.LiveMeetings = await _db.MeetingRooms
+                .Where(r => r.Status == RoomStatus.Live && r.IsApproved
+                         && r.RoomCode != liveSermonRoom
+                         && (r.IsPublic
+                             || r.Invitations.Any(i => i.MemberId == member.Id
+                                 || (i.MinistryGroupId != null && groupIds.Contains(i.MinistryGroupId.Value))
+                                 || (i.Email != null && i.Email.ToLower() == email))))
+                .OrderByDescending(r => r.StartedAt)
+                .ToListAsync();
             return View(vm);
         }
 
@@ -596,7 +613,7 @@ namespace ChurchMinistry.Controllers
             Groups = m.MinistryGroups.ToList()   // filled when the member was loaded with its groups
         };
 
-        public async Task<IActionResult> Directory(string? search, string? group)
+        public async Task<IActionResult> Directory(string? search, string? group, int page = 1)
         {
             var q = _db.Members.Include(m => m.MinistryGroups)
                 .Where(m => m.Status == MemberStatus.Active).AsQueryable();
@@ -605,7 +622,9 @@ namespace ChurchMinistry.Controllers
             if (!string.IsNullOrEmpty(group) && int.TryParse(group, out int gid))
                 q = q.Where(m => m.MinistryGroups.Any(g => g.Id == gid));
             ViewBag.Groups = await _db.MinistryGroups.Where(g => g.IsActive).ToListAsync();
-            return View(await q.OrderBy(m => m.FirstName).ToListAsync());
+            var pager = new PagerModel(page, "members");
+            ViewBag.Pager = pager;
+            return View(await q.OrderBy(m => m.FirstName).ToPageAsync(pager));
         }
 
         public async Task<IActionResult> MyQrCode()
@@ -615,15 +634,17 @@ namespace ChurchMinistry.Controllers
             return View(member);
         }
 
-        public async Task<IActionResult> Attendance()
+        public async Task<IActionResult> Attendance(int page = 1)
         {
             var member = await GetCurrentMemberAsync();
             if (member == null) return NotFound();
+            var pager = new PagerModel(page);
             var records = await _db.AttendanceRecords
                 .Include(a => a.ServiceSession)
                 .Where(a => a.MemberId == member.Id)
                 .OrderByDescending(a => a.CheckInTime)
-                .ToListAsync();
+                .ToPageAsync(pager);
+            ViewBag.Pager = pager;
             return View(records);
         }
     }
@@ -890,13 +911,13 @@ namespace ChurchMinistry.Controllers
 
         public async Task<IActionResult> Index(ForumCategory? category, int page = 1)
         {
-            const int ps = 20;
+            var pager = new PagerModel(page, "posts");
             var q = _db.ForumPosts.Include(p => p.Member).Include(p => p.Replies).AsQueryable();
             if (category.HasValue) q = q.Where(p => p.Category == category.Value);
-            var total = await q.CountAsync();
             ViewBag.Posts = await q.OrderByDescending(p => p.IsPinned).ThenByDescending(p => p.CreatedAt)
-                .Skip((page - 1) * ps).Take(ps).ToListAsync();
-            ViewBag.Total = total; ViewBag.Page = page; ViewBag.TotalPages = (int)Math.Ceiling((double)total / ps);
+                .ToPageAsync(pager);
+            ViewBag.Total = pager.Total; ViewBag.Page = pager.Page; ViewBag.TotalPages = pager.TotalPages;
+            ViewBag.Pager = pager;
             return View();
         }
 
@@ -967,11 +988,13 @@ namespace ChurchMinistry.Controllers
             _db = db; _email = email;
         }
 
-        public async Task<IActionResult> Index()
+        public async Task<IActionResult> Index(int page = 1)
         {
+            var pager = new PagerModel(page, "newsletters");
             ViewBag.Newsletters = await _db.Newsletters
                 .Where(n => n.Status == NewsletterStatus.Sent)
-                .OrderByDescending(n => n.SentAt).Take(10).ToListAsync();
+                .OrderByDescending(n => n.SentAt).ToPageAsync(pager);
+            ViewBag.Pager = pager;
             return View();
         }
 
@@ -1098,7 +1121,7 @@ namespace ChurchMinistry.Controllers
             return View(vm);
         }
 
-        public async Task<IActionResult> EventRegistrations(int id)
+        public async Task<IActionResult> EventRegistrations(int id, string? status, int page = 1)
         {
             var ev = await _db.ChurchEvents
                 .Include(e => e.Registrations)
@@ -1107,10 +1130,18 @@ namespace ChurchMinistry.Controllers
 
             if (ev == null) return NotFound();
 
+            // All registrations feed the KPIs and the CSV export; the table shows one page of the filtered list
+            var all = ev.Registrations.OrderByDescending(r => r.RegisteredAt).ToList();
+            var filtered = Enum.TryParse<PaymentStatus>(status, out var ps)
+                ? all.Where(r => r.PaymentStatus == ps).ToList()
+                : all;
+            var pager = new PagerModel(page, "registrations");
+
             ViewBag.Event = ev;
-            ViewBag.Registrations = ev.Registrations
-                .OrderByDescending(r => r.RegisteredAt)
-                .ToList();
+            ViewBag.Registrations = all;
+            ViewBag.PageRegistrations = filtered.ToPage(pager);
+            ViewBag.Status = status;
+            ViewBag.Pager = pager;
 
             return View(ev);
         }
@@ -1323,7 +1354,7 @@ namespace ChurchMinistry.Controllers
         // ── Members management ──
         public async Task<IActionResult> Members(string? search, string? status, int? group, int page = 1)
         {
-            const int ps = 25;
+            var pager = new PagerModel(page, "members");
             var q = _db.Members.Include(m => m.MinistryGroups).AsQueryable();
             if (!string.IsNullOrEmpty(search))
                 q = q.Where(m => m.FirstName.Contains(search) || m.LastName.Contains(search) || m.Email.Contains(search));
@@ -1332,9 +1363,9 @@ namespace ChurchMinistry.Controllers
             if (group != null)
                 q = q.Where(m => m.MinistryGroups.Any(g => g.Id == group));
             ViewBag.Groups = await _db.MinistryGroups.OrderBy(g => g.Name).ToListAsync();
-            ViewBag.Total = await q.CountAsync();
-            ViewBag.Members = await q.OrderBy(m => m.FirstName).Skip((page - 1) * ps).Take(ps).ToListAsync();
-            ViewBag.Page = page; ViewBag.TotalPages = (int)Math.Ceiling((double)ViewBag.Total / ps);
+            ViewBag.Members = await q.OrderBy(m => m.FirstName).ToPageAsync(pager);
+            ViewBag.Total = pager.Total; ViewBag.Page = pager.Page; ViewBag.TotalPages = pager.TotalPages;
+            ViewBag.Pager = pager;
             return View();
         }
 
@@ -1347,12 +1378,14 @@ namespace ChurchMinistry.Controllers
         }
 
         // ── Ministry groups ──
-        public async Task<IActionResult> Groups()
+        public async Task<IActionResult> Groups(int page = 1)
         {
+            var pager = new PagerModel(page, "groups");
             ViewBag.Groups = await _db.MinistryGroups
                 .Include(g => g.Leader)
                 .OrderByDescending(g => g.IsActive).ThenBy(g => g.Name)
-                .ToListAsync();
+                .ToPageAsync(pager);
+            ViewBag.Pager = pager;
             ViewBag.MemberCounts = await _db.MinistryGroupMembers
                 .GroupBy(gm => gm.MinistryGroupId)
                 .ToDictionaryAsync(g => g.Key, g => g.Count());
@@ -1427,17 +1460,19 @@ namespace ChurchMinistry.Controllers
             return RedirectToAction("GroupDetails", new { id = group.Id });
         }
 
-        public async Task<IActionResult> GroupDetails(int id)
+        public async Task<IActionResult> GroupDetails(int id, int page = 1)
         {
             var group = await _db.MinistryGroups.Include(g => g.Leader)
                 .FirstOrDefaultAsync(g => g.Id == id);
             if (group == null) return NotFound();
 
+            var pager = new PagerModel(page, "members");
             ViewBag.Memberships = await _db.MinistryGroupMembers
                 .Include(gm => gm.Member)
                 .Where(gm => gm.MinistryGroupId == id)
                 .OrderBy(gm => gm.Member.FirstName).ThenBy(gm => gm.Member.LastName)
-                .ToListAsync();
+                .ToPageAsync(pager);
+            ViewBag.Pager = pager;
             ViewBag.Available = await _db.Members
                 .Where(m => m.Status == MemberStatus.Active && !m.MinistryGroups.Any(g => g.Id == id))
                 .OrderBy(m => m.FirstName).ThenBy(m => m.LastName)
@@ -1541,11 +1576,15 @@ namespace ChurchMinistry.Controllers
         }
 
         // ── Attendance management ──
-        public async Task<IActionResult> Attendance()
+        public async Task<IActionResult> Attendance(int page = 1)
         {
-            ViewBag.Sessions = await _db.ServiceSessions.OrderByDescending(s => s.ServiceDate).Take(10)
+            var pager = new PagerModel(page, "services");
+            ViewBag.Sessions = await _db.ServiceSessions.OrderByDescending(s => s.ServiceDate)
                 .Include(x => x.AttendanceRecords)
-                .ToListAsync();
+                .ToPageAsync(pager);
+            ViewBag.Pager = pager;
+            // The QR scanner picks from the latest sessions, whatever page the table is on
+            ViewBag.ScanSessions = await _db.ServiceSessions.OrderByDescending(s => s.ServiceDate).Take(10).ToListAsync();
             return View();
         }
 
@@ -1564,22 +1603,27 @@ namespace ChurchMinistry.Controllers
             return Json(new { success, message = success ? "Checked in successfully!" : "Already checked in or invalid QR." });
         }
 
-        public async Task<IActionResult> AttendanceReport(int sessionId)
+        public async Task<IActionResult> AttendanceReport(int sessionId, int page = 1)
         {
             var session = await _db.ServiceSessions.Include(s => s.AttendanceRecords)
                 .ThenInclude(a => a.Member).FirstOrDefaultAsync(s => s.Id == sessionId);
+            var pager = new PagerModel(page, "attendees");
+            ViewBag.Attendees = session?.AttendanceRecords.OrderBy(a => a.CheckInTime).ToPage(pager)
+                                ?? new List<AttendanceRecord>();
+            ViewBag.Pager = pager;
             return View(session);
         }
 
         // ── Giving management ──
         public async Task<IActionResult> Givings(string? type, string? method, int page = 1)
         {
-            const int ps = 25;
+            var pager = new PagerModel(page, "givings");
             var q = _db.Givings.Include(g => g.Member).AsQueryable();
             if (Enum.TryParse<GivingType>(type, out var gt)) q = q.Where(g => g.GivingType == gt);
             if (Enum.TryParse<PaymentMethod>(method, out var pm)) q = q.Where(g => g.PaymentMethod == pm);
-            ViewBag.Total = await q.CountAsync();
-            ViewBag.Givings = await q.OrderByDescending(g => g.GivingDate).Skip((page - 1) * ps).Take(ps).ToListAsync();
+            ViewBag.Givings = await q.OrderByDescending(g => g.GivingDate).ToPageAsync(pager);
+            ViewBag.Total = pager.Total;
+            ViewBag.Pager = pager;
             return View();
         }
 
@@ -1797,9 +1841,13 @@ namespace ChurchMinistry.Controllers
         }
 
         // ── Audio library (files and type folders: Services/AudioStore) ──
-        public async Task<IActionResult> AudioLibrary(string? type, [FromServices] IWebHostEnvironment env)
+        public async Task<IActionResult> AudioLibrary(string? type, [FromServices] IWebHostEnvironment env, int page = 1)
         {
-            ViewBag.AudioFiles = await ListAudioFilesAsync(env);
+            var allFiles = await ListAudioFilesAsync(env);
+            var pager = new PagerModel(page, "files");
+            ViewBag.AudioFiles = allFiles;   // tab counts
+            ViewBag.PageFiles = (type == null ? allFiles : allFiles.Where(f => f.Type == type)).ToPage(pager);
+            ViewBag.Pager = pager;
             ViewBag.AudioTypes = AudioStore.ListTypes(env);
             ViewBag.SelectedType = type;
             ViewBag.MaxAudioMb = AudioStore.MaxBytes / 1024 / 1024;
@@ -1967,7 +2015,7 @@ namespace ChurchMinistry.Controllers
             return Json(new { isActive = sermon.IsPublished });
         }
 
-        public async Task<IActionResult> SermonAttendance(int id)
+        public async Task<IActionResult> SermonAttendance(int id, int page = 1)
         {
             var sermon = await _db.Sermons.FindAsync(id);
             if (sermon == null) return NotFound();
@@ -1977,6 +2025,10 @@ namespace ChurchMinistry.Controllers
                 .Where(a => a.SermonId == id)
                 .OrderByDescending(a => a.JoinedAt)
                 .ToListAsync();
+            // The stats cover the whole log; the table shows one page of it
+            var pager = new PagerModel(page, "sessions");
+            ViewBag.PageLog = log.ToPage(pager);
+            ViewBag.Pager = pager;
             return View(log);
         }
 
@@ -1992,8 +2044,12 @@ namespace ChurchMinistry.Controllers
         }
 
         // ── Newsletter ──
-        public async Task<IActionResult> Newsletters() =>
-            View(await _db.Newsletters.OrderByDescending(n => n.CreatedAt).ToListAsync());
+        public async Task<IActionResult> Newsletters(int page = 1)
+        {
+            var pager = new PagerModel(page, "newsletters");
+            ViewBag.Pager = pager;
+            return View(await _db.Newsletters.OrderByDescending(n => n.CreatedAt).ToPageAsync(pager));
+        }
 
         [HttpGet] public IActionResult ComposeNewsletter() => View(new NewsletterComposeViewModel());
 
@@ -2017,8 +2073,12 @@ namespace ChurchMinistry.Controllers
         }
 
         // ── Events management ──
-        public async Task<IActionResult> Events() =>
-            View(await _db.ChurchEvents.Include(e => e.Registrations).OrderByDescending(e => e.StartDate).ToListAsync());
+        public async Task<IActionResult> Events(int page = 1)
+        {
+            var pager = new PagerModel(page, "events");
+            ViewBag.Pager = pager;
+            return View(await _db.ChurchEvents.Include(e => e.Registrations).OrderByDescending(e => e.StartDate).ToPageAsync(pager));
+        }
 
         //[HttpGet] public IActionResult AddEvent() => View(new ChurchEvent());
 
@@ -2052,7 +2112,7 @@ namespace ChurchMinistry.Controllers
         // ── Reports: online attendance of tracked sermons ──
         public async Task<IActionResult> SermonAttendanceReport(
             string? period, DateTime? from, DateTime? to, string? month, int? year,
-            int? sermonId, string? mode, string? attendee)
+            int? sermonId, string? mode, string? attendee, int page = 1)
         {
             var vm = new SermonAttendanceReportViewModel
             {
@@ -2123,6 +2183,7 @@ namespace ChurchMinistry.Controllers
             var sermonIds = rows.Select(r => r.SermonId).Distinct().ToList();
             var sermonInfo = await _db.Sermons.Where(s => sermonIds.Contains(s.Id))
                 .ToDictionaryAsync(s => s.Id);
+            var pager = new PagerModel(page, "sermons");
             vm.BySermon = rows.GroupBy(r => r.SermonId)
                 .Select(g => new SermonAttendanceSummaryRow
                 {
@@ -2137,7 +2198,8 @@ namespace ChurchMinistry.Controllers
                     AverageDuration = TimeSpan.FromSeconds(g.Average(r => Dur(r.JoinedAt, r.LeftAt).TotalSeconds))
                 })
                 .OrderByDescending(r => r.SermonDate)
-                .ToList();
+                .ToPage(pager);
+            ViewBag.Pager = pager;
 
             // Filter options: tracked sermons, plus any with logged attendance
             var loggedIds = _db.SermonAttendances.Select(a => a.SermonId).Distinct();

@@ -93,9 +93,14 @@
     }
 
     <main>
+        <button type="button" class="sidebar-toggle sidebar-toggle-admin" id="sidebarToggle" aria-controls="dashSidebar" aria-expanded="false">
+            <i class="fas fa-bars"></i> Admin Menu
+        </button>
+        <div class="sidebar-backdrop" id="sidebarBackdrop"></div>
         <div class="admin-layout">
             <!-- Sidebar -->
-            <aside class="admin-sidebar">
+            <aside class="admin-sidebar dash-sidebar" id="dashSidebar">
+                <button type="button" class="sidebar-close" aria-label="Close menu"><i class="fas fa-times"></i></button>
                 <div class="sidebar-logo">⚙ Admin Panel</div>
                 <nav class="sidebar-nav">
                     <a asp-controller="Admin" asp-action="Index" class="active"><i class="fas fa-tachometer-alt"></i> Dashboard</a>

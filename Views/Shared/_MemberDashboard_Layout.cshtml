@@ -101,8 +101,13 @@
     }
 
     <main>
+        <button type="button" class="sidebar-toggle" id="sidebarToggle" aria-controls="dashSidebar" aria-expanded="false">
+            <i class="fas fa-bars"></i> My Account Menu
+        </button>
+        <div class="sidebar-backdrop" id="sidebarBackdrop"></div>
         <div class="member-layout">
-            <aside class="member-sidebar">
+            <aside class="member-sidebar dash-sidebar" id="dashSidebar">
+                <button type="button" class="sidebar-close" aria-label="Close menu"><i class="fas fa-times"></i></button>
                 <div class="member-avatar">
                     <img src="@(me.ProfilePhoto ?? "/images/avatar-default.png")" alt="Profile" />
                     <h3>@me.FullName</h3>

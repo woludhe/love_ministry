@@ -27,7 +27,7 @@ namespace ChurchMinistry.Controllers
         }
 
         // ── Public Prayer Wall ──────────────────────────────────────
-        public async Task<IActionResult> Index(PrayerCategory? category, bool? answered)
+        public async Task<IActionResult> Index(PrayerCategory? category, bool? answered, int page = 1)
         {
             var q = _db.PrayerRequests
                 .Include(p => p.Member)
@@ -42,7 +42,9 @@ namespace ChurchMinistry.Controllers
             else
                 q = q.Where(p => !p.IsAnswered);
 
-            ViewBag.Requests      = await q.OrderByDescending(p => p.CreatedAt).ToListAsync();
+            var pager = new PagerModel(page, "requests");
+            ViewBag.Requests      = await q.OrderByDescending(p => p.CreatedAt).ToPageAsync(pager);
+            ViewBag.Pager         = pager;
             ViewBag.Category      = category;
             ViewBag.Answered      = answered;
             ViewBag.AnsweredCount = await _db.PrayerRequests.CountAsync(p => p.IsPublic && p.IsAnswered);
@@ -70,7 +72,7 @@ namespace ChurchMinistry.Controllers
         }
 
         // ── My Prayer Requests ──────────────────────────────────────
-        public async Task<IActionResult> MyRequests(PrayerCategory? category, string? status)
+        public async Task<IActionResult> MyRequests(PrayerCategory? category, string? status, int page = 1)
         {
             var member = await GetMemberAsync();
             if (member == null) return RedirectToAction("Login", "Account");
@@ -96,7 +98,9 @@ namespace ChurchMinistry.Controllers
             ViewBag.ActiveCount   = requests.Count(p => !p.IsAnswered);
             ViewBag.PrayerCount   = requests.Sum(p => p.PrayerCount);
 
-            return View(requests);
+            var pager = new PagerModel(page, "requests");
+            ViewBag.Pager = pager;
+            return View(requests.ToPage(pager));
         }
 
         // ── Submit ──────────────────────────────────────────────────

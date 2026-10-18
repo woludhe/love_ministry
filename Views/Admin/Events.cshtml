@@ -12,7 +12,7 @@
             @foreach (var ev in Model)
             {
                 <tr>
-                    <td>@ev.Title</td>
+                    <td class="cell-title">@ev.Title</td>
                     <td>@ev.StartDate.ToString("dd MMM yyyy h:mm tt")</td>
                     <td>@ev.Location</td>
                     <td>@ev.Registrations.Count @(ev.MaxCapacity.HasValue ? $"/ {ev.MaxCapacity}" : "")</td>
@@ -40,7 +40,7 @@
                     <th>Location</th>
                     <th>Type</th>
                     <th>Registrations</th>
-                    <th>Revenue</th>
+                    <th>Collected</th>
                     <th>Actions</th>
                 </tr>
             </thead>
@@ -57,7 +57,7 @@
                     .Sum(r => r.AmountPaid);
 
                     <tr>
-                        <td>
+                        <td class="cell-title">
                             <strong>@ev.Title</strong>
                             @if (!ev.IsPublic)
                             {
@@ -111,7 +111,7 @@
                                 <span class="meta">N/A</span>
                             }
                         </td>
-                        <td>
+                        <td class="cell-actions">
                             <div style="display:flex;gap:.35rem;flex-wrap:wrap">
                                 <a asp-action="EventRegistrations" asp-route-id="@ev.Id"
                                    class="btn btn-outline btn-xs" title="View Registrations">
@@ -127,5 +127,6 @@
                 }
             </tbody>
         </table>
+        <partial name="_Pager" model="(PagerModel)ViewBag.Pager" />
     </div>
 </div>

@@ -1,0 +1,48 @@
+@model PagerModel
+@*
+    Page links for a list. Keeps the current query string (filters, other lists' pages)
+    and only swaps Model.PageParam. Renders nothing when everything fits on one page.
+*@
+@{
+    if (Model == null || Model.TotalPages <= 1) { return; }
+
+    string Url(int p)
+    {
+        var query = Context.Request.Query
+            .Where(kv => !string.Equals(kv.Key, Model.PageParam, StringComparison.OrdinalIgnoreCase))
+            .SelectMany(kv => kv.Value.Select(v => new KeyValuePair<string, string?>(kv.Key, v)))
+            .ToList();
+        if (p > 1) query.Add(new KeyValuePair<string, string?>(Model.PageParam, p.ToString()));
+        return Context.Request.Path + Microsoft.AspNetCore.Http.QueryString.Create(query).ToUriComponent();
+    }
+
+    int start = Math.Max(1, Model.Page - 2);
+    int end = Math.Min(Model.TotalPages, Model.Page + 2);
+}
+<nav class="pager" aria-label="Pagination">
+    <span class="pager-info">Showing @Model.First–@Model.Last of @Model.Total @Model.ItemName</span>
+    <div class="pager-controls">
+        @if (Model.Page > 1)
+        {
+            <a href="@Url(Model.Page - 1)" class="page-btn" aria-label="Previous page"><i class="fas fa-chevron-left"></i></a>
+        }
+        @if (start > 1)
+        {
+            <a href="@Url(1)" class="page-btn">1</a>
+            @if (start > 2) { <span class="page-ellipsis">…</span> }
+        }
+        @for (int i = start; i <= end; i++)
+        {
+            <a href="@Url(i)" class="page-btn @(i == Model.Page ? "active" : "")" aria-current="@(i == Model.Page ? "page" : null)">@i</a>
+        }
+        @if (end < Model.TotalPages)
+        {
+            @if (end < Model.TotalPages - 1) { <span class="page-ellipsis">…</span> }
+            <a href="@Url(Model.TotalPages)" class="page-btn">@Model.TotalPages</a>
+        }
+        @if (Model.Page < Model.TotalPages)
+        {
+            <a href="@Url(Model.Page + 1)" class="page-btn" aria-label="Next page"><i class="fas fa-chevron-right"></i></a>
+        }
+    </div>
+</nav>

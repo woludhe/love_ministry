@@ -82,10 +82,10 @@
                     </tr>
                 </thead>
                 <tbody>
-                    @foreach (var a in Model)
+                    @foreach (ChurchMinistry.Models.SermonAttendance a in ViewBag.PageLog)
                     {
                         <tr>
-                            <td>
+                            <td class="cell-title">
                                 @if (a.IsGuest)
                                 {
                                     <span class="status-badge status-inactive">Guest</span>
@@ -126,6 +126,7 @@
                     }
                 </tbody>
             </table>
+            <partial name="_Pager" model="(PagerModel)ViewBag.Pager" />
         }
     </div>
 </div>

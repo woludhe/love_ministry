@@ -9,7 +9,7 @@
     <tbody>
     @foreach (var a in Model) {
       <tr>
-        <td>@a.ServiceSession.Title</td>
+        <td class="cell-title">@a.ServiceSession.Title</td>
         <td>@a.ServiceSession.ServiceType</td>
         <td>@a.ServiceSession.ServiceDate.ToString("dd MMM yyyy")</td>
         <td>@a.CheckInTime.ToString("h:mm tt")</td>
@@ -19,4 +19,5 @@
     @if (!Model.Any()) { <tr><td colspan="5" style="text-align:center;padding:2rem">No attendance records found.</td></tr> }
     </tbody>
   </table>
+  <partial name="_Pager" model="(PagerModel)ViewBag.Pager" />
 </div>

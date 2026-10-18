@@ -4,6 +4,48 @@
 }
 <div style="padding: 2rem;">
     <h1>Welcome back, @Model.Member.FirstName! 👋</h1>
+    @if (Model.LiveSermon != null || Model.LiveMeetings.Any())
+    {
+        <div class="dash-live">
+            <div class="live-badge"><span class="live-dot"></span> LIVE NOW</div>
+            @if (Model.LiveSermon != null)
+            {
+                <div class="dash-live-item">
+                    <div>
+                        <strong>@Model.LiveSermon.Title</strong>
+                        @if (!string.IsNullOrEmpty(Model.LiveSermon.Speaker))
+                        {
+                            <span class="meta">@Model.LiveSermon.Speaker</span>
+                        }
+                    </div>
+                    <a asp-controller="Media" asp-action="Live" class="btn btn-primary btn-sm">
+                        <i class="fas fa-play"></i> Watch Live
+                    </a>
+                </div>
+            }
+            @foreach (var room in Model.LiveMeetings)
+            {
+                <div class="dash-live-item">
+                    <div>
+                        <strong>@room.Title</strong>
+                        <span class="meta">
+                            @if (room.IsPublic)
+                            {
+                                <i class="fas fa-video"></i> @("Meeting")
+                            }
+                            else
+                            {
+                                <i class="fas fa-lock"></i> @("Private meeting · you're invited")
+                            }
+                        </span>
+                    </div>
+                    <a asp-controller="Meeting" asp-action="Room" asp-route-code="@room.RoomCode" class="btn btn-primary btn-sm">
+                        <i class="fas fa-right-to-bracket"></i> Join
+                    </a>
+                </div>
+            }
+        </div>
+    }
     <div class="kpi-grid">
         <div class="kpi-card kpi-purple">
             <div class="kpi-icon"><i class="fas fa-calendar-check"></i></div>

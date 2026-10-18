@@ -186,7 +186,7 @@
                     @foreach (var s in Model)
                     {
                         <tr id="row-@s.Id" class="@(s.IsLive ? "row-live" : "")">
-                            <td>
+                            <td class="cell-title">
                                 @s.Title
                                 @if (s.IsLive)
                                 {
@@ -213,7 +213,7 @@
                                     <span class="status-badge status-inactive">Inactive</span>
                                 }
                             </td>
-                            <td>
+                            <td class="cell-actions">
                                 <div style="display:flex;gap:.35rem;flex-wrap:wrap">
                                     @if (s.IsLive)
                                     {
@@ -623,6 +623,33 @@
             color: var(--text-s);
             padding: 0 .25rem;
             font-size: .9rem;
+        }
+
+        @@media (max-width: 768px) {
+            .sermons-topbar-left, .sermon-search-form, .sermon-search-input-wrap {
+                flex-basis: 100%;
+            }
+
+            .sermon-search-input-wrap {
+                min-width: 0;
+            }
+
+            .sermon-filter-select {
+                flex: 1 1 30%;
+                min-width: 0;
+            }
+
+            .row-live {
+                border-color: #fecaca !important;
+            }
+
+            .row-live td {
+                background: none !important;
+            }
+
+            .data-table tr.row-live {
+                background: #fff5f5;
+            }
         }
     </style>
 

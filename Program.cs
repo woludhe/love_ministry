@@ -135,8 +135,8 @@ using (var scope = app.Services.CreateScope())
         {
             UserName = "admin@church.org",
             Email = "admin@church.org",
-            FirstName = "Church",
-            LastName = "Admin",
+            FirstName = "Admin",
+            LastName = "",
             EmailConfirmed = true
         };
         var result = await userManager.CreateAsync(admin, "Admin@123456");

@@ -7,7 +7,7 @@
 
 <div class="admin-main">
     <div class="admin-topbar">
-        <h1>Groups (@groups.Count)</h1>
+        <h1>Groups (@(((PagerModel)ViewBag.Pager).Total))</h1>
         <a asp-action="CreateGroup" class="btn btn-primary btn-sm"><i class="fas fa-plus"></i> New Group</a>
     </div>
 
@@ -27,7 +27,7 @@
                 {
                     var meets = string.Join(" · ", new[] { g.MeetingDay, g.MeetingTime, g.Location }.Where(x => !string.IsNullOrWhiteSpace(x)));
                     <tr>
-                        <td>
+                        <td class="cell-title">
                             <a asp-action="GroupDetails" asp-route-id="@g.Id" class="grp-name"><i class="bi @ChurchMinistry.ViewModels.MinistryGroupIcons.For(g) grp-name-icon"></i> @g.Name</a>
                             @if (!string.IsNullOrWhiteSpace(g.Description))
                             {
@@ -38,7 +38,7 @@
                         <td>@(meets == "" ? "—" : meets)</td>
                         <td>@(counts.TryGetValue(g.Id, out var c) ? c : 0)</td>
                         <td><span class="status-badge status-@(g.IsActive ? "active" : "inactive")">@(g.IsActive ? "Active" : "Inactive")</span></td>
-                        <td style="white-space:nowrap">
+                        <td class="cell-actions" style="white-space:nowrap">
                             <a asp-action="GroupDetails" asp-route-id="@g.Id" class="btn btn-primary btn-xs"><i class="fas fa-user-plus"></i> Members</a>
                             <a asp-action="EditGroup" asp-route-id="@g.Id" class="btn btn-outline btn-xs">Edit</a>
                         </td>
@@ -46,6 +46,7 @@
                 }
             </tbody>
         </table>
+        <partial name="_Pager" model="(PagerModel)ViewBag.Pager" />
     }
 </div>
 

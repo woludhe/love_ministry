@@ -130,6 +130,7 @@
             </div>
         }
     </div>
+    <partial name="_Pager" model="(PagerModel)ViewBag.Pager" />
 
     @{
         var requests = ViewBag.Requests as List<PrayerRequest> ?? new List<PrayerRequest>();

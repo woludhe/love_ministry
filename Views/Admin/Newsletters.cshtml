@@ -10,8 +10,9 @@
         <tbody>
             @foreach (var n in Model)
             {
-                <tr><td>@n.Subject</td><td><span class="status-badge">@n.Status</span></td><td>@n.SentAt?.ToString("dd MMM yyyy")</td><td>@n.RecipientsCount</td></tr>
+                <tr><td class="cell-title">@n.Subject</td><td><span class="status-badge">@n.Status</span></td><td>@n.SentAt?.ToString("dd MMM yyyy")</td><td>@n.RecipientsCount</td></tr>
             }
         </tbody>
     </table>
+    <partial name="_Pager" model="(PagerModel)ViewBag.Pager" />
 </div>

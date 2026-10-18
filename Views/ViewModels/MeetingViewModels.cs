@@ -48,6 +48,8 @@ namespace ChurchMinistry.ViewModels
         public List<MeetingRoom> ScheduledMeetings { get; set; } = new();
         public List<MeetingRoom> LiveMeetings { get; set; } = new();
         public List<MeetingRoom> PastMeetings { get; set; } = new();
+        public PagerModel ScheduledPager { get; set; } = new(1);
+        public PagerModel PastPager { get; set; } = new(1);
         // Linked sermon per room code
         public Dictionary<string, MeetingLinkedSermon> LinkedSermons { get; set; } = new();
     }

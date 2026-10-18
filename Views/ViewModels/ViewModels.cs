@@ -1,8 +1,53 @@
 using System.ComponentModel.DataAnnotations;
 using ChurchMinistry.Models;
+using Microsoft.EntityFrameworkCore;
 
 namespace ChurchMinistry.ViewModels
 {
+    // ─── Paging (rendered by Views/Shared/_Pager.cshtml) ───
+    public class PagerModel
+    {
+        public const int DefaultPageSize = 15;
+
+        public int Page { get; set; } = 1;
+        public int PageSize { get; set; } = DefaultPageSize;
+        public int Total { get; set; }
+        // Query-string key, so a page with two lists can page each one separately
+        public string PageParam { get; set; } = "page";
+        public string ItemName { get; set; } = "records";
+
+        public int TotalPages => Math.Max(1, (int)Math.Ceiling((double)Total / PageSize));
+        public int First => Total == 0 ? 0 : (Page - 1) * PageSize + 1;
+        public int Last => Math.Min(Page * PageSize, Total);
+
+        public PagerModel(int page, string itemName = "records", string pageParam = "page")
+        {
+            Page = page; ItemName = itemName; PageParam = pageParam;
+        }
+
+        internal void SetTotal(int total)
+        {
+            Total = total;
+            Page = Math.Clamp(Page, 1, TotalPages);
+        }
+    }
+
+    public static class PagingExtensions
+    {
+        public static async Task<List<T>> ToPageAsync<T>(this IQueryable<T> query, PagerModel pager)
+        {
+            pager.SetTotal(await query.CountAsync());
+            return await query.Skip((pager.Page - 1) * pager.PageSize).Take(pager.PageSize).ToListAsync();
+        }
+
+        public static List<T> ToPage<T>(this IEnumerable<T> items, PagerModel pager)
+        {
+            var list = items as IReadOnlyCollection<T> ?? items.ToList();
+            pager.SetTotal(list.Count);
+            return list.Skip((pager.Page - 1) * pager.PageSize).Take(pager.PageSize).ToList();
+        }
+    }
+
     // ─── Auth ───
     public class LoginViewModel
     {
@@ -86,6 +131,8 @@ namespace ChurchMinistry.ViewModels
         public List<Sermon> RecentSermons { get; set; } = new();
         public List<ChurchEvent> UpcomingEvents { get; set; } = new();
         public List<Notification> Notifications { get; set; } = new();
+        public Sermon? LiveSermon { get; set; }                       // published sermon streaming now
+        public List<MeetingRoom> LiveMeetings { get; set; } = new();  // public + invited private meetings in progress
     }
 
     // ─── Giving ───

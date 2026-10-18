@@ -35,13 +35,15 @@ namespace ChurchMinistry.Controllers
         }
 
         // ── Public Events List ──────────────────────────────────
-        public async Task<IActionResult> Index()
+        public async Task<IActionResult> Index(int page = 1)
         {
+            var pager = new PagerModel(page, "events");
             var events = await _db.ChurchEvents
                 .Include(e => e.Registrations)
                 .Where(e => e.IsPublic)
                 .OrderBy(e => e.StartDate)
-                .ToListAsync();
+                .ToPageAsync(pager);
+            ViewBag.Pager = pager;
 
             // Build per-event registration status for current member
             Member? member = null;

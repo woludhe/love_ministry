@@ -15,6 +15,35 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
+  // ── Dashboard sidebar drawer (mobile) ──
+  const sideToggle   = document.getElementById('sidebarToggle');
+  const sidebar      = document.getElementById('dashSidebar');
+  const sideBackdrop = document.getElementById('sidebarBackdrop');
+  if (sideToggle && sidebar) {
+    const setSidebar = open => {
+      sidebar.classList.toggle('open', open);
+      sideBackdrop?.classList.toggle('open', open);
+      document.body.classList.toggle('sidebar-open', open);
+      sideToggle.setAttribute('aria-expanded', open);
+    };
+    sideToggle.addEventListener('click', () => setSidebar(!sidebar.classList.contains('open')));
+    sideBackdrop?.addEventListener('click', () => setSidebar(false));
+    sidebar.querySelector('.sidebar-close')?.addEventListener('click', () => setSidebar(false));
+    sidebar.querySelectorAll('.sidebar-nav a').forEach(a => a.addEventListener('click', () => setSidebar(false)));
+    document.addEventListener('keydown', e => { if (e.key === 'Escape') setSidebar(false); });
+  }
+
+  // ── Label table cells so tables can render as cards on mobile ──
+  document.querySelectorAll('table.data-table').forEach(table => {
+    const headers = [...table.querySelectorAll('thead th')].map(th => th.textContent.trim());
+    table.querySelectorAll('tbody tr, tfoot tr').forEach(tr => {
+      [...tr.children].forEach((td, i) => {
+        if (td.tagName === 'TD' && !td.hasAttribute('colspan') && headers[i])
+          td.dataset.label = headers[i];
+      });
+    });
+  });
+
   // ── Auto-dismiss alerts ──
   document.querySelectorAll('.alert').forEach(el => {
     setTimeout(() => { el.style.transition = 'opacity .5s'; el.style.opacity = '0'; setTimeout(() => el.remove(), 500); }, 4500);

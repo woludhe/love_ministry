@@ -30,7 +30,7 @@
                 {
                     <tr>
                         <td>@g.GivingDate.ToString("dd MMM yyyy")</td>
-                        <td>@(g.Member?.FullName ?? "Anonymous")</td>
+                        <td class="cell-title">@(g.Member?.FullName ?? "Anonymous")</td>
                         <td>@g.GivingType</td>
                         <td><strong>@g.Currency @g.Amount.ToString("N0")</strong></td>
                         <td><span class="method-badge">@g.PaymentMethod</span></td>
@@ -40,5 +40,6 @@
                 }
             </tbody>
         </table>
+        <partial name="_Pager" model="(PagerModel)ViewBag.Pager" />
     </div>
 </div>

@@ -1,6 +1,7 @@
 using ChurchMinistry.Data;
 using ChurchMinistry.Models;
 using ChurchMinistry.Services;
+using ChurchMinistry.ViewModels;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
@@ -25,23 +26,26 @@ namespace ChurchMinistry.Controllers
         }
 
         // ── Approval queue ──────────────────────────────────────
-        public async Task<IActionResult> Index()
+        public async Task<IActionResult> Index(int pendingPage = 1, int page = 1)
         {
+            var pendingPager = new PagerModel(pendingPage, "pending meetings", "pendingPage");
             var pending = await _db.MeetingRooms
                 .Include(r => r.HostMember)
                 .Where(r => r.ApprovalStatus == ApprovalStatus.Pending)
                 .OrderBy(r => r.ScheduledAt)
-                .ToListAsync();
+                .ToPageAsync(pendingPager);
 
+            var recentPager = new PagerModel(page, "decisions");
             var recent = await _db.MeetingRooms
                 .Include(r => r.HostMember)
                 .Where(r => r.ApprovalStatus != ApprovalStatus.Pending)
                 .OrderByDescending(r => r.ApprovedAt)
-                .Take(10)
-                .ToListAsync();
+                .ToPageAsync(recentPager);
 
             ViewBag.Pending = pending;
             ViewBag.Recent  = recent;
+            ViewBag.PendingPager = pendingPager;
+            ViewBag.RecentPager  = recentPager;
             return View();
         }
 

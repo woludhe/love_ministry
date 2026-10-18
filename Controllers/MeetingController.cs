@@ -52,7 +52,7 @@ namespace ChurchMinistry.Controllers
             => User.IsInRole("Admin") || User.IsInRole("Pastor");
 
         // ── Lobby ───────────────────────────────────────────────
-        public async Task<IActionResult> Index()
+        public async Task<IActionResult> Index(int scheduledPage = 1, int pastPage = 1)
         {
             var now = DateTime.UtcNow;
 
@@ -120,11 +120,15 @@ namespace ChurchMinistry.Controllers
                 .Include(r => r.Participants)
                 .Where(r => r.Status == RoomStatus.Ended && r.IsPublic && r.IsApproved);
 
+            var scheduledPager = new PagerModel(scheduledPage, "meetings", "scheduledPage");
+            var pastPager = new PagerModel(pastPage, "meetings", "pastPage");
             var vm = new MeetingLobbyViewModel
             {
                 LiveMeetings = await liveQ.OrderByDescending(r => r.StartedAt).ToListAsync(),
-                ScheduledMeetings = await scheduledQ.OrderBy(r => r.ScheduledAt).Take(10).ToListAsync(),
-                PastMeetings = await pastQ.OrderByDescending(r => r.EndedAt).Take(6).ToListAsync()
+                ScheduledMeetings = await scheduledQ.OrderBy(r => r.ScheduledAt).ToPageAsync(scheduledPager),
+                PastMeetings = await pastQ.OrderByDescending(r => r.EndedAt).ToPageAsync(pastPager),
+                ScheduledPager = scheduledPager,
+                PastPager = pastPager
             };
 
             // Sermons streamed through a meeting room; the live (else latest) one per room

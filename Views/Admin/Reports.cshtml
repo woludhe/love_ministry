@@ -73,7 +73,7 @@
                         @foreach (var mo in activeMonths)
                         {
                             <tr>
-                                <td>@monthNames[mo]</td>
+                                <td class="cell-title">@monthNames[mo]</td>
                                 @foreach (var m in usedMethods)
                                 {
                                     var v = Cell(mo, m);
@@ -85,7 +85,7 @@
                     </tbody>
                     <tfoot>
                         <tr>
-                            <td><strong>Year</strong></td>
+                            <td class="cell-title"><strong>Year</strong></td>
                             @foreach (var m in usedMethods)
                             {
                                 <td><strong>@rows.Where(r => r.Method == m).Sum(r => r.Total).ToString("N0")</strong></td>

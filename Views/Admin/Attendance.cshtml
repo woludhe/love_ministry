@@ -33,7 +33,7 @@
                 <div class="form-group">
                     <label>Select Service Session</label>
                     <select id="sessionSelect" class="form-control">
-                        @foreach (ServiceSession s in (ViewBag.Sessions ?? new List<ServiceSession>()))
+                        @foreach (ServiceSession s in (ViewBag.ScanSessions ?? new List<ServiceSession>()))
                         {
                             <option value="@s.Id">@s.Title – @s.ServiceDate.ToString("dd MMM yyyy")</option>
                         }
@@ -51,7 +51,7 @@
         </div>
 
         <div class="table-card" style="margin-top:2rem">
-            <h3>Recent Service Sessions</h3>
+            <h3>Service Sessions</h3>
             <table class="data-table">
                 <thead><tr><th>Title</th><th>Type</th><th>Date</th><th>Speaker</th><th>Attendance</th><th>Actions</th></tr></thead>
                 <tbody>
@@ -68,6 +68,7 @@
                     }
                 </tbody>
             </table>
+            <partial name="_Pager" model="(PagerModel)ViewBag.Pager" />
         </div>
     </div>
 @section Scripts {

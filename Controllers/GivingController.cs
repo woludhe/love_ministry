@@ -278,7 +278,7 @@ namespace ChurchMinistry.Controllers
         }
 
         // ── Giving history ───────────────────────────────────────
-        public async Task<IActionResult> History()
+        public async Task<IActionResult> History(int page = 1)
         {
             var member = await GetMemberAsync();
             if (member == null) return NotFound();
@@ -289,9 +289,12 @@ namespace ChurchMinistry.Controllers
                 .OrderByDescending(g => g.GivingDate)
                 .ToListAsync();
 
+            // Totals cover every gift; the table shows one page
+            var pager = new PagerModel(page, "gifts");
+            ViewBag.Pager = pager;
             return View(new GivingHistoryViewModel
             {
-                Givings        = givings,
+                Givings        = givings.ToPage(pager),
                 TotalThisYear  = givings.Where(g => g.GivingDate.Year == now.Year
                                                  && g.PaymentStatus == PaymentStatus.Successful)
                                         .Sum(g => g.Amount),

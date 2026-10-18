@@ -11,7 +11,7 @@ namespace ChurchMinistry.Models
     {
         [MaxLength(100)] public string FirstName { get; set; } = "";
         [MaxLength(100)] public string LastName { get; set; } = "";
-        public string FullName => $"{FirstName} {LastName}";
+        public string FullName => $"{FirstName} {LastName}".Trim();
         public string? ProfilePhoto { get; set; }
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
         public bool IsActive { get; set; } = true;

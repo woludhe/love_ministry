@@ -27,7 +27,7 @@
     {
         <div class="section-label" style="margin-bottom:1rem">
             <i class="fas fa-clock" style="color:var(--amber)"></i>
-            Pending Approval - @pending.Count
+            Pending Approval - @(((PagerModel)ViewBag.PendingPager).Total)
         </div>
 
         <div class="approval-list">
@@ -110,6 +110,7 @@
                 </div>
             }
         </div>
+        <partial name="_Pager" model="(PagerModel)ViewBag.PendingPager" />
     }
 
     @* {{-- Recent decisions --}} *@
@@ -134,7 +135,7 @@
                     @foreach (var room in recent)
                     {
                         <tr>
-                            <td>
+                            <td class="cell-title">
                                 <strong>@room.Title</strong>
                                 <br /><small class="meta">@room.RoomCode</small>
                             </td>
@@ -167,6 +168,7 @@
                     }
                 </tbody>
             </table>
+            <partial name="_Pager" model="(PagerModel)ViewBag.RecentPager" />
         </div>
     }
 </div>

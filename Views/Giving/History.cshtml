@@ -40,7 +40,7 @@
         <tr>
           <td>@g.GivingDate.ToString("dd MMM yyyy")</td>
           <td>@g.GivingType</td>
-          <td>@g.Currency @g.Amount.ToString("N0")</td>
+          <td class="cell-title">@g.Currency @g.Amount.ToString("N0")</td>
           <td><span class="method-badge">@g.PaymentMethod</span></td>
           <td><span class="status-badge status-@g.PaymentStatus.ToString().ToLower()">@g.PaymentStatus</span></td>
           <td class="meta">@g.TransactionId</td>
@@ -49,6 +49,7 @@
       @if (!Model.Givings.Any()) { <tr><td colspan="6" style="text-align:center;padding:2rem">No giving records yet. <a asp-controller="Giving" asp-action="Give">Give now</a></td></tr> }
       </tbody>
     </table>
+    <partial name="_Pager" model="(PagerModel)ViewBag.Pager" />
   </div>
   <div style="margin-top:1.5rem">
     <a asp-controller="Giving" asp-action="Give" class="btn btn-primary"><i class="fas fa-hand-holding-heart"></i> Give Again</a>
