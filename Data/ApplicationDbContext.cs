@@ -37,6 +37,7 @@ namespace ChurchMinistry.Data
         public DbSet<MeetingInvitation> MeetingInvitations => Set<MeetingInvitation>();
         public DbSet<SermonAttendance> SermonAttendances => Set<SermonAttendance>();
         public DbSet<MemberActivity> MemberActivities => Set<MemberActivity>();
+        public DbSet<RecurringGift> RecurringGifts => Set<RecurringGift>();
 
         protected override void OnModelCreating(ModelBuilder builder)
         {
@@ -92,6 +93,8 @@ namespace ChurchMinistry.Data
                 e.Property(g => g.PaymentStatus).HasConversion<string>();
                 e.HasOne(g => g.Member).WithMany(m => m.Givings)
                     .HasForeignKey(g => g.MemberId).OnDelete(DeleteBehavior.SetNull);
+                e.Ignore(g => g.NeedsReconciling);
+                e.HasIndex(g => new { g.IsManualPayment, g.PaymentStatus });
             });
 
             // Forum
@@ -191,6 +194,17 @@ namespace ChurchMinistry.Data
                     .HasForeignKey(a => a.MemberId).OnDelete(DeleteBehavior.Cascade);
                 e.HasIndex(a => new { a.MemberId, a.CreatedAt });
                 e.HasIndex(a => a.CreatedAt);
+            });
+
+            builder.Entity<RecurringGift>(e =>
+            {
+                e.Property(r => r.Amount).HasColumnType("decimal(18,2)");
+                e.Property(r => r.GivingType).HasConversion<string>().HasMaxLength(30);
+                e.Property(r => r.Interval).HasConversion<string>().HasMaxLength(20);
+                e.HasOne(r => r.Member).WithMany()
+                    .HasForeignKey(r => r.MemberId).OnDelete(DeleteBehavior.Cascade);
+                e.HasIndex(r => new { r.IsActive, r.NextDueAt });
+                e.HasIndex(r => r.SourceGivingId);
             });
 
             builder.Entity<LiveBibleVerse>(e =>

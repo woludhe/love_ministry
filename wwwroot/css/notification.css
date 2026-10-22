@@ -57,7 +57,7 @@
         animation: dropIn .18s ease;
     }
 
-@@keyframes dropIn {
+@keyframes dropIn {
     from {
         opacity: 0;
         transform: translateY(-6px)
@@ -213,3 +213,32 @@
         color: var(--purple);
         font-weight: 600;
     }
+
+/* Phones: the bell sits in the top bar; its panel spans the screen under the bar */
+@media (max-width: 768px) {
+    .notif-bell-btn {
+        width: 44px;
+        height: 44px;
+        font-size: 1.2rem;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .notif-count {
+        top: 4px;
+        right: 4px;
+    }
+
+    .notif-dropdown {
+        position: fixed;
+        top: 70px;
+        left: .5rem;
+        right: .5rem;
+        width: auto;
+    }
+
+    .notif-dropdown-list {
+        max-height: calc(100dvh - 190px);
+    }
+}

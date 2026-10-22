@@ -149,12 +149,53 @@ namespace ChurchMinistry.Models
         public RecurringInterval? RecurringInterval { get; set; }
         public DateTime GivingDate { get; set; } = DateTime.UtcNow;
         public DateTime? NextGivingDate { get; set; }
+
+        // Which PaymentMethodConfig was used, and whether it was a manual one (mobile money paid
+        // outside the site, cash). Manual gifts stay pending until an admin reconciles them.
+        [MaxLength(40)] public string? MethodCode { get; set; }
+        public bool IsManualPayment { get; set; }
+        public DateTime? ReconciledAt { get; set; }
+        [MaxLength(150)] public string? ReconciledBy { get; set; }
+        [MaxLength(100)] public string? ReceivedReference { get; set; }   // MoMo transaction ID / cash receipt no.
+        [MaxLength(500)] public string? ReconciliationNote { get; set; }
+
+        public bool NeedsReconciling => IsManualPayment
+            && PaymentStatus is PaymentStatus.Pending or PaymentStatus.PendingVerification;
     }
 
     public enum GivingType { Tithe, Offering, Partnership, BuildingFund, Missions, Seed, Welfare, Special, Other }
     public enum PaymentMethod { MTNMobileMoney, AirtelMoney, MPesa, Visa, Mastercard, Cash, Bank }
     public enum PaymentStatus { Free, Pending, Successful, Failed, PendingVerification, Refunded }
     public enum RecurringInterval { Weekly, Monthly, Quarterly, Annually }
+
+    // A member's "remind me to give this regularly" request. Nothing is charged automatically:
+    // when it's due the member gets a notification + email with a pre-filled Give link.
+    // Created inactive with the gift; switched on once that gift is paid or confirmed.
+    public class RecurringGift
+    {
+        public int Id { get; set; }
+        public int MemberId { get; set; }
+        public Member Member { get; set; } = null!;
+        public int? SourceGivingId { get; set; }          // the gift that set it up
+        public decimal Amount { get; set; }
+        [MaxLength(10)] public string Currency { get; set; } = "UGX";
+        public GivingType GivingType { get; set; }
+        [MaxLength(50)] public string? MethodCode { get; set; }   // PaymentMethodConfig.Code, pre-selected in the link
+        public RecurringInterval Interval { get; set; }
+        public DateTime? NextDueAt { get; set; }
+        public DateTime? LastRemindedAt { get; set; }
+        public bool IsActive { get; set; }
+        public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+        public DateTime? StoppedAt { get; set; }
+
+        public static DateTime Advance(DateTime from, RecurringInterval interval) => interval switch
+        {
+            RecurringInterval.Weekly => from.AddDays(7),
+            RecurringInterval.Quarterly => from.AddMonths(3),
+            RecurringInterval.Annually => from.AddYears(1),
+            _ => from.AddMonths(1)
+        };
+    }
 
     // ─────────────────────────────────────────────
     // Media / Sermons

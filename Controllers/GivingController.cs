@@ -44,7 +44,7 @@ namespace ChurchMinistry.Controllers
         // ── Give form GET ────────────────────────────────────────
         [HttpGet]
         [AllowAnonymous]
-        public async Task<IActionResult> Give(string? method = null, decimal? amount = null)
+        public async Task<IActionResult> Give(string? method = null, decimal? amount = null, GivingType? type = null)
         {
             var methods = await GetActiveMethodsAsync();
             var member  = await GetMemberAsync();
@@ -60,6 +60,7 @@ namespace ChurchMinistry.Controllers
                 Amount         = amount ?? 0,
                 Currency       = selected?.Currency ?? "UGX",
                 MethodCode     = selected?.Code ?? "",
+                GivingType     = type ?? GivingType.Tithe,   // giving reminders link back with the same type
             };
 
             ViewBag.PaymentMethods = methods;
@@ -119,7 +120,9 @@ namespace ChurchMinistry.Controllers
                 Amount            = vm.Amount,
                 Currency          = vm.Currency,
                 GivingType        = vm.GivingType,
-                PaymentMethod     = vm.PaymentMethod,  // store the method code
+                PaymentMethod     = ToPaymentMethod(methodConfig),
+                MethodCode        = methodConfig.Code,
+                IsManualPayment   = methodConfig.IntegrationType == PaymentIntegrationType.Manual,
                 PhoneNumber       = vm.PhoneNumber,
                 IsRecurring       = vm.IsRecurring,
                 RecurringInterval = vm.RecurringInterval,
@@ -129,6 +132,22 @@ namespace ChurchMinistry.Controllers
             };
             _db.Givings.Add(giving);
             await _db.SaveChangesAsync();
+
+            // "Remind me to give this regularly": set up now, switched on once this gift is paid or confirmed
+            if (vm.IsRecurring && vm.RecurringInterval != null && member != null)
+            {
+                _db.RecurringGifts.Add(new RecurringGift
+                {
+                    MemberId       = member.Id,
+                    SourceGivingId = giving.Id,
+                    Amount         = vm.Amount,
+                    Currency       = vm.Currency,
+                    GivingType     = vm.GivingType,
+                    MethodCode     = vm.MethodCode,
+                    Interval       = vm.RecurringInterval.Value
+                });
+                await _db.SaveChangesAsync();
+            }
 
             // ── Route based on integration type ─────────────────
             if (methodConfig.IntegrationType == PaymentIntegrationType.Flutterwave)
@@ -160,10 +179,13 @@ namespace ChurchMinistry.Controllers
         {
             var giving = await _db.Givings.FindAsync(givingId);
             if (giving == null) return NotFound();
+            if (giving.PaymentStatus != PaymentStatus.Pending)   // already confirmed, reconciled or resubmitted
+                return RedirectToAction("GivingThankYou", new { id = givingId });
 
             giving.PaymentStatus = PaymentStatus.PendingVerification;
             giving.Notes         = (giving.Notes ?? "") + " [Member confirmed payment]";
             await _db.SaveChangesAsync();
+            await StartRecurringReminderAsync(giving);
             if (giving.MemberId.HasValue)
                 await _activity.LogAsync(giving.MemberId.Value, MemberActivityType.Giving,
                     $"{giving.GivingType} {giving.Currency} {giving.Amount:N0} (pending verification)",
@@ -183,7 +205,7 @@ namespace ChurchMinistry.Controllers
                         Message  = $"A {giving.GivingType} of {giving.Currency} " +
                                    $"{giving.Amount:N0} via {giving.PaymentMethod} " +
                                    $"needs manual verification. Ref: {giving.TransactionId}",
-                        Link     = "/Admin/Giving"
+                        Link     = "/Admin/Givings?status=reconcile"
                     });
                 }
             }
@@ -253,6 +275,7 @@ namespace ChurchMinistry.Controllers
                     giving.PaymentStatus  = PaymentStatus.Successful;
                     giving.FlutterwaveRef = transaction_id;
                     await _db.SaveChangesAsync();
+                    await StartRecurringReminderAsync(giving);
                     if (giving.MemberId.HasValue)
                         await _activity.LogAsync(giving.MemberId.Value, MemberActivityType.Giving,
                             $"{giving.GivingType} {giving.Currency} {giving.Amount:N0}", giving.Id);
@@ -301,6 +324,9 @@ namespace ChurchMinistry.Controllers
             // Totals cover every gift; the table shows one page
             var pager = new PagerModel(page, "gifts");
             ViewBag.Pager = pager;
+            ViewBag.Reminders = await _db.RecurringGifts
+                .Where(r => r.MemberId == member.Id && r.IsActive)
+                .OrderBy(r => r.NextDueAt).ToListAsync();
             return View(new GivingHistoryViewModel
             {
                 Givings        = givings.ToPage(pager),
@@ -315,6 +341,40 @@ namespace ChurchMinistry.Controllers
                                         .GroupBy(g => g.GivingType.ToString())
                                         .ToDictionary(g => g.Key, g => g.Sum(x => x.Amount))
             });
+        }
+
+        // ── Stop a giving reminder ───────────────────────────────
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        public async Task<IActionResult> StopReminder(int id)
+        {
+            var member = await GetMemberAsync();
+            var reminder = await _db.RecurringGifts.FirstOrDefaultAsync(r => r.Id == id && r.MemberId == member!.Id);
+            if (reminder != null && reminder.IsActive)
+            {
+                reminder.IsActive  = false;
+                reminder.StoppedAt = DateTime.UtcNow;
+                await _db.SaveChangesAsync();
+                TempData["Success"] = "Giving reminder stopped.";
+            }
+            return RedirectToAction("History");
+        }
+
+        private Task StartRecurringReminderAsync(Giving giving)
+            => RecurringGiftReminderService.StartForGivingAsync(_db, giving);
+
+        // Payment methods are admin-configured, so match the config's code/name to the closest enum value
+        private static PaymentMethod ToPaymentMethod(PaymentMethodConfig m)
+        {
+            var s = $"{m.Code} {m.Name}".ToLowerInvariant();
+            if (s.Contains("airtel")) return PaymentMethod.AirtelMoney;
+            if (s.Contains("mpesa") || s.Contains("m-pesa")) return PaymentMethod.MPesa;
+            if (s.Contains("mtn") || s.Contains("momo")) return PaymentMethod.MTNMobileMoney;
+            if (s.Contains("master")) return PaymentMethod.Mastercard;
+            if (s.Contains("visa") || s.Contains("card")) return PaymentMethod.Visa;
+            if (s.Contains("cash")) return PaymentMethod.Cash;
+            if (s.Contains("bank")) return PaymentMethod.Bank;
+            return m.IntegrationType == PaymentIntegrationType.Manual ? PaymentMethod.Cash : PaymentMethod.Visa;
         }
 
         // ── API: get amounts for a method (used by JS) ───────────

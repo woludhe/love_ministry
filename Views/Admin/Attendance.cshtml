@@ -29,7 +29,7 @@
             </div>
 
             <div class="table-card">
-                <h3>QR Check-in Scanner</h3>
+                <h3>Check-in</h3>
                 <div class="form-group">
                     <label>Select Service Session</label>
                     <select id="sessionSelect" class="form-control">
@@ -39,14 +39,40 @@
                         }
                     </select>
                 </div>
-                <div class="form-group">
-                    <label>Scan / Enter QR Code</label>
-                    <input type="text" id="qrInput" class="form-control" placeholder="Scan QR or type member code..." />
-                    <small>Focus this field and scan with a barcode scanner</small>
+
+                <div id="checkinResult" class="checkin-result" aria-live="polite"></div>
+
+                <div class="checkin-tabs" role="tablist">
+                    <button type="button" class="checkin-tab active" data-tab="camera"><i class="fas fa-camera"></i> Camera</button>
+                    <button type="button" class="checkin-tab" data-tab="scanner"><i class="fas fa-barcode"></i> Scanner / ID</button>
+                    <button type="button" class="checkin-tab" data-tab="search"><i class="fas fa-magnifying-glass"></i> Search</button>
                 </div>
-                <button onclick="checkIn()" class="btn btn-primary"><i class="fas fa-qrcode"></i> Check In</button>
-                @* <button onclick="checkIn()" class="btn btn-primary">Manual Check In</button> *@
-                <div id="checkinResult" style="margin-top:1rem"></div>
+
+                @* Phone/laptop camera reads the member's QR code *@
+                <div class="checkin-pane active" data-pane="camera">
+                    <div id="qrReader" class="qr-reader"></div>
+                    <button type="button" id="cameraBtn" class="btn btn-primary" onclick="toggleCamera()">
+                        <i class="fas fa-video"></i> Start camera
+                    </button>
+                    <small class="checkin-hint">Point the camera at the member's QR code. Each code checks in once.</small>
+                </div>
+
+                @* USB/Bluetooth barcode scanner (types the code + Enter), or a typed member ID *@
+                <div class="checkin-pane" data-pane="scanner">
+                    <div class="form-group">
+                        <input type="text" id="qrInput" class="form-control" placeholder="Scan QR or type member ID, e.g. 23" autocomplete="off" />
+                        <small class="checkin-hint">Click here, then scan with a barcode scanner, or type a member ID and press Enter.</small>
+                    </div>
+                    <button type="button" onclick="checkInCode(document.getElementById('qrInput').value)" class="btn btn-primary">
+                        <i class="fas fa-qrcode"></i> Check In
+                    </button>
+                </div>
+
+                @* Manual: for members without their QR code *@
+                <div class="checkin-pane" data-pane="search">
+                    <input type="search" id="memberSearch" class="form-control" placeholder="Name, email, phone or member ID…" autocomplete="off" />
+                    <ul id="searchResults" class="checkin-results"></ul>
+                </div>
             </div>
         </div>
 
@@ -72,22 +98,118 @@
         </div>
     </div>
 @section Scripts {
+    <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
     <script>
-        async function checkIn() {
-            const qr = document.getElementById('qrInput').value.trim();
-            const sessionId = document.getElementById('sessionSelect').value;
-            if (!qr) return;
-            const r = await fetch('/Admin/CheckInMember', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ qrCode: qr, serviceSessionId: parseInt(sessionId) })
-            });
-            const d = await r.json();
+        const sessionId = () => parseInt(document.getElementById('sessionSelect').value);
+        let resultTimer;
+
+        function showResult(d) {
             const el = document.getElementById('checkinResult');
-            el.innerHTML = `<div class="alert ${d.success ? 'alert-success' : 'alert-error'}">${d.message}</div>`;
-            if (d.success) document.getElementById('qrInput').value = '';
-            setTimeout(() => el.innerHTML = '', 4000);
+            el.className = 'checkin-result ' + (d.success ? 'is-ok' : 'is-error');
+            el.textContent = d.message;
+            clearTimeout(resultTimer);
+            resultTimer = setTimeout(() => { el.className = 'checkin-result'; el.textContent = ''; }, 5000);
         }
-        document.getElementById('qrInput').addEventListener('keypress', e => { if (e.key === 'Enter') checkIn(); });
+
+        async function post(url, body) {
+            try {
+                const r = await fetch(url, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(body)
+                });
+                return await r.json();
+            } catch {
+                return { success: false, message: 'Could not reach the server. Try again.' };
+            }
+        }
+
+        // ── Scanned QR or typed member ID ──
+        async function checkInCode(code) {
+            code = (code || '').trim();
+            if (!code || !sessionId()) return showResult({ success: false, message: 'Select a service session first.' });
+            const d = await post('/Admin/CheckInMember', { qrCode: code, serviceSessionId: sessionId() });
+            showResult(d);
+            if (d.success) document.getElementById('qrInput').value = '';
+        }
+        document.getElementById('qrInput').addEventListener('keydown', e => {
+            if (e.key === 'Enter') { e.preventDefault(); checkInCode(e.target.value); }
+        });
+
+        // ── Camera scanning ──
+        let reader = null, lastCode = '', lastAt = 0;
+        async function toggleCamera() {
+            const btn = document.getElementById('cameraBtn');
+            if (reader) {
+                await reader.stop().catch(() => {});
+                reader = null;
+                btn.innerHTML = '<i class="fas fa-video"></i> Start camera';
+                return;
+            }
+            if (typeof Html5Qrcode === 'undefined')
+                return showResult({ success: false, message: 'The camera scanner could not load. Use the Scanner / ID or Search tab.' });
+            reader = new Html5Qrcode('qrReader');
+            try {
+                await reader.start({ facingMode: 'environment' }, { fps: 10, qrbox: 220 }, code => {
+                    // The same code stays in view for a while: only act on it once every few seconds
+                    const now = Date.now();
+                    if (code === lastCode && now - lastAt < 4000) return;
+                    lastCode = code; lastAt = now;
+                    checkInCode(code);
+                });
+                btn.innerHTML = '<i class="fas fa-video-slash"></i> Stop camera';
+            } catch {
+                reader = null;
+                showResult({ success: false, message: 'Camera not available. Allow camera access, or use the Scanner / ID or Search tab.' });
+            }
+        }
+
+        // ── Manual search ──
+        let searchTimer;
+        const results = document.getElementById('searchResults');
+        document.getElementById('memberSearch').addEventListener('input', e => {
+            clearTimeout(searchTimer);
+            searchTimer = setTimeout(() => search(e.target.value.trim()), 250);
+        });
+
+        async function search(term) {
+            if (term.length < 2 && !/^#?\d+$/.test(term)) { results.innerHTML = ''; return; }
+            const r = await fetch(`/Admin/CheckInSearch?term=${encodeURIComponent(term)}&sessionId=${sessionId()}`);
+            const members = await r.json();
+            results.innerHTML = '';
+            if (!members.length) { results.innerHTML = '<li class="meta">No members found.</li>'; return; }
+            for (const m of members) {
+                const li = document.createElement('li');
+                li.innerHTML = `<img class="avatar-xs" alt=""><span class="checkin-name"><strong></strong><small></small></span>`;
+                li.querySelector('img').src = m.photo;
+                li.querySelector('strong').textContent = `${m.name} (#${m.id})`;
+                li.querySelector('small').textContent = m.email;
+                const btn = document.createElement('button');
+                btn.type = 'button';
+                btn.className = 'btn btn-sm ' + (m.checkedIn ? 'btn-outline' : 'btn-primary');
+                btn.textContent = m.checkedIn ? 'Checked in' : 'Check in';
+                btn.disabled = m.checkedIn;
+                btn.onclick = async () => {
+                    const d = await post('/Admin/ManualCheckIn', { memberId: m.id, serviceSessionId: sessionId() });
+                    showResult(d);
+                    if (d.success) { btn.textContent = 'Checked in'; btn.disabled = true; btn.className = 'btn btn-sm btn-outline'; }
+                };
+                li.appendChild(btn);
+                results.appendChild(li);
+            }
+        }
+
+        // Re-check "already checked in" when the session changes
+        document.getElementById('sessionSelect').addEventListener('change', () =>
+            search(document.getElementById('memberSearch').value.trim()));
+
+        // ── Tabs ──
+        document.querySelectorAll('.checkin-tab').forEach(tab => tab.addEventListener('click', async () => {
+            document.querySelectorAll('.checkin-tab').forEach(t => t.classList.toggle('active', t === tab));
+            document.querySelectorAll('.checkin-pane').forEach(p => p.classList.toggle('active', p.dataset.pane === tab.dataset.tab));
+            if (tab.dataset.tab !== 'camera' && reader) await toggleCamera();   // stop the camera when leaving its tab
+            if (tab.dataset.tab === 'scanner') document.getElementById('qrInput').focus();
+            if (tab.dataset.tab === 'search') document.getElementById('memberSearch').focus();
+        }));
     </script>
 }

@@ -1,5 +1,5 @@
 @model ChurchMinistry.Models.Giving
-@{ ViewData["Title"] = "Payment Pending"; Layout = "~/Views/Shared/_Layout.cshtml"; }
+@{ ViewData["Title"] = "Payment Pending"; Layout = User.Identity?.IsAuthenticated == true ? "~/Views/Shared/_MemberDashboard_Layout.cshtml" : "~/Views/Shared/_Layout.cshtml"; }
 <div class="auth-page">
   <div class="auth-card">
     <div style="font-size:3rem;margin-bottom:1rem">📱</div>

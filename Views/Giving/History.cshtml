@@ -22,6 +22,28 @@
       <div class="kpi-info"><span class="kpi-label">This Year</span><span class="kpi-value">UGX @Model.TotalThisYear.ToString("N0")</span></div>
     </div>
   </div>
+  @{ var reminders = ViewBag.Reminders as List<ChurchMinistry.Models.RecurringGift> ?? new(); }
+  @if (reminders.Any()) {
+    <div class="table-card" style="margin-bottom:2rem">
+      <h3><i class="fas fa-bell"></i> Giving Reminders</h3>
+      <p class="meta">We'll remind you when each gift is due, with a link to give. Nothing is charged automatically.</p>
+      @foreach (var r in reminders) {
+        <div class="reminder-row">
+          <div>
+            <strong>@r.GivingType · @r.Currency @r.Amount.ToString("N0")</strong>
+            <span class="meta">@ChurchMinistry.Services.RecurringGiftReminderService.IntervalWord(r.Interval) · next reminder @(r.NextDueAt?.ToLocalTime().ToString("dd MMM yyyy") ?? "—")</span>
+          </div>
+          <div class="reminder-actions">
+            <a href="@ChurchMinistry.Services.RecurringGiftReminderService.GiveLink(r)" class="btn btn-outline btn-sm">Give now</a>
+            <form asp-action="StopReminder" asp-route-id="@r.Id" method="post"
+                  onsubmit="return confirm('Stop this giving reminder?')">
+              <button type="submit" class="btn btn-sm btn-outline">Stop</button>
+            </form>
+          </div>
+        </div>
+      }
+    </div>
+  }
   @if (Model.ByType.Any()) {
     <div class="table-card" style="margin-bottom:2rem">
       <h3>By Category</h3>

@@ -176,17 +176,19 @@ namespace ChurchMinistry.Controllers
 
             await _userManager.AddToRoleAsync(user, "Member");
 
-            var qrData = _qr.GetMemberQrData(0, vm.Email);
             var member = new Member
             {
                 FirstName = vm.FirstName,
                 LastName = vm.LastName,
                 Email = vm.Email,
                 Phone = vm.Phone,
-                UserId = user.Id,
-                QrCode = _qr.GenerateQrCode(qrData)
+                UserId = user.Id
             };
             _db.Members.Add(member);
+            await _db.SaveChangesAsync();
+
+            // The QR code carries the member ID, which only exists once the member is saved
+            member.QrCode = _qr.GenerateQrCode(_qr.GetMemberQrData(member.Id, member.Email));
             await _db.SaveChangesAsync();
 
             await _signInManager.SignInAsync(user, false);
@@ -237,7 +239,7 @@ namespace ChurchMinistry.Controllers
             // The password change renews the security stamp; keep this session signed in
             await _signInManager.RefreshSignInAsync(user);
             TempData["Success"] = "Your password has been changed.";
-            return RedirectToAction("ChangePassword");
+            return RedirectToAction("Profile", "Members");
         }
 
         [HttpGet] public IActionResult ForgotPassword() => View();
@@ -663,10 +665,18 @@ namespace ChurchMinistry.Controllers
             return View(await q.OrderBy(m => m.FirstName).ToPageAsync(pager));
         }
 
-        public async Task<IActionResult> MyQrCode()
+        public async Task<IActionResult> MyQrCode([FromServices] IQrCodeService qr)
         {
             var member = await GetCurrentMemberAsync();
             if (member == null) return NotFound();
+
+            // Repair codes made with the wrong member ID (older sign-ups) or none at all
+            var expected = qr.GenerateQrCode(qr.GetMemberQrData(member.Id, member.Email));
+            if (member.QrCode != expected)
+            {
+                member.QrCode = expected;
+                await _db.SaveChangesAsync();
+            }
             return View(member);
         }
 
@@ -1682,8 +1692,40 @@ namespace ChurchMinistry.Controllers
         [HttpPost]
         public async Task<IActionResult> CheckInMember([FromBody] AttendanceCheckInViewModel vm)
         {
-            var success = await _attendance.CheckInAsync(vm.QrCode, vm.ServiceSessionId);
-            return Json(new { success, message = success ? "Checked in successfully!" : "Already checked in or invalid QR." });
+            var r = await _attendance.CheckInAsync(vm.QrCode, vm.ServiceSessionId);
+            return Json(new { success = r.Success, message = r.Message });
+        }
+
+        // Manual check-in: find a member by name, email, phone or ID…
+        public async Task<IActionResult> CheckInSearch(string term, int sessionId)
+        {
+            term = term?.Trim().TrimStart('#') ?? "";
+            if (term.Length < 2 && !int.TryParse(term, out _)) return Json(Array.Empty<object>());
+            var id = int.TryParse(term, out var n) ? n : 0;
+            var results = await _db.Members
+                .Where(m => m.Id == id || m.FirstName.Contains(term) || m.LastName.Contains(term)
+                         || (m.FirstName + " " + m.LastName).Contains(term)
+                         || m.Email.Contains(term) || (m.Phone != null && m.Phone.Contains(term)))
+                .OrderBy(m => m.FirstName).ThenBy(m => m.LastName)
+                .Take(10)
+                .Select(m => new
+                {
+                    id = m.Id,
+                    name = m.FirstName + " " + m.LastName,
+                    email = m.Email,
+                    photo = m.ProfilePhoto ?? "/images/avatar-default.png",
+                    checkedIn = m.AttendanceRecords.Any(a => a.ServiceSessionId == sessionId)
+                })
+                .ToListAsync();
+            return Json(results);
+        }
+
+        // …and check them in (recorded as Manual)
+        [HttpPost]
+        public async Task<IActionResult> ManualCheckIn([FromBody] ManualCheckInViewModel vm)
+        {
+            var r = await _attendance.CheckInMemberAsync(vm.MemberId, vm.ServiceSessionId, CheckInMethod.Manual);
+            return Json(new { success = r.Success, message = r.Message });
         }
 
         public async Task<IActionResult> AttendanceReport(int sessionId, int page = 1)
@@ -1698,16 +1740,95 @@ namespace ChurchMinistry.Controllers
         }
 
         // ── Giving management ──
-        public async Task<IActionResult> Givings(string? type, string? method, int page = 1)
+        // status: a PaymentStatus name, or "reconcile" for manual gifts still waiting on an admin
+        public async Task<IActionResult> Givings(string? type, string? method, string? status, int page = 1)
         {
             var pager = new PagerModel(page, "givings");
             var q = _db.Givings.Include(g => g.Member).AsQueryable();
             if (Enum.TryParse<GivingType>(type, out var gt)) q = q.Where(g => g.GivingType == gt);
             if (Enum.TryParse<PaymentMethod>(method, out var pm)) q = q.Where(g => g.PaymentMethod == pm);
+            if (status == "reconcile") q = q.Where(UnreconciledGiving);
+            else if (Enum.TryParse<PaymentStatus>(status, out var ps)) q = q.Where(g => g.PaymentStatus == ps);
             ViewBag.Givings = await q.OrderByDescending(g => g.GivingDate).ToPageAsync(pager);
             ViewBag.Total = pager.Total;
             ViewBag.Pager = pager;
+            ViewBag.ToReconcile = await _db.Givings.CountAsync(UnreconciledGiving);
+            ViewBag.Type = type; ViewBag.Method = method; ViewBag.Status = status;
             return View();
+        }
+
+        // Same rule as Giving.NeedsReconciling, as a query EF can translate
+        private static readonly System.Linq.Expressions.Expression<Func<Giving, bool>> UnreconciledGiving =
+            g => g.IsManualPayment && (g.PaymentStatus == PaymentStatus.Pending
+                                    || g.PaymentStatus == PaymentStatus.PendingVerification);
+
+        // Admin has checked the MoMo statement / cash box: mark the gift received or not received
+        [HttpPost, ValidateAntiForgeryToken]
+        public async Task<IActionResult> ReconcileGiving(int id, bool received, string? receivedReference,
+            string? note, string? returnUrl)
+        {
+            var back = Url.IsLocalUrl(returnUrl) ? returnUrl! : Url.Action(nameof(Givings))!;
+            var giving = await _db.Givings.Include(g => g.Member).FirstOrDefaultAsync(g => g.Id == id);
+            if (giving == null) return NotFound();
+            if (!giving.NeedsReconciling)
+            {
+                TempData["Info"] = $"Gift {giving.TransactionId} was already {giving.PaymentStatus.ToString().ToLower()}.";
+                return LocalRedirect(back);
+            }
+
+            var user = await _userManager.GetUserAsync(User);
+            var me = user == null ? null : await _db.Members.FirstOrDefaultAsync(m => m.UserId == user.Id);
+            receivedReference = receivedReference?.Trim();
+            note = note?.Trim();
+
+            giving.PaymentStatus      = received ? PaymentStatus.Successful : PaymentStatus.Failed;
+            giving.ReconciledAt       = DateTime.UtcNow;
+            giving.ReconciledBy       = me?.FullName ?? user?.Email ?? User.Identity?.Name;
+            giving.ReceivedReference  = string.IsNullOrEmpty(receivedReference) ? null
+                                        : receivedReference[..Math.Min(receivedReference.Length, 100)];
+            giving.ReconciliationNote = string.IsNullOrEmpty(note) ? null : note[..Math.Min(note.Length, 500)];
+            await _db.SaveChangesAsync();
+
+            var amount = $"{giving.Currency} {giving.Amount:N0}";
+            if (received)
+            {
+                await RecurringGiftReminderService.StartForGivingAsync(_db, giving);
+                if (giving.MemberId.HasValue)
+                {
+                    await _activity.LogAsync(giving.MemberId.Value, MemberActivityType.Giving,
+                        $"{giving.GivingType} {amount}", giving.Id, oncePerDay: true);
+                    _db.Notifications.Add(new Notification
+                    {
+                        MemberId = giving.MemberId.Value,
+                        Title    = "Giving Confirmed ✅",
+                        Message  = $"Your {giving.GivingType} of {amount} was received. Thank you!",
+                        Link     = "/Giving/History"
+                    });
+                    await _db.SaveChangesAsync();
+                }
+                try { await _email.SendReceiptAsync(giving, giving.Member); }
+                catch { TempData["Info"] = "The receipt email could not be sent."; }
+                TempData["Success"] = $"{giving.GivingType} of {amount} ({giving.TransactionId}) marked successful.";
+            }
+            else
+            {
+                await RecurringGiftReminderService.StopForGivingAsync(_db, giving);
+                if (giving.MemberId.HasValue)
+                {
+                    _db.Notifications.Add(new Notification
+                    {
+                        MemberId = giving.MemberId.Value,
+                        Title    = "Giving not received",
+                        Message  = $"We couldn't find your {giving.GivingType} of {amount} " +
+                                   $"(ref {giving.TransactionId}). Please contact the church office." +
+                                   (giving.ReconciliationNote == null ? "" : $" Note: {giving.ReconciliationNote}"),
+                        Link     = "/Giving/History"
+                    });
+                    await _db.SaveChangesAsync();
+                }
+                TempData["Success"] = $"{giving.GivingType} of {amount} ({giving.TransactionId}) marked not received.";
+            }
+            return LocalRedirect(back);
         }
 
         // ── Sermons management ──

@@ -1,41 +1,91 @@
 @{
     ViewData["Title"] = "Givings"; Layout = "~/Views/Shared/_AdminDashboard_Layout.cshtml";
+    string? selType = ViewBag.Type, selMethod = ViewBag.Method, selStatus = ViewBag.Status;
+    int toReconcile = ViewBag.ToReconcile ?? 0;
+    var returnUrl = Context.Request.Path + Context.Request.QueryString;
 }
 @using ChurchMinistry.Models
 
 <div class="admin-main">
     <div class="admin-topbar"><h1>Givings (@ViewBag.Total)</h1></div>
+
+    @if (toReconcile > 0 && selStatus != "reconcile")
+    {
+        <a asp-action="Givings" asp-route-status="reconcile" class="recon-banner">
+            <i class="fas fa-scale-balanced"></i>
+            <span><strong>@toReconcile</strong> manual @(toReconcile == 1 ? "gift needs" : "gifts need") reconciling (mobile money / cash)</span>
+            <span class="recon-banner-go">Review <i class="fas fa-arrow-right"></i></span>
+        </a>
+    }
+
     <form method="get" class="filter-bar">
         <select name="type" class="form-control">
             <option value="">All Types</option>
             @foreach (var t in Enum.GetValues<GivingType>())
             {
-                <option>@t</option>
+                <option selected="@(selType == t.ToString())">@t</option>
             }
         </select>
         <select name="method" class="form-control">
             <option value="">All Methods</option>
             @foreach (var m in Enum.GetValues<PaymentMethod>())
             {
-                <option>@m</option>
+                <option selected="@(selMethod == m.ToString())">@m</option>
+            }
+        </select>
+        <select name="status" class="form-control">
+            <option value="">All Statuses</option>
+            <option value="reconcile" selected="@(selStatus == "reconcile")">Needs reconciling (@toReconcile)</option>
+            @foreach (var s in Enum.GetValues<PaymentStatus>())
+            {
+                <option selected="@(selStatus == s.ToString())">@s</option>
             }
         </select>
         <button class="btn btn-primary">Filter</button>
     </form>
     <div class="table-card">
         <table class="data-table">
-            <thead><tr><th>Date</th><th>Member</th><th>Type</th><th>Amount</th><th>Method</th><th>Status</th><th>Reference</th></tr></thead>
+            <thead><tr><th>Date</th><th>Member</th><th>Type</th><th>Amount</th><th>Method</th><th>Status</th><th>Reference</th><th></th></tr></thead>
             <tbody>
                 @foreach (Giving g in (ViewBag.Givings ?? new List<Giving>()))
                 {
                     <tr>
                         <td>@g.GivingDate.ToString("dd MMM yyyy")</td>
-                        <td class="cell-title">@(g.Member?.FullName ?? "Anonymous")</td>
+                        <td class="cell-title">@(g.Member?.FullName ?? g.AnonymousName ?? "Anonymous")</td>
                         <td>@g.GivingType</td>
                         <td><strong>@g.Currency @g.Amount.ToString("N0")</strong></td>
-                        <td><span class="method-badge">@g.PaymentMethod</span></td>
-                        <td><span class="status-badge status-@g.PaymentStatus.ToString().ToLower()">@g.PaymentStatus</span></td>
-                        <td class="meta">@g.TransactionId</td>
+                        <td>
+                            <span class="method-badge">@g.PaymentMethod</span>
+                            @if (g.IsManualPayment) { <span class="meta recon-manual">manual</span> }
+                        </td>
+                        <td>
+                            <span class="status-badge status-@g.PaymentStatus.ToString().ToLower()">@(g.PaymentStatus == PaymentStatus.PendingVerification ? "Member says paid" : g.PaymentStatus.ToString())</span>
+                            @if (g.ReconciledAt != null)
+                            {
+                                <div class="meta recon-by" title="@g.ReconciliationNote">
+                                    by @g.ReconciledBy, @g.ReconciledAt.Value.ToLocalTime().ToString("dd MMM HH:mm")
+                                </div>
+                            }
+                        </td>
+                        <td class="meta">
+                            @g.TransactionId
+                            @if (!string.IsNullOrEmpty(g.PhoneNumber)) { <div>Phone: @g.PhoneNumber</div> }
+                            @if (!string.IsNullOrEmpty(g.ReceivedReference)) { <div>Received: @g.ReceivedReference</div> }
+                        </td>
+                        <td>
+                            @if (g.NeedsReconciling)
+                            {
+                                <button type="button" class="btn btn-primary btn-xs js-reconcile"
+                                        data-id="@g.Id"
+                                        data-who="@(g.Member?.FullName ?? g.AnonymousName ?? "Anonymous")"
+                                        data-amount="@g.Currency @g.Amount.ToString("N0")"
+                                        data-what="@g.GivingType via @g.PaymentMethod"
+                                        data-ref="@g.TransactionId"
+                                        data-phone="@g.PhoneNumber">
+                                    <i class="fas fa-scale-balanced"></i> Reconcile
+                                </button>
+                            }
+                        </td>
                     </tr>
                 }
             </tbody>
@@ -43,3 +93,59 @@
         <partial name="_Pager" model="(PagerModel)ViewBag.Pager" />
     </div>
 </div>
+
+<dialog class="recon-dialog" id="reconDialog" aria-labelledby="reconTitle">
+    <form method="post" asp-action="ReconcileGiving">
+        <input type="hidden" name="id" id="reconId" />
+        <input type="hidden" name="returnUrl" value="@returnUrl" />
+        <h2 id="reconTitle">Reconcile gift</h2>
+        <dl class="recon-summary">
+            <dt>From</dt><dd id="reconWho"></dd>
+            <dt>Amount</dt><dd id="reconAmount"></dd>
+            <dt>For</dt><dd id="reconWhat"></dd>
+            <dt>Reference</dt><dd id="reconRef"></dd>
+            <dt class="js-phone">Phone</dt><dd class="js-phone" id="reconPhone"></dd>
+        </dl>
+        <p class="meta">Check the mobile money statement or cash record for this amount before confirming.</p>
+        <div class="form-group">
+            <label for="reconReceived">Transaction ID / receipt no. <span class="meta">(optional)</span></label>
+            <input class="form-control" name="receivedReference" id="reconReceived" maxlength="100"
+                   placeholder="e.g. MoMo transaction ID or cash receipt number" />
+        </div>
+        <div class="form-group">
+            <label for="reconNote">Note <span class="meta">(optional, shown to the member if not received)</span></label>
+            <textarea class="form-control" name="note" id="reconNote" rows="2" maxlength="500"></textarea>
+        </div>
+        <div class="recon-actions">
+            <button type="button" class="btn btn-outline" id="reconCancel">Cancel</button>
+            <button type="submit" name="received" value="false" class="btn btn-outline recon-reject">
+                <i class="fas fa-xmark"></i> Not received
+            </button>
+            <button type="submit" name="received" value="true" class="btn btn-primary">
+                <i class="fas fa-check"></i> Mark successful
+            </button>
+        </div>
+    </form>
+</dialog>
+
+<script>
+(() => {
+    const dialog = document.getElementById('reconDialog');
+    const set = (id, v) => document.getElementById(id).textContent = v || '';
+    document.querySelectorAll('.js-reconcile').forEach(btn => btn.addEventListener('click', () => {
+        const d = btn.dataset;
+        document.getElementById('reconId').value = d.id;
+        set('reconWho', d.who); set('reconAmount', d.amount); set('reconWhat', d.what);
+        set('reconRef', d.ref); set('reconPhone', d.phone);
+        dialog.querySelectorAll('.js-phone').forEach(el => el.hidden = !d.phone);
+        document.getElementById('reconReceived').value = '';
+        document.getElementById('reconNote').value = '';
+        dialog.showModal();
+    }));
+    document.getElementById('reconCancel').addEventListener('click', () => dialog.close());
+    // Don't let a double click submit twice
+    dialog.querySelector('form').addEventListener('submit', e => {
+        setTimeout(() => dialog.querySelectorAll('button[type=submit]').forEach(b => b.disabled = true));
+    });
+})();
+</script>

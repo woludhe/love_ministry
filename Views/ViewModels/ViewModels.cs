@@ -192,6 +192,12 @@ namespace ChurchMinistry.ViewModels
         public int ServiceSessionId { get; set; }
     }
 
+    public class ManualCheckInViewModel
+    {
+        public int MemberId { get; set; }
+        public int ServiceSessionId { get; set; }
+    }
+
     // ─── Media ───
     public class SermonIndexViewModel
     {

@@ -70,22 +70,28 @@ namespace ChurchMinistry.Controllers
             return Json(new { count = unreadCount, items });
         }
 
-        // Mark a single notification as read and redirect to its link
-        [HttpPost]
+        // Mark a single notification as read and redirect to its link.
+        // GET because the navbar dropdown items are plain links.
+        [HttpGet]
         public async Task<IActionResult> MarkRead(int id)
         {
             var member = await GetMemberAsync();
-            var notification = await _db.Notifications
-                .FirstOrDefaultAsync(n => n.Id == id && n.MemberId == member!.Id);
+            if (member == null) return RedirectToAction(nameof(Index));
 
-            if (notification != null)
+            var notification = await _db.Notifications
+                .FirstOrDefaultAsync(n => n.Id == id && n.MemberId == member.Id);
+
+            if (notification != null && !notification.IsRead)
             {
                 notification.IsRead = true;
                 await _db.SaveChangesAsync();
             }
 
-            var link = notification?.Link ?? "/Members/Dashboard";
-            return Redirect(link);
+            // Only follow links within the site; anything else lands on the notifications page
+            var link = notification?.Link;
+            return !string.IsNullOrEmpty(link) && Url.IsLocalUrl(link)
+                ? LocalRedirect(link)
+                : RedirectToAction(nameof(Index));
         }
 
         // Mark all as read (called from dropdown)

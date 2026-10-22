@@ -1,0 +1,95 @@
+@* Main site menu, shared by _Layout, _MemberDashboard_Layout and _AdminDashboard_Layout.
+   On phones the links fold into a drop-down panel, but the notification bell stays in the top bar. *@
+@{
+    var controller = ViewContext.RouteData.Values["controller"]?.ToString();
+    var action = ViewContext.RouteData.Values["action"]?.ToString();
+    // On the Live page, Give opens in a new tab so viewers stay in the service
+    var onLivePage = controller == "Media" && action == "Live";
+    var giveTarget = onLivePage ? "_blank" : null;
+    var giveRel = onLivePage ? "noopener" : null;
+    var signedIn = User.Identity?.IsAuthenticated == true;
+
+    string? Active(string c, string? a = null) =>
+        controller == c && (a == null || action == a) ? "active" : null;
+}
+<nav class="navbar">
+    <div class="nav-container">
+        <a class="nav-brand" asp-controller="Home" asp-action="Index" style="background-color: black; border-radius: 10px; padding: 5px; margin: 2px;">
+            <img src="/images/logo.png" alt="logo" width="80" style="height: auto; aspect-ratio: 16 / 9;">
+        </a>
+        @* Two groups: on computers the main links sit in the middle of the bar and the account links on the right.
+           On phones both stack into the one drop-down panel. *@
+        <div class="nav-links" id="navLinks">
+        <ul class="nav-main">
+            <li><a asp-controller="Home" asp-action="Index" class="@Active("Home")"><i class="fas fa-house nav-ico"></i> Home</a></li>
+            <li><a asp-controller="Media" asp-action="Index" class="@(controller == "Media" && action != "Live" ? "active" : null)"><i class="fas fa-book-bible nav-ico"></i> Sermons</a></li>
+            <li><a asp-controller="Media" asp-action="Live" class="@Active("Media", "Live")"><i class="fas fa-tower-broadcast nav-ico"></i> Live</a></li>
+            <li><a asp-controller="Events" asp-action="Index" class="@Active("Events")"><i class="fas fa-calendar-days nav-ico"></i> Events</a></li>
+            <li><a asp-controller="Prayer" asp-action="Index" class="@Active("Prayer")"><i class="fas fa-hands-praying nav-ico"></i> Prayer</a></li>
+            <li><a asp-controller="Meeting" asp-action="Index" class="@Active("Meeting")"><i class="fas fa-video nav-ico"></i> Meetings</a></li>
+            @if (signedIn)
+            {
+                <li><a asp-controller="Community" asp-action="Index" class="@Active("Community")"><i class="fas fa-comments nav-ico"></i> Community</a></li>
+                <li class="nav-give"><a asp-controller="Giving" asp-action="Give" class="btn-give" target="@giveTarget" rel="@giveRel"><i class="fas fa-hand-holding-heart nav-ico"></i> Give</a></li>
+            }
+            else
+            {
+                <li class="nav-give"><a asp-controller="Giving" asp-action="Give" class="btn-give" target="@giveTarget" rel="@giveRel"><i class="fas fa-hand-holding-heart nav-ico"></i> Give Online</a></li>
+            }
+        </ul>
+        <ul class="nav-side">
+            @if (signedIn)
+            {
+                <li class="nav-user">
+                    <a asp-controller="Members" asp-action="Dashboard" class="@Active("Members", "Dashboard")">
+                        <i class="fas fa-user-circle nav-ico"></i> Dashboard
+                    </a>
+                    @if (User.IsInRole("Admin") || User.IsInRole("Pastor"))
+                    {
+                        <a asp-controller="Admin" asp-action="Index" class="admin-link">
+                            <i class="fas fa-cog nav-ico"></i> Admin
+                        </a>
+                    }
+                    <form asp-controller="Account" asp-action="Logout" method="post" style="display:inline">
+                        <button type="submit" class="btn-logout"><i class="fas fa-right-from-bracket nav-ico"></i> Sign Out</button>
+                    </form>
+                </li>
+            }
+            else
+            {
+                <li><a asp-controller="Account" asp-action="Login" class="@Active("Account", "Login")"><i class="fas fa-right-to-bracket nav-ico"></i> Login</a></li>
+                <li class="nav-desktop-only"><a asp-controller="Account" asp-action="Register" class="btn-join"><i class="fas fa-user-plus nav-ico"></i> Join Us</a></li>
+            }
+        </ul>
+        </div>
+
+        @* Always in the top bar, including on phones *@
+        <div class="nav-actions">
+            @if (signedIn)
+            {
+                <div class="nav-notif" id="notifBell">
+                    <button class="notif-bell-btn" onclick="toggleNotifDropdown()" title="Notifications" aria-label="Notifications">
+                        <i class="fas fa-bell"></i>
+                        <span class="notif-count" id="notifCount" style="display:none">0</span>
+                    </button>
+                    <div class="notif-dropdown" id="notifDropdown">
+                        <div class="notif-dropdown-header">
+                            <strong>Notifications</strong>
+                            <button class="mark-all-btn" onclick="markAllRead()">Mark all read</button>
+                        </div>
+                        <div class="notif-dropdown-list" id="notifList">
+                            <div class="notif-loading"><i class="fas fa-spinner fa-spin"></i></div>
+                        </div>
+                        <div class="notif-dropdown-footer">
+                            <a asp-controller="Notifications" asp-action="Index">View all notifications</a>
+                        </div>
+                    </div>
+                </div>
+            }
+            <button class="nav-toggle" id="navToggle" aria-label="Open menu" aria-controls="navLinks" aria-expanded="false">
+                <i class="fas fa-bars"></i>
+            </button>
+        </div>
+    </div>
+    <div class="nav-backdrop" id="navBackdrop"></div>
+</nav>

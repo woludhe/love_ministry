@@ -2,7 +2,7 @@
 @using ChurchMinistry.Models
 @{
     ViewData["Title"] = "Complete Your Giving";
-    Layout = "~/Views/Shared/_Layout.cshtml";
+    Layout = User.Identity?.IsAuthenticated == true ? "~/Views/Shared/_MemberDashboard_Layout.cshtml" : "~/Views/Shared/_Layout.cshtml";
     var method = ViewBag.Method as PaymentMethodConfig;
     var txRef  = ViewBag.TxRef as string ?? Model.TransactionId;
 }

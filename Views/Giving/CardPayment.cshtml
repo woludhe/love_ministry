@@ -1,7 +1,7 @@
 @model ChurchMinistry.Models.Giving
 @{
     ViewData["Title"] = "Card Payment";
-    Layout = "~/Views/Shared/_Layout.cshtml";
+    Layout = User.Identity?.IsAuthenticated == true ? "~/Views/Shared/_MemberDashboard_Layout.cshtml" : "~/Views/Shared/_Layout.cshtml";
 }
 
 <section class="page-header">

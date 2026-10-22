@@ -120,8 +120,9 @@ namespace ChurchMinistry.Services
             return Convert.ToBase64String(bytes);
         }
 
+        // Stable per member (no date), so the stored image can be checked and regenerated
         public string GetMemberQrData(int memberId, string email)
-            => $"CHURCH_MEMBER|{memberId}|{email}|{DateTime.UtcNow:yyyyMMdd}";
+            => $"CHURCH_MEMBER|{memberId}|{email}";
     }
 
     // ─── Payment Service (Flutterwave) ───
@@ -396,39 +397,51 @@ namespace ChurchMinistry.Services
     // ─── Attendance Service ───
     public interface IAttendanceService
     {
-        Task<bool> CheckInAsync(string qrData, int sessionId);
-        Task<AttendanceRecord?> ManualCheckInAsync(int memberId, int sessionId);
+        // code: a scanned member QR ("CHURCH_MEMBER|{id}|…") or a typed member ID ("23" / "#23")
+        Task<CheckInResult> CheckInAsync(string code, int sessionId);
+        Task<CheckInResult> CheckInMemberAsync(int memberId, int sessionId, CheckInMethod method);
         Task CloseSermonAttendanceAsync(IEnumerable<int> sermonIds);
     }
+
+    public record CheckInResult(bool Success, string Message, string? MemberName = null);
 
     public class AttendanceService : IAttendanceService
     {
         private readonly ApplicationDbContext _db;
         public AttendanceService(ApplicationDbContext db) { _db = db; }
 
-        public async Task<bool> CheckInAsync(string qrData, int sessionId)
+        public Task<CheckInResult> CheckInAsync(string code, int sessionId)
         {
-            var parts = qrData.Split('|');
-            if (parts.Length < 2 || !int.TryParse(parts[1], out int memberId)) return false;
-            var record = await ManualCheckInAsync(memberId, sessionId);
-            return record != null;
+            code = code.Trim();
+            var idText = code.StartsWith("CHURCH_MEMBER|", StringComparison.OrdinalIgnoreCase)
+                ? code.Split('|')[1]
+                : code.TrimStart('#');
+            if (!int.TryParse(idText, out var memberId) || memberId <= 0)
+                return Task.FromResult(new CheckInResult(false, "Not a valid member QR code or ID."));
+            return CheckInMemberAsync(memberId, sessionId, CheckInMethod.QR);
         }
 
-        public async Task<AttendanceRecord?> ManualCheckInAsync(int memberId, int sessionId)
+        public async Task<CheckInResult> CheckInMemberAsync(int memberId, int sessionId, CheckInMethod method)
         {
-            if (await _db.AttendanceRecords.AnyAsync(a => a.MemberId == memberId && a.ServiceSessionId == sessionId))
-                return null;
+            var member = await _db.Members.Where(m => m.Id == memberId)
+                .Select(m => new { m.FirstName, m.LastName }).FirstOrDefaultAsync();
+            if (member == null) return new CheckInResult(false, $"No member with ID #{memberId}.");
+            var name = $"{member.FirstName} {member.LastName}";
 
-            var record = new AttendanceRecord
+            if (!await _db.ServiceSessions.AnyAsync(s => s.Id == sessionId))
+                return new CheckInResult(false, "Select a service session first.", name);
+            if (await _db.AttendanceRecords.AnyAsync(a => a.MemberId == memberId && a.ServiceSessionId == sessionId))
+                return new CheckInResult(false, $"{name} is already checked in.", name);
+
+            _db.AttendanceRecords.Add(new AttendanceRecord
             {
                 MemberId = memberId,
                 ServiceSessionId = sessionId,
                 CheckInTime = DateTime.UtcNow,
-                CheckInMethod = CheckInMethod.QR
-            };
-            _db.AttendanceRecords.Add(record);
+                CheckInMethod = method
+            });
             await _db.SaveChangesAsync();
-            return record;
+            return new CheckInResult(true, $"{name} checked in.", name);
         }
 
         // The live stream stopped or the meeting ended for all: everyone still
@@ -619,6 +632,121 @@ namespace ChurchMinistry.Services
         private static Dictionary<int, int> ToPoints(IEnumerable<(int MemberId, MemberActivityType Type, int Count)> counts) =>
             counts.GroupBy(c => c.MemberId)
                   .ToDictionary(g => g.Key, g => g.Sum(c => c.Count * Weights.GetValueOrDefault(c.Type, 1)));
+    }
+
+    // ─── Recurring giving reminders ───
+    // Checks hourly for reminders that are due and sends each member a notification and
+    // an email with a pre-filled Give link. The member approves every gift themselves.
+    public class RecurringGiftReminderService : BackgroundService
+    {
+        private readonly IServiceScopeFactory _scopes;
+        private readonly ILogger<RecurringGiftReminderService> _log;
+
+        public RecurringGiftReminderService(IServiceScopeFactory scopes, ILogger<RecurringGiftReminderService> log)
+        {
+            _scopes = scopes; _log = log;
+        }
+
+        protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+        {
+            using var timer = new PeriodicTimer(TimeSpan.FromHours(1));
+            do
+            {
+                try { await SendDueRemindersAsync(stoppingToken); }
+                catch (Exception ex) { _log.LogError(ex, "Recurring giving reminders failed"); }
+            }
+            while (await timer.WaitForNextTickAsync(stoppingToken));
+        }
+
+        public static string IntervalWord(RecurringInterval i) => i switch
+        {
+            RecurringInterval.Weekly => "weekly",
+            RecurringInterval.Quarterly => "quarterly",
+            RecurringInterval.Annually => "yearly",
+            _ => "monthly"
+        };
+
+        // The first gift of a "remind me" request went through: switch its reminders on.
+        // One reminder per giving type and interval — a newer one replaces the older.
+        public static async Task StartForGivingAsync(ApplicationDbContext db, Giving giving)
+        {
+            var reminder = await db.RecurringGifts
+                .FirstOrDefaultAsync(r => r.SourceGivingId == giving.Id && !r.IsActive && r.StoppedAt == null);
+            if (reminder == null) return;
+
+            var older = await db.RecurringGifts
+                .Where(r => r.MemberId == reminder.MemberId && r.IsActive
+                         && r.GivingType == reminder.GivingType && r.Interval == reminder.Interval)
+                .ToListAsync();
+            foreach (var o in older) { o.IsActive = false; o.StoppedAt = DateTime.UtcNow; }
+
+            reminder.IsActive   = true;
+            reminder.NextDueAt  = RecurringGift.Advance(giving.GivingDate, reminder.Interval);
+            giving.NextGivingDate = reminder.NextDueAt;
+            await db.SaveChangesAsync();
+        }
+
+        // The gift never arrived, so the reminder it set up shouldn't run
+        public static async Task StopForGivingAsync(ApplicationDbContext db, Giving giving)
+        {
+            var reminders = await db.RecurringGifts
+                .Where(r => r.SourceGivingId == giving.Id && r.StoppedAt == null).ToListAsync();
+            foreach (var r in reminders) { r.IsActive = false; r.StoppedAt = DateTime.UtcNow; }
+            giving.NextGivingDate = null;
+            await db.SaveChangesAsync();
+        }
+
+        public static string GiveLink(RecurringGift r) =>
+            $"/Giving/Give?amount={r.Amount:0.##}&type={r.GivingType}" +
+            (string.IsNullOrEmpty(r.MethodCode) ? "" : $"&method={Uri.EscapeDataString(r.MethodCode)}");
+
+        private async Task SendDueRemindersAsync(CancellationToken ct)
+        {
+            using var scope = _scopes.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+            var email = scope.ServiceProvider.GetRequiredService<IEmailService>();
+            var config = scope.ServiceProvider.GetRequiredService<IConfiguration>();
+            var site = (config["Church:Website"] ?? "").TrimEnd('/');
+
+            var now = DateTime.UtcNow;
+            var due = await db.RecurringGifts.Include(r => r.Member)
+                .Where(r => r.IsActive && r.NextDueAt != null && r.NextDueAt <= now)
+                .ToListAsync(ct);
+
+            foreach (var r in due)
+            {
+                var what = $"{IntervalWord(r.Interval)} {r.GivingType} of {r.Currency} {r.Amount:N0}";
+                var link = GiveLink(r);
+                db.Notifications.Add(new Notification
+                {
+                    MemberId = r.MemberId,
+                    Title = "🙏 Giving reminder",
+                    Message = $"Your {what} is due. Tap to give.",
+                    Link = link
+                });
+
+                // Skip missed periods (e.g. the site was down) so a member gets one reminder, not several
+                var next = r.NextDueAt!.Value;
+                while (next <= now) next = RecurringGift.Advance(next, r.Interval);
+                r.NextDueAt = next;
+                r.LastRemindedAt = now;
+                await db.SaveChangesAsync(ct);
+
+                try
+                {
+                    await email.SendEmailAsync(r.Member.Email, "Your giving reminder",
+                        $@"<h2>Giving reminder</h2>
+                           <p>Hi {System.Net.WebUtility.HtmlEncode(r.Member.FirstName)}, your {what} is due.</p>
+                           <p><a href=""{site}{link}"" style=""display:inline-block;padding:.7rem 1.4rem;background:#6366f1;color:#fff;border-radius:8px;text-decoration:none"">Give now</a></p>
+                           <p style=""color:#6b7280;font-size:.85rem"">You asked us to remind you. You can stop these reminders any time from Giving History.</p>",
+                        r.Member.FullName);
+                }
+                catch (Exception ex)
+                {
+                    _log.LogWarning(ex, "Giving reminder email to member {MemberId} failed", r.MemberId);
+                }
+            }
+        }
     }
 
     // ─── Profile completion ───

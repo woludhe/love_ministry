@@ -5,14 +5,37 @@
 document.addEventListener('DOMContentLoaded', () => {
 
   // ── Mobile nav toggle ──
-  const toggle = document.getElementById('navToggle');
-  const links  = document.getElementById('navLinks');
+  const toggle   = document.getElementById('navToggle');
+  const links    = document.getElementById('navLinks');
+  const backdrop = document.getElementById('navBackdrop');
   if (toggle && links) {
-    toggle.addEventListener('click', () => links.classList.toggle('open'));
-    document.addEventListener('click', e => {
-      if (!toggle.contains(e.target) && !links.contains(e.target))
-        links.classList.remove('open');
+    const setMenu = open => {
+      links.classList.toggle('open', open);
+      backdrop?.classList.toggle('open', open);
+      document.body.classList.toggle('nav-open', open);
+      toggle.setAttribute('aria-expanded', open);
+      toggle.setAttribute('aria-label', open ? 'Close menu' : 'Open menu');
+      toggle.innerHTML = `<i class="fas ${open ? 'fa-xmark' : 'fa-bars'}"></i>`;
+      // Only one panel at a time: opening the menu closes notifications
+      if (open) document.getElementById('notifDropdown')?.classList.remove('open');
+    };
+    toggle.addEventListener('click', e => {
+      e.stopPropagation();
+      setMenu(!links.classList.contains('open'));
     });
+    backdrop?.addEventListener('click', () => setMenu(false));
+    links.querySelectorAll('a').forEach(a => a.addEventListener('click', () => setMenu(false)));
+    document.addEventListener('click', e => {
+      if (links.classList.contains('open') && !toggle.contains(e.target) && !links.contains(e.target))
+        setMenu(false);
+    });
+    document.addEventListener('keydown', e => { if (e.key === 'Escape') setMenu(false); });
+    // Opening notifications closes the menu
+    document.getElementById('notifBell')?.addEventListener('click', () => {
+      if (links.classList.contains('open')) setMenu(false);
+    });
+    // Back to desktop width: reset
+    window.matchMedia('(min-width: 769px)').addEventListener('change', e => { if (e.matches) setMenu(false); });
   }
 
   // ── Dashboard sidebar drawer (mobile) ──

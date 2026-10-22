@@ -117,15 +117,23 @@
                         <i class="fas fa-user"></i> @sermon.Speaker &nbsp;
                         <i class="fas fa-calendar"></i> @sermon.SermonDate.ToString("dd MMM yyyy")
                     </p>
+                    @* Same button as the Sermons page: live / upcoming / audio / video *@
                     <div class="card-actions">
-                        <a asp-controller="Media" asp-action="Watch" asp-route-id="@sermon.Id" class="btn btn-primary btn-sm">
-                            <i class="fas fa-play"></i> Watch
-                        </a>
-                        @if (!string.IsNullOrEmpty(sermon.AudioUrl))
+                        @if (sermon.IsLive)
                         {
-                            <a href="@sermon.AudioUrl" class="btn btn-outline btn-sm">
-                                <i class="fas fa-headphones"></i> Listen
-                            </a>
+                            <a asp-controller="Media" asp-action="Live" class="btn btn-primary btn-sm"><span class="live-dot"></span> Watch Live</a>
+                        }
+                        else if (sermon.SermonDate > DateTime.UtcNow)
+                        {
+                            <a asp-controller="Media" asp-action="Watch" asp-route-id="@sermon.Id" class="btn btn-primary btn-sm"><i class="fas fa-eye"></i> View</a>
+                        }
+                        else if (sermon.DeliveryMode == "audio")
+                        {
+                            <a asp-controller="Media" asp-action="Watch" asp-route-id="@sermon.Id" class="btn btn-primary btn-sm"><i class="fas fa-headphones"></i> Listen</a>
+                        }
+                        else
+                        {
+                            <a asp-controller="Media" asp-action="Watch" asp-route-id="@sermon.Id" class="btn btn-primary btn-sm"><i class="fas fa-play"></i> Watch</a>
                         }
                     </div>
                 </div>

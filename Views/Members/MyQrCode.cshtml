@@ -10,7 +10,6 @@
     @if (!string.IsNullOrEmpty(Model.QrCode)) {
       <img src="data:image/png;base64,@Model.QrCode" alt="QR Code" class="qr-image" />
     }
-    <p><strong>Member ID: #@Model.Id</strong></p>
     <button onclick="window.print()" class="btn btn-outline"><i class="fas fa-print"></i> Print QR Code</button>
   </div>
 </div>

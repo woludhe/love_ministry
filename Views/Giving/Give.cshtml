@@ -2,7 +2,7 @@
 @using ChurchMinistry.Models
 @{
     ViewData["Title"] = "Give";
-    Layout = "~/Views/Shared/_Layout.cshtml";
+    Layout = User.Identity?.IsAuthenticated == true ? "~/Views/Shared/_MemberDashboard_Layout.cshtml" : "~/Views/Shared/_Layout.cshtml";
     var methods  = ViewBag.PaymentMethods as List<PaymentMethodConfig> ?? new();
     var selected = ViewBag.SelectedMethod as PaymentMethodConfig;
     var memberName  = ViewBag.MemberName  as string ?? "";
@@ -148,22 +148,27 @@
                             <input asp-for="Notes" class="gv-input" placeholder="e.g. For building fund" />
                         </div>
 
-                        @* Recurring *@
-                        <div class="gv-field">
-                            <label class="gv-check-label">
-                                <input asp-for="IsRecurring" type="checkbox" class="gv-checkbox"
-                                       onchange="document.getElementById('recurringRow').style.display=this.checked?'block':'none'" />
-                                Make this a recurring gift
-                            </label>
-                        </div>
-                        <div id="recurringRow" style="display:none" class="gv-field">
-                            <label class="gv-label">Repeat every</label>
-                            <select asp-for="RecurringInterval" class="gv-input">
-                                <option value="monthly">Month</option>
-                                <option value="weekly">Week</option>
-                                <option value="quarterly">Quarter</option>
-                            </select>
-                        </div>
+                        @* Giving reminder (members only: we need someone to remind) *@
+                        @if (User.Identity?.IsAuthenticated == true)
+                        {
+                            <div class="gv-field">
+                                <label class="gv-check-label">
+                                    <input asp-for="IsRecurring" type="checkbox" class="gv-checkbox"
+                                           onchange="document.getElementById('recurringRow').style.display=this.checked?'block':'none'" />
+                                    Remind me to give this regularly
+                                </label>
+                            </div>
+                            <div id="recurringRow" style="display:none" class="gv-field">
+                                <label class="gv-label">Remind me every</label>
+                                <select asp-for="RecurringInterval" class="gv-input">
+                                    <option value="Monthly">Month</option>
+                                    <option value="Weekly">Week</option>
+                                    <option value="Quarterly">Quarter</option>
+                                    <option value="Annually">Year</option>
+                                </select>
+                                <span class="gv-hint">When it's due we'll send you a notification and email with a link to give the same amount. Nothing is charged automatically, and you can stop reminders from Giving History.</span>
+                            </div>
+                        }
 
                         @* Instructions preview (manual only) *@
                         <div class="gv-instructions" id="instructionsPanel" style="display:none">

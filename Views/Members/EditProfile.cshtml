@@ -65,6 +65,13 @@
             <a asp-action="Dashboard" class="btn btn-outline">Cancel</a>
         }
     </form>
+    @if (!canManage)
+    {
+        <p class="profile-security">
+            <i class="fas fa-key"></i> Want a new password?
+            <a asp-controller="Account" asp-action="ChangePassword">Change password</a>
+        </p>
+    }
 
     @if (canManage)
     {

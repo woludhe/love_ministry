@@ -435,11 +435,18 @@ namespace ChurchMinistry.Migrations
                         .IsRequired()
                         .HasColumnType("longtext");
 
+                    b.Property<bool>("IsManualPayment")
+                        .HasColumnType("tinyint(1)");
+
                     b.Property<bool>("IsRecurring")
                         .HasColumnType("tinyint(1)");
 
                     b.Property<int?>("MemberId")
                         .HasColumnType("int");
+
+                    b.Property<string>("MethodCode")
+                        .HasMaxLength(40)
+                        .HasColumnType("varchar(40)");
 
                     b.Property<DateTime?>("NextGivingDate")
                         .HasColumnType("datetime(6)");
@@ -453,10 +460,25 @@ namespace ChurchMinistry.Migrations
 
                     b.Property<string>("PaymentStatus")
                         .IsRequired()
-                        .HasColumnType("longtext");
+                        .HasColumnType("varchar(255)");
 
                     b.Property<string>("PhoneNumber")
                         .HasColumnType("longtext");
+
+                    b.Property<string>("ReceivedReference")
+                        .HasMaxLength(100)
+                        .HasColumnType("varchar(100)");
+
+                    b.Property<DateTime?>("ReconciledAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("ReconciledBy")
+                        .HasMaxLength(150)
+                        .HasColumnType("varchar(150)");
+
+                    b.Property<string>("ReconciliationNote")
+                        .HasMaxLength(500)
+                        .HasColumnType("varchar(500)");
 
                     b.Property<int?>("RecurringInterval")
                         .HasColumnType("int");
@@ -467,6 +489,8 @@ namespace ChurchMinistry.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("MemberId");
+
+                    b.HasIndex("IsManualPayment", "PaymentStatus");
 
                     b.ToTable("Givings");
                 });
@@ -1307,6 +1331,66 @@ namespace ChurchMinistry.Migrations
                     b.ToTable("PrayerRequests");
                 });
 
+            modelBuilder.Entity("ChurchMinistry.Models.RecurringGift", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    b.Property<decimal>("Amount")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("Currency")
+                        .IsRequired()
+                        .HasMaxLength(10)
+                        .HasColumnType("varchar(10)");
+
+                    b.Property<string>("GivingType")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("varchar(30)");
+
+                    b.Property<string>("Interval")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("varchar(20)");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<DateTime?>("LastRemindedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<int>("MemberId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("MethodCode")
+                        .HasMaxLength(50)
+                        .HasColumnType("varchar(50)");
+
+                    b.Property<DateTime?>("NextDueAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<int?>("SourceGivingId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("StoppedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("MemberId");
+
+                    b.HasIndex("SourceGivingId");
+
+                    b.HasIndex("IsActive", "NextDueAt");
+
+                    b.ToTable("RecurringGifts");
+                });
+
             modelBuilder.Entity("ChurchMinistry.Models.Sermon", b =>
                 {
                     b.Property<int>("Id")
@@ -1943,6 +2027,17 @@ namespace ChurchMinistry.Migrations
                         .WithMany("PrayerRequests")
                         .HasForeignKey("MemberId")
                         .OnDelete(DeleteBehavior.SetNull);
+
+                    b.Navigation("Member");
+                });
+
+            modelBuilder.Entity("ChurchMinistry.Models.RecurringGift", b =>
+                {
+                    b.HasOne("ChurchMinistry.Models.Member", "Member")
+                        .WithMany()
+                        .HasForeignKey("MemberId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
 
                     b.Navigation("Member");
                 });
