@@ -18,11 +18,13 @@ namespace ChurchMinistry.Controllers
         private readonly IEmailService _email;
         private readonly IConfiguration _config;
 
+        private readonly IActivityService _activity;
+
         public GivingController(ApplicationDbContext db, UserManager<ApplicationUser> um,
-            IPaymentService payment, IEmailService email, IConfiguration config)
+            IPaymentService payment, IEmailService email, IConfiguration config, IActivityService activity)
         {
             _db = db; _userManager = um;
-            _payment = payment; _email = email; _config = config;
+            _payment = payment; _email = email; _config = config; _activity = activity;
         }
 
         private async Task<Member?> GetMemberAsync()
@@ -162,6 +164,10 @@ namespace ChurchMinistry.Controllers
             giving.PaymentStatus = PaymentStatus.PendingVerification;
             giving.Notes         = (giving.Notes ?? "") + " [Member confirmed payment]";
             await _db.SaveChangesAsync();
+            if (giving.MemberId.HasValue)
+                await _activity.LogAsync(giving.MemberId.Value, MemberActivityType.Giving,
+                    $"{giving.GivingType} {giving.Currency} {giving.Amount:N0} (pending verification)",
+                    giving.Id, oncePerDay: true);
 
             // Notify admin
             var admins = await _userManager.GetUsersInRoleAsync("Admin");
@@ -247,6 +253,9 @@ namespace ChurchMinistry.Controllers
                     giving.PaymentStatus  = PaymentStatus.Successful;
                     giving.FlutterwaveRef = transaction_id;
                     await _db.SaveChangesAsync();
+                    if (giving.MemberId.HasValue)
+                        await _activity.LogAsync(giving.MemberId.Value, MemberActivityType.Giving,
+                            $"{giving.GivingType} {giving.Currency} {giving.Amount:N0}", giving.Id);
 
                     var member = giving.MemberId.HasValue
                         ? await _db.Members.FindAsync(giving.MemberId.Value) : null;

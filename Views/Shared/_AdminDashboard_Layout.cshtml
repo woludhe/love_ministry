@@ -107,7 +107,7 @@
                     @{
                         var memberNavAction = ViewContext.RouteData.Values["action"]?.ToString();
                         var inMembers = ViewContext.RouteData.Values["controller"]?.ToString() == "Admin"
-                                     && new[] { "Members", "Groups", "CreateGroup", "EditGroup", "GroupDetails" }.Contains(memberNavAction);
+                                     && new[] { "Members", "MemberActivity", "Groups", "CreateGroup", "EditGroup", "GroupDetails" }.Contains(memberNavAction);
                     }
                     <details class="sidebar-group" open="@inMembers">
                         <summary><i class="fas fa-users"></i> Members <i class="fas fa-chevron-down sidebar-caret"></i></summary>
@@ -115,8 +115,12 @@
                            class="@(inMembers && memberNavAction == "Members" ? "active" : "")">
                             <i class="fas fa-address-card"></i> All Members
                         </a>
+                        <a asp-controller="Admin" asp-action="MemberActivity"
+                           class="@(inMembers && memberNavAction == "MemberActivity" ? "active" : "")">
+                            <i class="fas fa-chart-line"></i> Member Activity
+                        </a>
                         <a asp-controller="Admin" asp-action="Groups"
-                           class="@(inMembers && memberNavAction != "Members" ? "active" : "")">
+                           class="@(inMembers && memberNavAction is not ("Members" or "MemberActivity") ? "active" : "")">
                             <i class="fas fa-people-group"></i> Groups
                         </a>
                     </details>
@@ -140,11 +144,28 @@
                         </a>
                     </details>
                     <a asp-controller="Admin" asp-action="Events"><i class="fas fa-calendar"></i> Events</a>
-                    <a asp-controller="MeetingApprovals" asp-action="Index">
-                        <i class="fas fa-clock"></i> Meeting Approvals
-                        <span id="approvalBadge" class="notif-count"
-                              style="display:none;position:relative;top:auto;right:auto"></span>
-                    </a>
+                    @{
+                        var navController = ViewContext.RouteData.Values["controller"]?.ToString();
+                        var inMeetings = navController == "MeetingApprovals" || navController == "MeetingRegister";
+                    }
+                    <details class="sidebar-group" open="@inMeetings">
+                        <summary>
+                            <i class="fas fa-video"></i> Meetings
+                            <span id="approvalBadgeGroup" class="notif-count"
+                                  style="display:none;position:relative;top:auto;right:auto"></span>
+                            <i class="fas fa-chevron-down sidebar-caret"></i>
+                        </summary>
+                        <a asp-controller="MeetingApprovals" asp-action="Index"
+                           class="@(navController == "MeetingApprovals" ? "active" : "")">
+                            <i class="fas fa-clock"></i> Meeting Approvals
+                            <span id="approvalBadge" class="notif-count"
+                                  style="display:none;position:relative;top:auto;right:auto"></span>
+                        </a>
+                        <a asp-controller="MeetingRegister" asp-action="Index"
+                           class="@(navController == "MeetingRegister" ? "active" : "")">
+                            <i class="fas fa-book"></i> Meetings Register
+                        </a>
+                    </details>
                     <a asp-controller="Admin" asp-action="Newsletters"><i class="fas fa-envelope"></i> Newsletter</a>
                     @{
                         var navAction = ViewContext.RouteData.Values["action"]?.ToString();
@@ -229,15 +250,16 @@
                 try {
                     const res = await fetch('/MeetingApprovals/PendingCount');
                     const data = await res.json();
-                    const badge = document.getElementById('approvalBadge');
-                    if (badge) {
+                    ['approvalBadge', 'approvalBadgeGroup'].forEach(id => {
+                        const badge = document.getElementById(id);
+                        if (!badge) return;
                         if (data.count > 0) {
                             badge.textContent = data.count;
                             badge.style.display = 'inline-flex';
                         } else {
                             badge.style.display = 'none';
                         }
-                    }
+                    });
                 } catch { }
             }
             pollApprovals();

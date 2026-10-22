@@ -1,6 +1,9 @@
 @{
     ViewData["Title"] = "Manage Members"; Layout = "~/Views/Shared/_AdminDashboard_Layout.cshtml";
     var groups = ViewBag.Groups as List<ChurchMinistry.Models.MinistryGroup> ?? new();
+    var points = ViewBag.Points as Dictionary<int, int> ?? new();
+    var lastActive = ViewBag.LastActive as Dictionary<int, DateTime> ?? new();
+    var topIds = ViewBag.TopIds as HashSet<int> ?? new();
 }
 
 <div class="admin-main">
@@ -27,13 +30,19 @@
         <button class="btn btn-primary">Filter</button>
     </form>
     <table class="data-table">
-        <thead><tr><th>Photo</th><th>Name</th><th>Email</th><th>Phone</th><th>Groups</th><th>Joined</th><th>Status</th><th>Actions</th></tr></thead>
+        <thead><tr><th>Photo</th><th>Name</th><th>Email</th><th>Phone</th><th>Groups</th><th>Joined</th><th>Profile</th><th>Last Active</th><th title="Activity points, last 30 days">Points</th><th>Status</th><th>Actions</th></tr></thead>
         <tbody>
             @foreach (ChurchMinistry.Models.Member m in (ViewBag.Members ?? new List<ChurchMinistry.Models.Member>()))
             {
                 <tr>
                     <td class="cell-media"><img src="@(m.ProfilePhoto ?? "/images/avatar-default.png")" class="avatar-xs" /></td>
-                    <td class="cell-title">@m.FullName</td>
+                    <td class="cell-title">
+                        @m.FullName
+                        @if (topIds.Contains(m.Id))
+                        {
+                            <span class="top-badge top-badge-sm" title="Top Participant"><i class="fas fa-medal"></i></span>
+                        }
+                    </td>
                     <td>@m.Email</td>
                     <td>@m.Phone</td>
                     <td class="mem-groups">
@@ -44,6 +53,10 @@
                         }
                     </td>
                     <td>@m.JoinDate.ToString("dd MMM yyyy")</td>
+                    @{ var pct = ChurchMinistry.Services.ProfileCompletion.For(m).Percent; }
+                    <td><span class="profile-pct @(pct == 100 ? "profile-pct-full" : "")">@pct%</span></td>
+                    <td>@(lastActive.TryGetValue(m.Id, out var la) ? la.ToLocalTime().ToString("dd MMM yyyy") : "—")</td>
+                    <td>@points.GetValueOrDefault(m.Id)</td>
                     <td><span class="status-badge status-@m.Status.ToString().ToLower()">@m.Status</span></td>
                     <td class="cell-actions">
                         <a asp-controller="Members" asp-action="Profile" asp-route-id="@m.Id" class="btn btn-outline btn-xs">Edit</a>

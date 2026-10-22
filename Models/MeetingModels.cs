@@ -13,7 +13,16 @@ namespace ChurchMinistry.Models
         public ApplicationUser? Host { get; set; }
         public int? HostMemberId { get; set; }
         public Member? HostMember { get; set; }
+        // Host's member name, else their account name (admins/pastors may have no member profile)
+        [System.ComponentModel.DataAnnotations.Schema.NotMapped]
+        public string? HostName => HostMember?.FullName
+            ?? (Host == null ? null : string.IsNullOrWhiteSpace(Host.FullName) ? Host.Email : Host.FullName);
         public DateTime? ScheduledAt { get; set; }
+        // Planned length; with ScheduledAt it gives the scheduled end
+        public int? DurationMinutes { get; set; }
+        [System.ComponentModel.DataAnnotations.Schema.NotMapped]
+        public DateTime? ScheduledEndAt => ScheduledAt.HasValue && DurationMinutes.HasValue
+            ? ScheduledAt.Value.AddMinutes(DurationMinutes.Value) : null;
         public DateTime? StartedAt { get; set; }
         public DateTime? EndedAt { get; set; }
         public RoomStatus Status { get; set; } = RoomStatus.Scheduled;

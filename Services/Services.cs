@@ -467,6 +467,190 @@ namespace ChurchMinistry.Services
                 .OrderByDescending(n => n.CreatedAt).ToListAsync();
     }
 
+    // ─── Member activity ───
+    // Behind-the-scenes usage log (logins, live viewing, prayer, meetings, community, giving…)
+    // plus the points that rank the top participants. Admins and Pastors are never ranked.
+    public record TopParticipant(int MemberId, int Points);
+
+    public interface IActivityService
+    {
+        // Never throws: tracking must not break the action being tracked.
+        // oncePerDay skips the write if the same member/type/reference was already logged today.
+        Task LogAsync(int memberId, MemberActivityType type, string? description = null,
+                      int? referenceId = null, bool oncePerDay = false);
+        Task LogForUserAsync(string? userId, MemberActivityType type, string? description = null,
+                             int? referenceId = null, bool oncePerDay = false);
+        Task<List<TopParticipant>> GetTopParticipantsAsync();
+        Task<Dictionary<int, int>> GetPointsAsync(IEnumerable<int> memberIds);
+    }
+
+    public class ActivityService : IActivityService
+    {
+        public const int TopCount = 10;
+        public const int RankingDays = 30;
+        private const string TopCacheKey = "top-participants";
+
+        public static readonly IReadOnlyDictionary<MemberActivityType, int> Weights =
+            new Dictionary<MemberActivityType, int>
+            {
+                [MemberActivityType.Login] = 1,
+                [MemberActivityType.WatchLive] = 3,
+                [MemberActivityType.WatchSermon] = 2,
+                [MemberActivityType.PrayerRequest] = 3,
+                [MemberActivityType.PrayedFor] = 1,
+                [MemberActivityType.MeetingJoined] = 3,
+                [MemberActivityType.ForumPost] = 3,
+                [MemberActivityType.ForumReply] = 2,
+                [MemberActivityType.CommunityChat] = 1,
+                [MemberActivityType.Giving] = 5,
+                [MemberActivityType.EventRegistration] = 3,
+                [MemberActivityType.ProfileUpdated] = 1,
+            };
+
+        public static string Label(MemberActivityType type) => type switch
+        {
+            MemberActivityType.Login => "Logged in",
+            MemberActivityType.WatchLive => "Watched live",
+            MemberActivityType.WatchSermon => "Watched a sermon",
+            MemberActivityType.PrayerRequest => "Prayer request",
+            MemberActivityType.PrayedFor => "Prayed for someone",
+            MemberActivityType.MeetingJoined => "Joined a meeting",
+            MemberActivityType.ForumPost => "Community post",
+            MemberActivityType.ForumReply => "Community reply",
+            MemberActivityType.CommunityChat => "Community chat",
+            MemberActivityType.Giving => "Gave",
+            MemberActivityType.EventRegistration => "Event registration",
+            MemberActivityType.ProfileUpdated => "Updated profile",
+            _ => type.ToString()
+        };
+
+        private readonly ApplicationDbContext _db;
+        private readonly IMemoryCache _cache;
+        private readonly ILogger<ActivityService> _log;
+
+        public ActivityService(ApplicationDbContext db, IMemoryCache cache, ILogger<ActivityService> log)
+        {
+            _db = db; _cache = cache; _log = log;
+        }
+
+        public async Task LogAsync(int memberId, MemberActivityType type, string? description = null,
+                                   int? referenceId = null, bool oncePerDay = false)
+        {
+            try
+            {
+                if (oncePerDay)
+                {
+                    var today = DateTime.UtcNow.Date;
+                    if (await _db.MemberActivities.AnyAsync(a => a.MemberId == memberId && a.Type == type
+                            && a.ReferenceId == referenceId && a.CreatedAt >= today))
+                        return;
+                }
+
+                if (description?.Length > 300) description = description[..300];
+                _db.MemberActivities.Add(new MemberActivity
+                {
+                    MemberId = memberId,
+                    Type = type,
+                    Description = description,
+                    ReferenceId = referenceId
+                });
+                await _db.SaveChangesAsync();
+            }
+            catch (Exception ex)
+            {
+                _log.LogWarning(ex, "Could not log {Type} activity for member {MemberId}", type, memberId);
+            }
+        }
+
+        public async Task LogForUserAsync(string? userId, MemberActivityType type, string? description = null,
+                                          int? referenceId = null, bool oncePerDay = false)
+        {
+            if (string.IsNullOrEmpty(userId)) return;
+            var memberId = await _db.Members.Where(m => m.UserId == userId)
+                .Select(m => (int?)m.Id).FirstOrDefaultAsync();
+            if (memberId != null)
+                await LogAsync(memberId.Value, type, description, referenceId, oncePerDay);
+        }
+
+        // Top 10 by points over the last 30 days, cached briefly since it's shown on many pages
+        public async Task<List<TopParticipant>> GetTopParticipantsAsync()
+        {
+            if (_cache.TryGetValue(TopCacheKey, out List<TopParticipant>? cached) && cached != null)
+                return cached;
+
+            var since = DateTime.UtcNow.AddDays(-RankingDays);
+            var staffUserIds = from ur in _db.UserRoles
+                               join r in _db.Roles on ur.RoleId equals r.Id
+                               where r.Name == "Admin" || r.Name == "Pastor"
+                               select ur.UserId;
+
+            var counts = await _db.MemberActivities
+                .Where(a => a.CreatedAt >= since
+                         && (a.Member.UserId == null || !staffUserIds.Contains(a.Member.UserId)))
+                .GroupBy(a => new { a.MemberId, a.Type })
+                .Select(g => new { g.Key.MemberId, g.Key.Type, Count = g.Count() })
+                .ToListAsync();
+
+            var top = ToPoints(counts.Select(c => (c.MemberId, c.Type, c.Count)))
+                .Where(kv => kv.Value > 0)
+                .OrderByDescending(kv => kv.Value).ThenBy(kv => kv.Key)
+                .Take(TopCount)
+                .Select(kv => new TopParticipant(kv.Key, kv.Value))
+                .ToList();
+
+            _cache.Set(TopCacheKey, top, TimeSpan.FromMinutes(5));
+            return top;
+        }
+
+        // Points over the last 30 days for the given members (members with none are left out)
+        public async Task<Dictionary<int, int>> GetPointsAsync(IEnumerable<int> memberIds)
+        {
+            var ids = memberIds.Distinct().ToList();
+            if (ids.Count == 0) return new();
+            var since = DateTime.UtcNow.AddDays(-RankingDays);
+            var counts = await _db.MemberActivities
+                .Where(a => a.CreatedAt >= since && ids.Contains(a.MemberId))
+                .GroupBy(a => new { a.MemberId, a.Type })
+                .Select(g => new { g.Key.MemberId, g.Key.Type, Count = g.Count() })
+                .ToListAsync();
+            return ToPoints(counts.Select(c => (c.MemberId, c.Type, c.Count)));
+        }
+
+        private static Dictionary<int, int> ToPoints(IEnumerable<(int MemberId, MemberActivityType Type, int Count)> counts) =>
+            counts.GroupBy(c => c.MemberId)
+                  .ToDictionary(g => g.Key, g => g.Sum(c => c.Count * Weights.GetValueOrDefault(c.Type, 1)));
+    }
+
+    // ─── Profile completion ───
+    // Ten items, 10% each. Gender and marital status aren't counted: they always have a value.
+    public static class ProfileCompletion
+    {
+        // Field = the profile form input it maps to (highlighted on the edit page when missing)
+        private static (string Field, string Label, bool Done)[] Checks(Member m) => new[]
+        {
+            ("FirstName", "Name & email", !string.IsNullOrWhiteSpace(m.FirstName) && !string.IsNullOrWhiteSpace(m.Email)),
+            ("Phone", "Phone number", !string.IsNullOrWhiteSpace(m.Phone)),
+            ("ProfilePhotoFile", "Profile photo", !string.IsNullOrWhiteSpace(m.ProfilePhoto)),
+            ("DateOfBirth", "Date of birth", m.DateOfBirth != null),
+            ("Address", "Address", !string.IsNullOrWhiteSpace(m.Address)),
+            ("City", "City", !string.IsNullOrWhiteSpace(m.City)),
+            ("Country", "Country", !string.IsNullOrWhiteSpace(m.Country)),
+            ("Occupation", "Occupation", !string.IsNullOrWhiteSpace(m.Occupation)),
+            ("EmergencyContact", "Emergency contact", !string.IsNullOrWhiteSpace(m.EmergencyContact)),
+            ("EmergencyPhone", "Emergency phone", !string.IsNullOrWhiteSpace(m.EmergencyPhone)),
+        };
+
+        public static (int Percent, List<string> Missing) For(Member m)
+        {
+            var checks = Checks(m);
+            var missing = checks.Where(c => !c.Done).Select(c => c.Label).ToList();
+            return ((checks.Length - missing.Count) * 100 / checks.Length, missing);
+        }
+
+        public static List<string> MissingFields(Member m) =>
+            Checks(m).Where(c => !c.Done).Select(c => c.Field).ToList();
+    }
+
     // ─── Recurring meeting series ───
     // Each week of a recurring meeting is its own MeetingRoom (own code, participants,
     // chat, attendance), linked by SeriesId. Only the next one exists at any time.
@@ -513,6 +697,7 @@ namespace ChurchMinistry.Services
                 HostUserId         = current.HostUserId,
                 HostMemberId       = current.HostMemberId,
                 ScheduledAt        = nextAt,
+                DurationMinutes    = current.DurationMinutes,
                 Status             = RoomStatus.Scheduled,
                 IsRecurring        = true,
                 RecurringPattern   = current.RecurringPattern,

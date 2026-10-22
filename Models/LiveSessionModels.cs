@@ -115,6 +115,10 @@ namespace ChurchMinistry.Models
         // Sermon's delivery mode when the viewer joined: video | audio | live | meeting
         [MaxLength(20)] public string DeliveryMode { get; set; } = "";
 
+        // Where they watched from: true = the linked meeting room, false = the Live page,
+        // null = logged before this was recorded
+        public bool? InMeeting           { get; set; }
+
         // Browser geolocation (only if the viewer allows it)
         public double? Latitude          { get; set; }
         public double? Longitude         { get; set; }

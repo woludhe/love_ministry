@@ -410,4 +410,24 @@ namespace ChurchMinistry.Models
         public bool IsRead { get; set; }
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     }
+
+    // ─────────────────────────────────────────────
+    // Member activity (behind-the-scenes usage log, seen by Admin/Pastor)
+    // ─────────────────────────────────────────────
+    public class MemberActivity
+    {
+        public int Id { get; set; }
+        public int MemberId { get; set; }
+        public Member Member { get; set; } = null!;
+        public MemberActivityType Type { get; set; }
+        [MaxLength(300)] public string? Description { get; set; }  // e.g. sermon title, "UGX 50,000 Tithe"
+        public int? ReferenceId { get; set; }                       // sermon / post / room / giving id
+        public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    }
+
+    public enum MemberActivityType
+    {
+        Login, WatchLive, WatchSermon, PrayerRequest, PrayedFor, MeetingJoined,
+        ForumPost, ForumReply, CommunityChat, Giving, EventRegistration, ProfileUpdated
+    }
 }

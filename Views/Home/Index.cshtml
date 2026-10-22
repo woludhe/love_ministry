@@ -49,8 +49,9 @@
         </div> *@
     </div>
 
-    @* {{-- Side card: live sermon, else the next scheduled event (hidden when neither) --}} *@
-    @if (Model?.LiveSermon != null || Model?.NextEvent != null)
+    @* {{-- Side card: live sermon, else the next scheduled event or sermon (hidden when neither) --}} *@
+    @{ var next = Model?.UpcomingItems.FirstOrDefault(); }
+    @if (Model?.LiveSermon != null || next != null)
     {
         <div class="hero-visual">
             <div class="hero-card glass-card">
@@ -58,20 +59,25 @@
                 {
                     <div class="live-badge"><span class="live-dot"></span> LIVE NOW</div>
                     <p class="live-title">@Model.LiveSermon.Title</p>
+                    @if (!string.IsNullOrEmpty(Model.LiveSermon.Speaker))
+                    {
+                        <p class="live-speaker"><i class="fas fa-user"></i> @Model.LiveSermon.Speaker</p>
+                    }
                     <a asp-controller="Media" asp-action="Live" class="btn btn-primary btn-sm">Watch Now</a>
                 }
                 else
                 {
                     <div class="next-service">
                         <i class="fas fa-church fa-2x"></i>
-                        <span><strong>@Model!.NextEvent!.Title</strong></span>
-                        <span><i class="fas fa-calendar"></i> @Model.NextEvent.StartDate.ToString("ddd, dd MMM yyyy")</span>
-                        <span><i class="fas fa-clock"></i> @Model.NextEvent.StartDate.ToString("h:mm tt")</span>
-                        @if (!string.IsNullOrEmpty(Model.NextEvent.Location))
+                        <span><strong>@next!.Title</strong></span>
+                        <span><i class="fas fa-calendar"></i> @next.Date.ToString("ddd, dd MMM yyyy")</span>
+                        <span><i class="fas fa-clock"></i> @next.Date.ToString("h:mm tt")</span>
+                        @if (!string.IsNullOrEmpty(next.Subtitle))
                         {
-                            <span><i class="fas fa-map-marker-alt"></i> @Model.NextEvent.Location</span>
+                            <span><i class="fas @(next.IsSermon ? "fa-user" : "fa-map-marker-alt")"></i> @next.Subtitle</span>
                         }
-                        <a asp-controller="Events" asp-action="Details" asp-route-id="@Model.NextEvent.Id"
+                        <a asp-controller="@(next.IsSermon ? "Media" : "Events")"
+                           asp-action="@(next.IsSermon ? "Watch" : "Details")" asp-route-id="@next.Id"
                            class="btn btn-outline hero-outline-btn btn-sm" style="margin-top:.75rem">
                             View Details
                         </a>
@@ -153,33 +159,47 @@
     </div>
 </section>
 
-@if (Model.UpcomingEvents.Any())
+@if (Model.UpcomingItems.Any())
 {
     <section class="section">
         <div class="section-header">
-            <h2>Upcoming Events</h2>
+            <h2>Upcoming Events &amp; Services</h2>
             <a asp-controller="Events" asp-action="Index" class="btn btn-outline btn-sm">See Calendar</a>
         </div>
         <div class="events-list-row">
-            @foreach (var ev in Model.UpcomingEvents)
+            @foreach (var item in Model.UpcomingItems)
             {
                 <div class="event-item">
                     <div class="event-date">
-                        <span class="day">@ev.StartDate.Day</span>
-                        <span class="month">@ev.StartDate.ToString("MMM")</span>
+                        <span class="day">@item.Date.Day</span>
+                        <span class="month">@item.Date.ToString("MMM")</span>
                     </div>
                     <div class="event-info">
-                        <h3>@ev.Title</h3>
-                        <p>
-                            <i class="fas fa-clock"></i> @ev.StartDate.ToString("h:mm tt")
-                            @if (!string.IsNullOrEmpty(ev.Location))
+                        <h3>
+                            @item.Title
+                            @if (item.IsSermon)
                             {
-                                <span>&nbsp;<i class="fas fa-map-marker-alt"></i> @ev.Location</span>
+                                <span class="tag">@(item.DeliveryMode is "live" or "meeting" ? "Live Service" : "Sermon")</span>
+                            }
+                        </h3>
+                        <p>
+                            <i class="fas fa-clock"></i> @item.Date.ToString("h:mm tt")
+                            @if (!string.IsNullOrEmpty(item.Subtitle))
+                            {
+                                <span>&nbsp;<i class="fas @(item.IsSermon ? "fa-user" : "fa-map-marker-alt")"></i> @item.Subtitle</span>
                             }
                         </p>
                     </div>
-                    <a asp-controller="Events" asp-action="Details" asp-route-id="@ev.Id"
-                       class="btn btn-outline btn-sm">Details</a>
+                    @if (item.IsSermon)
+                    {
+                        <a asp-controller="Media" asp-action="Watch" asp-route-id="@item.Id"
+                           class="btn btn-outline btn-sm">Details</a>
+                    }
+                    else
+                    {
+                        <a asp-controller="Events" asp-action="Details" asp-route-id="@item.Id"
+                           class="btn btn-outline btn-sm">Details</a>
+                    }
                 </div>
             }
         </div>

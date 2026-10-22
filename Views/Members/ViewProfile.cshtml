@@ -15,6 +15,10 @@
              class="vp-photo" alt="@Model.FullName" />
         <div class="vp-identity">
             <h2>@Model.FullName</h2>
+            @if (ViewBag.IsTopParticipant as bool? == true)
+            {
+                <span class="top-badge"><i class="fas fa-medal"></i> Top Participant</span>
+            }
             <span class="tag">@Model.MembershipType</span>
             <span class="status-badge status-@Model.Status.ToString().ToLower()" style="margin-left:.4rem">
                 @Model.Status

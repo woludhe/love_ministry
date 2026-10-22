@@ -13,7 +13,8 @@
 <div class="member-main">
     <section class="page-header"><h1>My Profile</h1></section>
     <div class="form-page">
-        <form asp-action="Profile" method="post" enctype="multipart/form-data">
+        <partial name="_ProfileCompletion" model="(Model.ProfilePercent, Model.ProfileMissing, false)" />
+        <form asp-action="Profile" asp-route-id="@Model.Id" method="post" enctype="multipart/form-data">
             <div asp-validation-summary="All" class="validation-summary"></div>
             <div class="profile-photo-section">
                 <img src="@(Model.ExistingPhoto ?? "/images/avatar-default.png")" id="photoPreview" class="profile-photo-preview" />

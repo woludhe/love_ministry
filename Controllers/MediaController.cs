@@ -5,6 +5,7 @@
 
 using ChurchMinistry.Data;
 using ChurchMinistry.Models;
+using ChurchMinistry.Services;
 using ChurchMinistry.ViewModels;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
@@ -14,8 +15,9 @@ public class MediaController : Controller
 {
     private readonly ApplicationDbContext _db;
     private readonly UserManager<ApplicationUser> _userManager;
-    public MediaController(ApplicationDbContext db, UserManager<ApplicationUser> um) { 
-        _db = db; _userManager = um;
+    private readonly IActivityService _activity;
+    public MediaController(ApplicationDbContext db, UserManager<ApplicationUser> um, IActivityService activity) {
+        _db = db; _userManager = um; _activity = activity;
     }
 
     // ── Sermon listing ──────────────────────────────────────
@@ -65,6 +67,11 @@ public class MediaController : Controller
 
         sermon.ViewCount++;
         await _db.SaveChangesAsync();
+
+        // Upcoming sermons only show a poster, so opening one isn't counted as watching
+        if (sermon.IsLive || sermon.SermonDate <= DateTime.UtcNow)
+            await _activity.LogForUserAsync(_userManager.GetUserId(User),
+                MemberActivityType.WatchSermon, sermon.Title, sermon.Id, oncePerDay: true);
 
         // Recommendations: same series → same speaker → latest
         var recommended = await _db.Sermons

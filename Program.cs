@@ -49,6 +49,7 @@ builder.Services.AddScoped<IPaymentService, PaymentService>();
 builder.Services.AddScoped<ISmsService, SmsService>();
 builder.Services.AddScoped<IAttendanceService, AttendanceService>();
 builder.Services.AddScoped<INotificationService, NotificationService>();
+builder.Services.AddScoped<IActivityService, ActivityService>();
 builder.Services.AddScoped<ILiveKitService, LiveKitService>();
 builder.Services.AddScoped<IMeetingAccessService, MeetingAccessService>();
 builder.Services.AddScoped<IMeetingSeriesService, MeetingSeriesService>();

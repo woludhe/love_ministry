@@ -36,6 +36,7 @@ namespace ChurchMinistry.Data
         public DbSet<PaymentMethodConfig> PaymentMethods => Set<PaymentMethodConfig>();
         public DbSet<MeetingInvitation> MeetingInvitations => Set<MeetingInvitation>();
         public DbSet<SermonAttendance> SermonAttendances => Set<SermonAttendance>();
+        public DbSet<MemberActivity> MemberActivities => Set<MemberActivity>();
 
         protected override void OnModelCreating(ModelBuilder builder)
         {
@@ -181,6 +182,15 @@ namespace ChurchMinistry.Data
                 e.HasOne(a => a.Member).WithMany()
                     .HasForeignKey(a => a.MemberId).OnDelete(DeleteBehavior.SetNull);
                 e.HasIndex(a => a.ConnectionId);
+            });
+
+            builder.Entity<MemberActivity>(e =>
+            {
+                e.Property(a => a.Type).HasConversion<string>().HasMaxLength(30);
+                e.HasOne(a => a.Member).WithMany()
+                    .HasForeignKey(a => a.MemberId).OnDelete(DeleteBehavior.Cascade);
+                e.HasIndex(a => new { a.MemberId, a.CreatedAt });
+                e.HasIndex(a => a.CreatedAt);
             });
 
             builder.Entity<LiveBibleVerse>(e =>

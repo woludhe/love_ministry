@@ -3,7 +3,14 @@
     ViewData["Title"] = "My Dashboard"; Layout = "~/Views/Shared/_MemberDashboard_Layout.cshtml";
 }
 <div style="padding: 2rem;">
-    <h1>Welcome back, @Model.Member.FirstName! 👋</h1>
+    <h1>
+        Welcome back, @Model.Member.FirstName! 👋
+        @if (Model.IsTopParticipant)
+        {
+            <span class="top-badge" title="One of the 10 most active members in the last 30 days"><i class="fas fa-medal"></i> Top Participant</span>
+        }
+    </h1>
+    <partial name="_ProfileCompletion" model="(Model.ProfilePercent, new List<string>(), true)" />
     @if (Model.LiveSermon != null || Model.LiveMeetings.Any())
     {
         <div class="dash-live">
@@ -85,7 +92,7 @@
                 <div class="card-body">
                     <h3>@s.Title</h3>
                     <p class="meta">@s.Speaker · @s.SermonDate.ToString("dd MMM yyyy")</p>
-                    <a asp-controller="Media" asp-action="Watch" asp-route-id="@s.Id" class="btn btn-primary btn-sm">Watch</a>
+                    <a asp-controller="Media" asp-action="Watch" asp-route-id="@s.Id" class="btn btn-primary btn-sm">@(!s.IsLive && s.SermonDate > DateTime.UtcNow ? "View" : "Watch")</a>
                 </div>
             </div>
         }

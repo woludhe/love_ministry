@@ -400,6 +400,12 @@ img {
     margin-bottom: 1rem;
 }
 
+.live-speaker {
+    margin: -.75rem 0 1rem;
+    font-size: .9rem;
+    opacity: .85;
+}
+
 /* Member dashboard: what's live right now */
 .dash-live {
     background: var(--white);
@@ -1660,6 +1666,109 @@ input:checked ~ .toggle-track {
 .admin-main {
     padding: 2rem;
     overflow: auto;
+}
+
+/* --- Meetings Register --- */
+.mr-title {
+    font-weight: 700;
+    color: var(--text);
+}
+
+    .mr-title:hover {
+        color: var(--purple);
+    }
+
+.mr-sub {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: .25rem .75rem;
+    font-size: .78rem;
+    color: var(--text-s);
+    margin-top: .2rem;
+}
+
+.mr-code {
+    font-size: .78rem;
+    background: #f3f4f6;
+    padding: .1rem .4rem;
+    border-radius: 4px;
+    color: var(--text);
+}
+
+.mr-when {
+    white-space: nowrap;
+}
+
+.mr-date {
+    display: flex;
+    align-items: center;
+    gap: .35rem;
+    font-size: .82rem;
+    color: var(--text-s);
+}
+
+.mr-back {
+    font-size: .82rem;
+    color: var(--text-s);
+    display: inline-flex;
+    align-items: center;
+    gap: .3rem;
+    margin-bottom: .35rem;
+}
+
+.mr-cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 1.25rem;
+    margin-bottom: 1.25rem;
+}
+
+    .mr-cards h3, .admin-main .table-card > h3 {
+        font-size: .95rem;
+        font-weight: 700;
+        margin-bottom: .75rem;
+    }
+
+.mr-facts {
+    display: grid;
+    grid-template-columns: max-content 1fr;
+    gap: .45rem 1rem;
+    font-size: .88rem;
+}
+
+    .mr-facts dt {
+        color: var(--text-s);
+        font-weight: 600;
+    }
+
+.mr-stats {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: .75rem;
+}
+
+    .mr-stats .attendance-stat {
+        background: var(--white);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        padding: .9rem 1rem;
+        font-size: .8rem;
+        color: var(--text-s);
+        font-weight: 600;
+    }
+
+        .mr-stats .attendance-stat span {
+            display: block;
+            font-size: 1.4rem;
+            font-weight: 800;
+            color: var(--text);
+        }
+
+.mr-note {
+    font-size: .85rem;
+    color: var(--text-s);
+    margin: .75rem 0;
 }
 
 /* Dashboard sidebar drawer controls (shown on mobile only) */
@@ -3695,3 +3804,240 @@ input:checked ~ .toggle-track {
         justify-content: flex-end;
     }
 }
+
+/* ── Profile completion + member activity ───────────────── */
+.top-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: .35rem;
+    padding: .2rem .65rem;
+    border-radius: 999px;
+    background: #fef3c7;
+    color: #92400e;
+    border: 1px solid #fcd34d;
+    font-size: .78rem;
+    font-weight: 700;
+    vertical-align: middle;
+    white-space: nowrap;
+}
+
+.top-badge-sm {
+    padding: .1rem .4rem;
+    font-size: .72rem;
+    margin-left: .3rem;
+}
+
+.profile-progress {
+    background: var(--white);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 1rem 1.25rem;
+    margin: 1rem 0 1.5rem;
+}
+
+.profile-progress-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: .5rem;
+    margin-bottom: .6rem;
+}
+
+.profile-progress-track {
+    height: 8px;
+    border-radius: 999px;
+    background: var(--purple-l);
+    overflow: hidden;
+}
+
+.profile-progress-fill {
+    height: 100%;
+    border-radius: 999px;
+    background: var(--purple);
+    transition: width .4s ease;
+}
+
+.profile-missing {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: .35rem;
+    margin-top: .75rem;
+    font-size: .82rem;
+    color: var(--text-s);
+}
+
+.profile-missing-chip {
+    padding: .15rem .55rem;
+    border-radius: 999px;
+    background: #f3f4f6;
+    color: #374151;
+}
+
+.profile-pct {
+    font-weight: 600;
+    color: var(--text-s);
+}
+
+.profile-pct-full {
+    color: #059669;
+}
+
+.activity-panel {
+    background: var(--white);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 1.25rem;
+    margin-bottom: 1.5rem;
+}
+
+.activity-panel-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: .5rem;
+    margin-bottom: 1rem;
+}
+
+    .activity-panel-head h3 {
+        margin: 0;
+    }
+
+.activity-panel h4 {
+    margin: 1.25rem 0 .5rem;
+}
+
+.activity-stats {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 1rem;
+}
+
+    .activity-stats strong {
+        display: block;
+        font-size: 1.15rem;
+        margin: .15rem 0 .35rem;
+    }
+
+.activity-stat-label {
+    font-size: .78rem;
+    color: var(--text-s);
+}
+
+.activity-counts {
+    width: 100%;
+    margin-top: 1rem;
+    border-collapse: collapse;
+    font-size: .88rem;
+}
+
+    .activity-counts th,
+    .activity-counts td {
+        text-align: left;
+        padding: .4rem .5rem;
+        border-bottom: 1px solid var(--border);
+    }
+
+.activity-timeline {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    font-size: .88rem;
+}
+
+    .activity-timeline li {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: .5rem;
+        padding: .45rem 0;
+        border-bottom: 1px solid var(--border);
+    }
+
+    .activity-timeline time {
+        margin-left: auto;
+        color: var(--text-s);
+        font-size: .8rem;
+    }
+
+.activity-type {
+    display: inline-block;
+    padding: .1rem .5rem;
+    border-radius: 6px;
+    background: var(--purple-l);
+    color: var(--purple-d);
+    font-size: .76rem;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.activity-giving { background: #dcfce7; color: #166534; }
+.activity-watchlive, .activity-watchsermon { background: #fee2e2; color: #991b1b; }
+.activity-prayerrequest, .activity-prayedfor { background: #e0f2fe; color: #075985; }
+.activity-login, .activity-profileupdated { background: #f3f4f6; color: #374151; }
+
+.leaderboard {
+    margin: 0 0 .75rem;
+    padding-left: 1.5rem;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    gap: .5rem 1.5rem;
+}
+
+    .leaderboard li {
+        padding: .3rem 0;
+    }
+
+        .leaderboard li > * {
+            vertical-align: middle;
+        }
+
+.leaderboard-points {
+    float: right;
+    font-weight: 700;
+    color: var(--purple-d);
+}
+
+.activity-weights {
+    font-size: .78rem;
+    margin: 0;
+}
+
+/* Missing profile field, highlighted on the member's edit page */
+.field-missing input,
+.field-missing select,
+.profile-photo-section.field-missing .profile-photo-preview {
+    border-color: #f59e0b;
+    box-shadow: 0 0 0 3px rgba(245, 158, 11, .2);
+}
+
+.field-missing > label::after {
+    content: " · missing";
+    color: #b45309;
+    font-size: .78rem;
+    font-weight: 600;
+}
+
+.profile-photo-section.field-missing::after {
+    content: "Add a profile photo";
+    color: #b45309;
+    font-size: .78rem;
+    font-weight: 600;
+}
+
+/* Admin > Member Activity: compact list */
+.activity-table {
+    font-size: .8rem;
+}
+
+    .activity-table th,
+    .activity-table td {
+        padding-top: .35rem;
+        padding-bottom: .35rem;
+    }
+
+    .activity-table .activity-type {
+        font-size: .7rem;
+    }

@@ -18,13 +18,14 @@ namespace ChurchMinistry.Controllers
         private readonly IEmailService _email;
         private readonly IConfiguration _config;
         private readonly IWebHostEnvironment _env;
+        private readonly IActivityService _activity;
 
         public EventsController(ApplicationDbContext db, UserManager<ApplicationUser> um,
             IPaymentService payment, IEmailService email,
-            IConfiguration config, IWebHostEnvironment env)
+            IConfiguration config, IWebHostEnvironment env, IActivityService activity)
         {
             _db = db; _userManager = um; _payment = payment;
-            _email = email; _config = config; _env = env;
+            _email = email; _config = config; _env = env; _activity = activity;
         }
 
         private async Task<Member?> GetMemberAsync()
@@ -136,6 +137,8 @@ namespace ChurchMinistry.Controllers
                 BehalfPhone   = isBehalf ? behalfPhone : null
             });
             await _db.SaveChangesAsync();
+            if (member != null)
+                await _activity.LogAsync(member.Id, MemberActivityType.EventRegistration, ev.Title, ev.Id);
 
             // Email to registrant and also to behalf person if applicable
             await SendConfirmationEmailAsync(ev, vm.Name, vm.Email);
@@ -294,6 +297,9 @@ namespace ChurchMinistry.Controllers
                     if (fullyPaid) registration.PaidAt = DateTime.UtcNow;
 
                     await _db.SaveChangesAsync();
+                    if (registration.MemberId.HasValue)
+                        await _activity.LogAsync(registration.MemberId.Value, MemberActivityType.EventRegistration,
+                            $"{ev.Title} (paid UGX {payment.Amount:N0})", ev.Id, oncePerDay: true);
 
                     // Email
                     var emailBody = fullyPaid

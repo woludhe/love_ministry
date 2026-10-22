@@ -1,0 +1,42 @@
+@model (int Percent, List<string> MissingFields, bool OnDashboard)
+@* Profile completion bar for the member themselves; hidden once complete (0 = not computed).
+   On the dashboard it's just the percentage; on the edit page the missing fields are highlighted. *@
+@if (Model.Percent > 0 && Model.Percent < 100)
+{
+    <div class="profile-progress">
+        <div class="profile-progress-head">
+            <strong><i class="fas fa-user-check"></i> Your profile is @Model.Percent% complete</strong>
+            @if (Model.OnDashboard)
+            {
+                <a href="/profile" class="btn btn-primary btn-sm">Complete profile</a>
+            }
+            else
+            {
+                <span class="meta">Fill in the highlighted fields to complete it.</span>
+            }
+        </div>
+        <div class="profile-progress-track">
+            <div class="profile-progress-fill" style="width:@(Model.Percent)%"></div>
+        </div>
+    </div>
+
+    @if (!Model.OnDashboard && Model.MissingFields.Any())
+    {
+        <script>
+            // Highlight each missing field's form group; the highlight clears once it's filled in
+            var missingFields = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Model.MissingFields));
+            document.addEventListener('DOMContentLoaded', () => {
+                missingFields.forEach(name => {
+                    const input = document.querySelector('[name="' + name + '"]');
+                    if (!input) return;
+                    const box = input.closest('.form-group') || input.closest('.profile-photo-section');
+                    if (!box) return;
+                    box.classList.add('field-missing');
+                    const clear = () => box.classList.toggle('field-missing', !input.value.trim());
+                    input.addEventListener('input', clear);
+                    input.addEventListener('change', clear);
+                });
+            });
+        </script>
+    }
+}

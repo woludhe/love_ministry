@@ -40,7 +40,7 @@ namespace ChurchMinistry.Controllers
             var vm = new ChurchMinistry.ViewModels.HomeIndexViewModel
             {
                 RecentSermons = await _db.Sermons
-                    .Where(s => s.IsPublished)
+                    .Where(s => s.IsPublished && (s.SermonDate <= now || s.IsLive))
                     .OrderByDescending(s => s.SermonDate)
                     .Take(3).ToListAsync(),
 
@@ -51,11 +51,6 @@ namespace ChurchMinistry.Controllers
                     .Where(e => e.StartDate >= now && e.IsPublic)
                     .OrderBy(e => e.StartDate)
                     .Take(4).ToListAsync(),
-
-                NextEvent = await _db.ChurchEvents
-                    .Where(e => e.StartDate >= now && e.IsPublic)
-                    .OrderBy(e => e.StartDate)
-                    .FirstOrDefaultAsync(),
 
                 TotalMembers = await _db.Members
                     .CountAsync(m => m.Status == MemberStatus.Active),
@@ -70,6 +65,21 @@ namespace ChurchMinistry.Controllers
                     .OrderBy(m => m.SortOrder)
                     .ToListAsync()
             };
+
+            var upcomingSermons = await _db.Sermons
+                .Where(s => s.IsPublished && !s.IsLive && s.SermonDate >= now)
+                .OrderBy(s => s.SermonDate)
+                .Take(4).ToListAsync();
+
+            vm.UpcomingItems = vm.UpcomingEvents
+                .Select(e => new UpcomingItem { Id = e.Id, Title = e.Title, Date = e.StartDate, Subtitle = e.Location })
+                .Concat(upcomingSermons.Select(s => new UpcomingItem
+                {
+                    Id = s.Id, Title = s.Title, Date = s.SermonDate, Subtitle = s.Speaker,
+                    IsSermon = true, DeliveryMode = s.DeliveryMode
+                }))
+                .OrderBy(i => i.Date)
+                .Take(6).ToList();
 
             return View(vm);
         }
@@ -116,7 +126,8 @@ namespace ChurchMinistry.Controllers
         [HttpGet] public IActionResult Login(string? returnUrl = null) { ViewBag.ReturnUrl = returnUrl; return View(); }
 
         [HttpPost]
-        public async Task<IActionResult> Login(LoginViewModel vm, string? returnUrl = null)
+        public async Task<IActionResult> Login(LoginViewModel vm, string? returnUrl = null,
+            [FromServices] IActivityService? activity = null)
         {
             if (!ModelState.IsValid) return View(vm);
 
@@ -129,13 +140,16 @@ namespace ChurchMinistry.Controllers
                 return View(vm);
             }
 
+            var signedIn = await _userManager.FindByEmailAsync(vm.Email);
+            if (activity != null) await activity.LogForUserAsync(signedIn?.Id, MemberActivityType.Login);
+
             // If a specific returnUrl was requested (e.g. they tried to access a
             // protected page before logging in), honour it regardless of role.
             if (!string.IsNullOrEmpty(returnUrl) && Url.IsLocalUrl(returnUrl))
                 return Redirect(returnUrl);
 
             // Otherwise route by role
-            var user = await _userManager.FindByEmailAsync(vm.Email);
+            var user = signedIn;
             if (user != null)
             {
                 if (await _userManager.IsInRoleAsync(user, "Admin") ||
@@ -308,10 +322,12 @@ namespace ChurchMinistry.Controllers
         private readonly ApplicationDbContext _db;
         private readonly UserManager<ApplicationUser> _userManager;
         private readonly IWebHostEnvironment _env;
+        private readonly IActivityService _activity;
 
-        public MembersController(ApplicationDbContext db, UserManager<ApplicationUser> um, IWebHostEnvironment env)
+        public MembersController(ApplicationDbContext db, UserManager<ApplicationUser> um, IWebHostEnvironment env,
+            IActivityService activity)
         {
-            _db = db; _userManager = um; _env = env;
+            _db = db; _userManager = um; _env = env; _activity = activity;
         }
 
         private async Task<Member?> GetCurrentMemberAsync()
@@ -375,6 +391,9 @@ namespace ChurchMinistry.Controllers
                                  || (i.Email != null && i.Email.ToLower() == email))))
                 .OrderByDescending(r => r.StartedAt)
                 .ToListAsync();
+
+            vm.ProfilePercent = ProfileCompletion.For(member).Percent;
+            vm.IsTopParticipant = (await _activity.GetTopParticipantsAsync()).Any(t => t.MemberId == member.Id);
             return View(vm);
         }
 
@@ -383,24 +402,9 @@ namespace ChurchMinistry.Controllers
         {
             var member = await GetCurrentMemberAsync();
             if (member == null) return NotFound();
-            return View(new MemberProfileViewModel
-            {
-                Id = member.Id,
-                FirstName = member.FirstName,
-                LastName = member.LastName,
-                Email = member.Email,
-                Phone = member.Phone,
-                DateOfBirth = member.DateOfBirth,
-                Gender = member.Gender,
-                MaritalStatus = member.MaritalStatus,
-                Address = member.Address,
-                City = member.City,
-                Country = member.Country,
-                Occupation = member.Occupation,
-                EmergencyContact = member.EmergencyContact,
-                ExistingPhoto = member.ProfilePhoto,
-                Groups = await GroupsOfAsync(member.Id)
-            });
+            var vm = MapToViewModel(member);
+            vm.Groups = await GroupsOfAsync(member.Id);
+            return View(vm);
         }
 
         private Task<List<MinistryGroup>> GroupsOfAsync(int memberId) =>
@@ -429,9 +433,13 @@ namespace ChurchMinistry.Controllers
                 {
                     // Admin/Pastor editing someone else can also deactivate or delete them
                     ViewBag.CanManage = isAdmin && !isOwnProfile;
+                    if (isAdmin && !isOwnProfile)
+                        ViewBag.Activity = await ActivitySummaryAsync(member);
                     return View("EditProfile", MapToViewModel(member));
                 }
 
+                ViewBag.IsTopParticipant = (await _activity.GetTopParticipantsAsync())
+                    .Any(t => t.MemberId == member.Id);
                 return View("ViewProfile", member);
             }
             else
@@ -487,6 +495,8 @@ namespace ChurchMinistry.Controllers
             member.EmergencyContact = vm.EmergencyContact; member.EmergencyPhone = vm.EmergencyPhone;
 
             await _db.SaveChangesAsync();
+            if ((await GetCurrentMemberAsync())?.Id == member.Id)
+                await _activity.LogAsync(member.Id, MemberActivityType.ProfileUpdated);
             TempData["Success"] = "Profile updated successfully!";
 
             if (User.IsInRole("Admin") || User.IsInRole("Pastor"))
@@ -495,7 +505,7 @@ namespace ChurchMinistry.Controllers
             }
             else
             {
-                return RedirectToAction("Profile", new { id = member.Id });
+                return RedirectToAction("Dashboard");
             }
         }
 
@@ -610,8 +620,34 @@ namespace ChurchMinistry.Controllers
             EmergencyContact = m.EmergencyContact,
             EmergencyPhone = m.EmergencyPhone,
             ExistingPhoto = m.ProfilePhoto,
-            Groups = m.MinistryGroups.ToList()   // filled when the member was loaded with its groups
+            Groups = m.MinistryGroups.ToList(),  // filled when the member was loaded with its groups
+            ProfilePercent = ProfileCompletion.For(m).Percent,
+            ProfileMissing = ProfileCompletion.MissingFields(m)
         };
+
+        // Admin/Pastor view of a member's activity: completion, ranking, counts and recent timeline
+        private async Task<MemberActivitySummary> ActivitySummaryAsync(Member m)
+        {
+            var since = DateTime.UtcNow.AddDays(-ActivityService.RankingDays);
+            var counts = await _db.MemberActivities.Where(a => a.MemberId == m.Id)
+                .GroupBy(a => a.Type)
+                .Select(g => new { Type = g.Key, All = g.Count(), Recent = g.Count(a => a.CreatedAt >= since) })
+                .ToListAsync();
+            var top = await _activity.GetTopParticipantsAsync();
+            var (percent, missing) = ProfileCompletion.For(m);
+            return new MemberActivitySummary
+            {
+                ProfilePercent = percent,
+                ProfileMissing = missing,
+                TopRank = top.FindIndex(t => t.MemberId == m.Id) + 1,
+                Points30 = (await _activity.GetPointsAsync(new[] { m.Id })).GetValueOrDefault(m.Id),
+                LastActive = await _db.MemberActivities.Where(a => a.MemberId == m.Id)
+                    .MaxAsync(a => (DateTime?)a.CreatedAt),
+                Counts = counts.ToDictionary(c => c.Type, c => (c.Recent, c.All)),
+                Recent = await _db.MemberActivities.Where(a => a.MemberId == m.Id)
+                    .OrderByDescending(a => a.CreatedAt).Take(20).ToListAsync()
+            };
+        }
 
         public async Task<IActionResult> Directory(string? search, string? group, int page = 1)
         {
@@ -898,10 +934,11 @@ namespace ChurchMinistry.Controllers
     {
         private readonly ApplicationDbContext _db;
         private readonly UserManager<ApplicationUser> _userManager;
+        private readonly IActivityService _activity;
 
-        public CommunityController(ApplicationDbContext db, UserManager<ApplicationUser> um)
+        public CommunityController(ApplicationDbContext db, UserManager<ApplicationUser> um, IActivityService activity)
         {
-            _db = db; _userManager = um;
+            _db = db; _userManager = um; _activity = activity;
         }
 
         private async Task<Member?> GetMemberAsync() =>
@@ -941,15 +978,17 @@ namespace ChurchMinistry.Controllers
             var member = await GetMemberAsync();
             if (member == null) return Unauthorized();
 
-            _db.ForumPosts.Add(new ForumPost
+            var post = new ForumPost
             {
                 Title = vm.Title,
                 Content = vm.Content,
                 MemberId = member.Id,
                 Category = vm.Category,
                 IsPastorQuestion = vm.IsPastorQuestion
-            });
+            };
+            _db.ForumPosts.Add(post);
             await _db.SaveChangesAsync();
+            await _activity.LogAsync(member.Id, MemberActivityType.ForumPost, post.Title, post.Id);
             return RedirectToAction("Index");
         }
 
@@ -969,6 +1008,7 @@ namespace ChurchMinistry.Controllers
                 IsPastorReply = User.IsInRole("Pastor")
             });
             await _db.SaveChangesAsync();
+            await _activity.LogAsync(member.Id, MemberActivityType.ForumReply, $"Replied to \"{post.Title}\"", post.Id);
             return RedirectToAction("Post", new { id = postId });
         }
 
@@ -1069,11 +1109,12 @@ namespace ChurchMinistry.Controllers
         private readonly IEmailService _email;
         private readonly ISmsService _sms;
         private readonly IAttendanceService _attendance;
+        private readonly IActivityService _activity;
 
         public AdminController(ApplicationDbContext db, UserManager<ApplicationUser> um,
-            IEmailService email, ISmsService sms, IAttendanceService attendance)
+            IEmailService email, ISmsService sms, IAttendanceService attendance, IActivityService activity)
         {
-            _db = db; _userManager = um; _email = email; _sms = sms; _attendance = attendance;
+            _db = db; _userManager = um; _email = email; _sms = sms; _attendance = attendance; _activity = activity;
         }
 
         public async Task<IActionResult> Index()
@@ -1363,10 +1404,52 @@ namespace ChurchMinistry.Controllers
             if (group != null)
                 q = q.Where(m => m.MinistryGroups.Any(g => g.Id == group));
             ViewBag.Groups = await _db.MinistryGroups.OrderBy(g => g.Name).ToListAsync();
-            ViewBag.Members = await q.OrderBy(m => m.FirstName).ToPageAsync(pager);
+            var members = await q.OrderBy(m => m.FirstName).ToPageAsync(pager);
+            ViewBag.Members = members;
             ViewBag.Total = pager.Total; ViewBag.Page = pager.Page; ViewBag.TotalPages = pager.TotalPages;
             ViewBag.Pager = pager;
+
+            // Activity columns for this page of members
+            var ids = members.Select(m => m.Id).ToList();
+            ViewBag.Points = await _activity.GetPointsAsync(ids);
+            ViewBag.LastActive = await _db.MemberActivities.Where(a => ids.Contains(a.MemberId))
+                .GroupBy(a => a.MemberId)
+                .Select(g => new { MemberId = g.Key, Last = g.Max(a => a.CreatedAt) })
+                .ToDictionaryAsync(x => x.MemberId, x => x.Last);
+            ViewBag.TopIds = (await _activity.GetTopParticipantsAsync()).Select(t => t.MemberId).ToHashSet();
             return View();
+        }
+
+        // ── Member activity: top participants + filterable activity feed ──
+        public async Task<IActionResult> MemberActivity(string? search, MemberActivityType? type,
+            DateTime? from, DateTime? to, int page = 1)
+        {
+            var top = await _activity.GetTopParticipantsAsync();
+            var topIds = top.Select(t => t.MemberId).ToList();
+            var topMembers = await _db.Members.Where(m => topIds.Contains(m.Id)).ToDictionaryAsync(m => m.Id);
+
+            // Opening the page without date filters shows today; clearing the dates shows all
+            if (!Request.Query.ContainsKey("from") && !Request.Query.ContainsKey("to"))
+                from = to = DateTime.Today;
+
+            var q = _db.MemberActivities.Include(a => a.Member).AsQueryable();
+            if (!string.IsNullOrWhiteSpace(search))
+                q = q.Where(a => a.Member.FirstName.Contains(search) || a.Member.LastName.Contains(search)
+                              || a.Member.Email.Contains(search));
+            if (type != null) q = q.Where(a => a.Type == type);
+            if (from != null) q = q.Where(a => a.CreatedAt >= from.Value.ToUniversalTime());
+            if (to != null) q = q.Where(a => a.CreatedAt < to.Value.AddDays(1).ToUniversalTime());
+
+            var pager = new PagerModel(page, "activities") { PageSize = 50 };
+            var vm = new MemberActivityPageViewModel
+            {
+                TopParticipants = top.Where(t => topMembers.ContainsKey(t.MemberId))
+                    .Select(t => (topMembers[t.MemberId], t.Points)).ToList(),
+                Activities = await q.OrderByDescending(a => a.CreatedAt).ToPageAsync(pager),
+                Search = search, Type = type, From = from, To = to
+            };
+            ViewBag.Pager = pager;
+            return View(vm);
         }
 
         [HttpPost]

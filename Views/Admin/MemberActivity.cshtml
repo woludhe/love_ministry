@@ -1,0 +1,77 @@
+@model ChurchMinistry.ViewModels.MemberActivityPageViewModel
+@using ChurchMinistry.Models
+@using ChurchMinistry.Services
+@{
+    ViewData["Title"] = "Member Activity"; Layout = "~/Views/Shared/_AdminDashboard_Layout.cshtml";
+}
+
+<div class="admin-main">
+    <div class="admin-topbar">
+        <h1>Member Activity</h1>
+    </div>
+
+    <section class="activity-panel">
+        <div class="activity-panel-head">
+            <h3><i class="fas fa-medal"></i> Top @ActivityService.TopCount Participants</h3>
+            <span class="meta">Last @ActivityService.RankingDays days · Admins and Pastors excluded</span>
+        </div>
+        @if (Model.TopParticipants.Any())
+        {
+            <ol class="leaderboard">
+                @foreach (var (member, pts) in Model.TopParticipants)
+                {
+                    <li>
+                        <img src="@(member.ProfilePhoto ?? "/images/avatar-default.png")" class="avatar-xs" alt="" />
+                        <a asp-controller="Members" asp-action="Profile" asp-route-id="@member.Id">@member.FullName</a>
+                        <span class="leaderboard-points">@pts pts</span>
+                    </li>
+                }
+            </ol>
+        }
+        else
+        {
+            <p class="meta">No member activity in the last @ActivityService.RankingDays days yet.</p>
+        }
+        <p class="meta activity-weights">
+            Points:
+            @string.Join(" · ", ActivityService.Weights.Select(w => $"{ActivityService.Label(w.Key)} {w.Value}"))
+        </p>
+    </section>
+
+    <form method="get" class="filter-bar">
+        <input name="search" placeholder="Search member name or email..." class="form-control" value="@Model.Search" />
+        <select name="type" class="form-control">
+            <option value="">All Activities</option>
+            @foreach (var t in Enum.GetValues<MemberActivityType>())
+            {
+                <option value="@t" selected="@(Model.Type == t)">@ActivityService.Label(t)</option>
+            }
+        </select>
+        <input type="date" name="from" class="form-control" value="@Model.From?.ToString("yyyy-MM-dd")" title="From" />
+        <input type="date" name="to" class="form-control" value="@Model.To?.ToString("yyyy-MM-dd")" title="To" />
+        <button class="btn btn-primary">Filter</button>
+        <a href="?from=&to=" class="btn btn-outline btn-sm">All dates</a>
+    </form>
+
+    <table class="data-table activity-table">
+        <thead><tr><th>When</th><th>Member</th><th>Activity</th><th>Details</th></tr></thead>
+        <tbody>
+            @foreach (var a in Model.Activities)
+            {
+                <tr>
+                    <td>@a.CreatedAt.ToLocalTime().ToString("dd MMM yyyy, h:mm tt")</td>
+                    <td class="cell-title">
+                        <a asp-controller="Members" asp-action="Profile" asp-route-id="@a.MemberId">@a.Member.FullName</a>
+                    </td>
+                    <td><span class="activity-type activity-@a.Type.ToString().ToLower()">@ActivityService.Label(a.Type)</span></td>
+                    <td>@a.Description</td>
+                </tr>
+            }
+            @if (!Model.Activities.Any())
+            {
+                <tr><td colspan="4" class="meta">No activity matches these filters.</td></tr>
+            }
+        </tbody>
+    </table>
+    <partial name="_Pager" model="(PagerModel)ViewBag.Pager" />
+</div>

@@ -51,6 +51,15 @@
                 <input asp-for="ScheduledAt" type="datetime-local" class="mi" />
                 <span asp-validation-for="ScheduledAt" class="me"></span>
             </div>
+            <div class="mf">
+                <label class="ml">Duration</label>
+                <select asp-for="DurationMinutes" class="mi">
+                    @foreach (var (minutes, label) in ChurchMinistry.ViewModels.CreateMeetingViewModel.DurationOptions)
+                    {
+                        <option value="@minutes" selected="@(Model.DurationMinutes == minutes)">@label</option>
+                    }
+                </select>
+            </div>
         </div>
 
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:.85rem">

@@ -1,5 +1,6 @@
 using ChurchMinistry.Data;
 using ChurchMinistry.Models;
+using ChurchMinistry.Services;
 using ChurchMinistry.ViewModels;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
@@ -13,10 +14,11 @@ namespace ChurchMinistry.Controllers
     {
         private readonly ApplicationDbContext _db;
         private readonly UserManager<ApplicationUser> _userManager;
+        private readonly IActivityService _activity;
 
-        public PrayerController(ApplicationDbContext db, UserManager<ApplicationUser> um)
+        public PrayerController(ApplicationDbContext db, UserManager<ApplicationUser> um, IActivityService activity)
         {
-            _db = db; _userManager = um;
+            _db = db; _userManager = um; _activity = activity;
         }
 
         private async Task<Member?> GetMemberAsync()
@@ -112,7 +114,7 @@ namespace ChurchMinistry.Controllers
             if (!ModelState.IsValid) return View(vm);
             var member = await GetMemberAsync();
 
-            _db.PrayerRequests.Add(new PrayerRequest
+            var request = new PrayerRequest
             {
                 Request       = vm.Request,
                 Category      = vm.Category,
@@ -122,8 +124,14 @@ namespace ChurchMinistry.Controllers
                 AnonymousName = vm.IsAnonymous
                     ? (vm.AnonymousName ?? "Anonymous")
                     : member?.FullName ?? "Anonymous"
-            });
+            };
+            _db.PrayerRequests.Add(request);
             await _db.SaveChangesAsync();
+            // Anonymous requests still count towards participation, but aren't linked to the request
+            if (member != null)
+                await _activity.LogAsync(member.Id, MemberActivityType.PrayerRequest,
+                    vm.IsAnonymous ? "Submitted a prayer request" : $"Prayer request ({vm.Category})",
+                    vm.IsAnonymous ? null : request.Id);
             TempData["Success"] = "Your prayer request has been submitted. We are praying for you!";
             return RedirectToAction("MyRequests");
         }
@@ -151,6 +159,9 @@ namespace ChurchMinistry.Controllers
                     Type            = "prayed"
                 });
                 await _db.SaveChangesAsync();
+                if (member != null)
+                    await _activity.LogAsync(member.Id, MemberActivityType.PrayedFor,
+                        $"Prayed for {prayer.AnonymousName ?? "a request"}", prayer.Id);
             }
 
             return Json(new { count = prayer.PrayerCount, alreadyPrayed });

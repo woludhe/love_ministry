@@ -18,12 +18,14 @@ namespace ChurchMinistry.Hubs
         private readonly IAttendanceService _attendance;
         private readonly IMeetingAccessService _access;
         private readonly IMeetingSeriesService _series;
+        private readonly IActivityService _activity;
 
         public MeetingHub(ApplicationDbContext db, UserManager<ApplicationUser> um, ILiveKitService liveKit,
-            IAttendanceService attendance, IMeetingAccessService access, IMeetingSeriesService series)
+            IAttendanceService attendance, IMeetingAccessService access, IMeetingSeriesService series,
+            IActivityService activity)
         {
             _db = db; _userManager = um; _liveKit = liveKit; _attendance = attendance; _access = access;
-            _series = series;
+            _series = series; _activity = activity;
         }
 
         // ── Join meeting room ──────────────────────────────────
@@ -73,6 +75,9 @@ namespace ChurchMinistry.Hubs
                 };
                 _db.MeetingParticipants.Add(participant);
                 await _db.SaveChangesAsync();
+                if (member != null)
+                    await _activity.LogAsync(member.Id, MemberActivityType.MeetingJoined,
+                        room.Title, room.Id, oncePerDay: true);
             }
             else
             {

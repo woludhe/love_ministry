@@ -118,6 +118,31 @@ namespace ChurchMinistry.ViewModels
         public IFormFile? ProfilePhotoFile { get; set; }
         public string? ExistingPhoto { get; set; }
         public List<MinistryGroup> Groups { get; set; } = new();   // shown only; managed under Admin > Groups
+        public int ProfilePercent { get; set; }                     // display only
+        public List<string> ProfileMissing { get; set; } = new();   // display only: form field names to highlight
+    }
+
+    // Admin/Pastor panel on a member's profile
+    public class MemberActivitySummary
+    {
+        public int ProfilePercent { get; set; }
+        public List<string> ProfileMissing { get; set; } = new();
+        public int TopRank { get; set; }                 // 1–10 when a top participant, else 0
+        public int Points30 { get; set; }
+        public DateTime? LastActive { get; set; }
+        public Dictionary<MemberActivityType, (int Recent, int All)> Counts { get; set; } = new();
+        public List<MemberActivity> Recent { get; set; } = new();
+    }
+
+    // Admin > Member Activity page
+    public class MemberActivityPageViewModel
+    {
+        public List<(Member Member, int Points)> TopParticipants { get; set; } = new();
+        public List<MemberActivity> Activities { get; set; } = new();
+        public string? Search { get; set; }
+        public MemberActivityType? Type { get; set; }
+        public DateTime? From { get; set; }
+        public DateTime? To { get; set; }
     }
 
     public class MemberDashboardViewModel
@@ -133,6 +158,8 @@ namespace ChurchMinistry.ViewModels
         public List<Notification> Notifications { get; set; } = new();
         public Sermon? LiveSermon { get; set; }                       // published sermon streaming now
         public List<MeetingRoom> LiveMeetings { get; set; } = new();  // public + invited private meetings in progress
+        public int ProfilePercent { get; set; }
+        public bool IsTopParticipant { get; set; }
     }
 
     // ─── Giving ───

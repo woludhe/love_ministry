@@ -1,0 +1,72 @@
+@model ChurchMinistry.ViewModels.MemberActivitySummary
+@using ChurchMinistry.Models
+@using ChurchMinistry.Services
+@* Admin/Pastor only: a member's profile completion, ranking and recent use of the system *@
+<div class="activity-panel">
+    <div class="activity-panel-head">
+        <h3><i class="fas fa-chart-line"></i> Member Activity</h3>
+        @if (Model.TopRank > 0)
+        {
+            <span class="top-badge"><i class="fas fa-medal"></i> Top Participant #@Model.TopRank</span>
+        }
+    </div>
+
+    <div class="activity-stats">
+        <div>
+            <span class="activity-stat-label">Profile</span>
+            <strong>@Model.ProfilePercent%</strong>
+            <div class="profile-progress-track"><div class="profile-progress-fill" style="width:@(Model.ProfilePercent)%"></div></div>
+        </div>
+        <div>
+            <span class="activity-stat-label">Points (last @ActivityService.RankingDays days)</span>
+            <strong>@Model.Points30</strong>
+        </div>
+        <div>
+            <span class="activity-stat-label">Last active</span>
+            <strong>@(Model.LastActive?.ToLocalTime().ToString("dd MMM yyyy, h:mm tt") ?? "Never")</strong>
+        </div>
+    </div>
+
+    @if (Model.ProfileMissing.Any())
+    {
+        <div class="profile-missing">
+            <span>Profile missing:</span>
+            @foreach (var item in Model.ProfileMissing)
+            {
+                <span class="profile-missing-chip">@item</span>
+            }
+        </div>
+    }
+
+    @if (Model.Counts.Any())
+    {
+        <table class="activity-counts">
+            <thead><tr><th>Activity</th><th>Last @ActivityService.RankingDays days</th><th>All time</th></tr></thead>
+            <tbody>
+                @foreach (var (type, c) in Model.Counts.OrderByDescending(kv => kv.Value.All))
+                {
+                    <tr><td>@ActivityService.Label(type)</td><td>@c.Recent</td><td>@c.All</td></tr>
+                }
+            </tbody>
+        </table>
+
+        <h4>Recent activity</h4>
+        <ul class="activity-timeline">
+            @foreach (var a in Model.Recent)
+            {
+                <li>
+                    <span class="activity-type activity-@a.Type.ToString().ToLower()">@ActivityService.Label(a.Type)</span>
+                    @if (!string.IsNullOrEmpty(a.Description))
+                    {
+                        <span>@a.Description</span>
+                    }
+                    <time>@a.CreatedAt.ToLocalTime().ToString("dd MMM yyyy, h:mm tt")</time>
+                </li>
+            }
+        </ul>
+    }
+    else
+    {
+        <p class="meta">No activity recorded yet.</p>
+    }
+</div>

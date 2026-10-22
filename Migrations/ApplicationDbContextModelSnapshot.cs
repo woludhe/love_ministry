@@ -790,6 +790,9 @@ namespace ChurchMinistry.Migrations
                     b.Property<string>("Description")
                         .HasColumnType("longtext");
 
+                    b.Property<int?>("DurationMinutes")
+                        .HasColumnType("int");
+
                     b.Property<DateTime?>("EndedAt")
                         .HasColumnType("datetime(6)");
 
@@ -962,6 +965,39 @@ namespace ChurchMinistry.Migrations
                         .IsUnique();
 
                     b.ToTable("Members");
+                });
+
+            modelBuilder.Entity("ChurchMinistry.Models.MemberActivity", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("Description")
+                        .HasMaxLength(300)
+                        .HasColumnType("varchar(300)");
+
+                    b.Property<int>("MemberId")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("ReferenceId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Type")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("varchar(30)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CreatedAt");
+
+                    b.HasIndex("MemberId", "CreatedAt");
+
+                    b.ToTable("MemberActivities");
                 });
 
             modelBuilder.Entity("ChurchMinistry.Models.MinistryGroup", b =>
@@ -1361,6 +1397,9 @@ namespace ChurchMinistry.Migrations
                         .IsRequired()
                         .HasMaxLength(200)
                         .HasColumnType("varchar(200)");
+
+                    b.Property<bool?>("InMeeting")
+                        .HasColumnType("tinyint(1)");
 
                     b.Property<bool>("IsGuest")
                         .HasColumnType("tinyint(1)");
@@ -1830,6 +1869,17 @@ namespace ChurchMinistry.Migrations
                         .OnDelete(DeleteBehavior.SetNull);
 
                     b.Navigation("User");
+                });
+
+            modelBuilder.Entity("ChurchMinistry.Models.MemberActivity", b =>
+                {
+                    b.HasOne("ChurchMinistry.Models.Member", "Member")
+                        .WithMany()
+                        .HasForeignKey("MemberId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Member");
                 });
 
             modelBuilder.Entity("ChurchMinistry.Models.MinistryGroup", b =>

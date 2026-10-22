@@ -219,6 +219,7 @@ namespace ChurchMinistry.Controllers
                 HostUserId = _userManager.GetUserId(User),
                 HostMemberId = member?.Id,
                 ScheduledAt = vm.ScheduledAt?.ToUniversalTime(),
+                DurationMinutes = vm.DurationMinutes,
                 WaitingRoomEnabled = vm.WaitingRoomEnabled,
                 ChatEnabled = vm.ChatEnabled,
                 MaxParticipants = vm.MaxParticipants,
@@ -298,6 +299,7 @@ namespace ChurchMinistry.Controllers
                 Description = room.Description,
                 MeetingType = room.MeetingType,
                 ScheduledAt = room.ScheduledAt?.ToLocalTime(),
+                DurationMinutes = room.DurationMinutes,
                 WaitingRoomEnabled = room.WaitingRoomEnabled,
                 ChatEnabled = room.ChatEnabled,
                 MaxParticipants = room.MaxParticipants,
@@ -333,6 +335,7 @@ namespace ChurchMinistry.Controllers
             room.Description = vm.Description;
             room.MeetingType = vm.MeetingType;
             room.ScheduledAt = vm.ScheduledAt?.ToUniversalTime();
+            room.DurationMinutes = vm.DurationMinutes;
             room.WaitingRoomEnabled = vm.WaitingRoomEnabled;
             room.ChatEnabled = vm.ChatEnabled;
             room.MaxParticipants = vm.MaxParticipants;

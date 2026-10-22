@@ -1,0 +1,141 @@
+@model MeetingRegisterViewModel
+@using ChurchMinistry.Models
+@{
+    ViewData["Title"] = "Meetings Register";
+    Layout = "~/Views/Shared/_AdminDashboard_Layout.cshtml";
+}
+
+<div class="admin-main">
+    <div class="admin-topbar">
+        <h1>Meetings Register</h1>
+    </div>
+
+    <form method="get" class="filter-bar">
+        <input name="search" value="@Model.Search" class="form-control" placeholder="Title, host or meeting ID…" />
+        <select name="type" class="form-control">
+            <option value="">All types</option>
+            @foreach (var t in Enum.GetValues<MeetingType>())
+            {
+                <option value="@t" selected="@(Model.Type == t)">@t</option>
+            }
+        </select>
+        <select name="status" class="form-control">
+            <option value="ended" selected="@(Model.Status == "ended")">Ended</option>
+            <option value="cancelled" selected="@(Model.Status == "cancelled")">Cancelled</option>
+            <option value="all" selected="@(Model.Status == "all")">Ended &amp; cancelled</option>
+        </select>
+        <label class="mr-date">From <input type="date" name="from" value="@Model.From?.ToString("yyyy-MM-dd")" class="form-control" /></label>
+        <label class="mr-date">To <input type="date" name="to" value="@Model.To?.ToString("yyyy-MM-dd")" class="form-control" /></label>
+        <button class="btn btn-primary">Filter</button>
+        <a asp-action="Index" class="btn btn-outline">Clear</a>
+    </form>
+
+    <div class="kpi-grid">
+        <div class="kpi-card kpi-purple">
+            <div class="kpi-icon"><i class="fas fa-video"></i></div>
+            <div class="kpi-info"><span class="kpi-label">Meetings</span><span class="kpi-value">@Model.MeetingCount</span></div>
+        </div>
+        <div class="kpi-card kpi-green">
+            <div class="kpi-icon"><i class="fas fa-users"></i></div>
+            <div class="kpi-info"><span class="kpi-label">Attendees</span><span class="kpi-value">@Model.TotalAttendees</span></div>
+        </div>
+        <div class="kpi-card kpi-amber">
+            <div class="kpi-icon"><i class="fas fa-chart-simple"></i></div>
+            <div class="kpi-info"><span class="kpi-label">Avg. per meeting</span><span class="kpi-value">@Model.AverageAttendees.ToString("0.#")</span></div>
+        </div>
+        <div class="kpi-card kpi-blue">
+            <div class="kpi-icon"><i class="fas fa-tower-broadcast"></i></div>
+            <div class="kpi-info"><span class="kpi-label">Live viewers</span><span class="kpi-value">@Model.TotalViewers</span></div>
+        </div>
+    </div>
+
+    <div class="table-card">
+        @if (!Model.Rows.Any())
+        {
+            <div style="text-align:center;padding:3rem;color:var(--text-s)">
+                <i class="fas fa-book fa-2x" style="display:block;margin-bottom:1rem;color:var(--border)"></i>
+                <p>No meetings match these filters.</p>
+            </div>
+        }
+        else
+        {
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Meeting</th>
+                        <th>Meeting ID</th>
+                        <th>Host</th>
+                        <th>Scheduled</th>
+                        <th>Actual</th>
+                        <th>Attendees</th>
+                        <th>Live viewers</th>
+                        <th>Status</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var row in Model.Rows)
+                    {
+                        var r = row.Room;
+                        <tr>
+                            <td class="cell-title">
+                                <a asp-action="Details" asp-route-id="@r.Id" class="mr-title">@r.Title</a>
+                                <div class="mr-sub">
+                                    @r.MeetingType
+                                    @if (!r.IsPublic) { <span title="Private"><i class="fas fa-lock"></i> Private</span> }
+                                    @if (r.RecurrenceLabel != null) { <span><i class="fas fa-rotate"></i> @r.RecurrenceLabel</span> }
+                                </div>
+                            </td>
+                            <td><code class="mr-code">@r.RoomCode</code></td>
+                            <td>@(r.HostName ?? "—")</td>
+                            <td class="mr-when">
+                                @MeetingTimes.Local(r.ScheduledAt)
+                                @if (r.ScheduledEndAt != null)
+                                {
+                                    <br /><small class="meta">to @MeetingTimes.Local(r.ScheduledEndAt, "h:mm tt")</small>
+                                }
+                            </td>
+                            <td class="mr-when">
+                                @if (r.StartedAt != null)
+                                {
+                                    @MeetingTimes.Local(r.StartedAt)
+                                    <br /><small class="meta">
+                                        to @MeetingTimes.Local(r.EndedAt, "h:mm tt")
+                                        @if (r.EndedAt != null) { <text>· @MeetingTimes.Span(r.EndedAt.Value - r.StartedAt.Value)</text> }
+                                    </small>
+                                }
+                                else
+                                {
+                                    <span class="meta">Never started</span>
+                                }
+                            </td>
+                            <td><strong>@row.Attendees</strong></td>
+                            <td>
+                                @if (row.Viewers == null)
+                                {
+                                    <span class="meta">—</span>
+                                }
+                                else if (!row.Viewers.Tracked)
+                                {
+                                    <span class="meta" title="The linked sermon doesn't track attendance">Not tracked</span>
+                                }
+                                else
+                                {
+                                    <strong>@row.Viewers.Total</strong>
+                                    @if (row.Viewers.Estimated) { <span class="meta" title="Partly estimated: logged before Live page and meeting room were told apart">≈</span> }
+                                }
+                            </td>
+                            <td>
+                                <span class="status-badge @(r.Status == RoomStatus.Ended ? "status-active" : "status-inactive")">@r.Status</span>
+                            </td>
+                            <td class="cell-actions">
+                                <a asp-action="Details" asp-route-id="@r.Id" class="btn btn-outline btn-xs"><i class="fas fa-list"></i> Details</a>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+            <partial name="_Pager" model="Model.Pager" />
+        }
+    </div>
+</div>

@@ -8,6 +8,8 @@
 @{
     var recommended = ViewBag.Recommended as List<ChurchMinistry.Models.Sermon>
                       ?? new List<ChurchMinistry.Models.Sermon>();
+    // Scheduled for later and not live yet: show the poster instead of a player
+    var isUpcoming = !Model.IsLive && Model.SermonDate > DateTime.UtcNow;
 }
 
 <div class="watch-page">
@@ -19,7 +21,27 @@
             @* {{-- Player wrapper --}} *@
             <div class="video-player-wrap" id="playerWrap">
 
-                @if (!string.IsNullOrWhiteSpace(Model.VideoUrl))
+                @if (isUpcoming)
+                {
+                    <div class="upcoming-poster">
+                        @if (!string.IsNullOrEmpty(Model.ThumbnailUrl))
+                        {
+                            <img src="@Model.ThumbnailUrl" alt="@Model.Title" />
+                        }
+                        else
+                        {
+                            <div class="upcoming-poster-placeholder"><i class="fas fa-church"></i></div>
+                        }
+                        <div class="upcoming-poster-info">
+                            <span class="upcoming-badge"><i class="fas fa-hourglass-half"></i> Upcoming Sermon</span>
+                            <span class="upcoming-when">
+                                <i class="fas fa-calendar"></i> @Model.SermonDate.ToString("dddd, dd MMMM yyyy")
+                                &nbsp;<i class="fas fa-clock"></i> @Model.SermonDate.ToString("h:mm tt")
+                            </span>
+                        </div>
+                    </div>
+                }
+                else if (!string.IsNullOrWhiteSpace(Model.VideoUrl))
                 {
                     var ytId = ChurchMinistry.Services.MediaLinks.YouTubeVideoId(Model.VideoUrl);
                     if (ChurchMinistry.Services.MediaLinks.IsFacebook(Model.VideoUrl))
@@ -129,6 +151,10 @@
             <div class="sermon-details">
                 <div class="sermon-details-header">
                     <div>
+                        @if (isUpcoming)
+                        {
+                            <span class="upcoming-badge"><i class="fas fa-hourglass-half"></i> Upcoming Sermon</span>
+                        }
                         <h1>@Model.Title</h1>
                         @if (!string.IsNullOrEmpty(Model.SeriesName))
                         {
@@ -420,6 +446,63 @@
 
         .audio-player-bar {
             width: 100%;
+        }
+
+        /* ── Upcoming sermon poster ─────────────────── */
+        .upcoming-poster {
+            position: absolute;
+            inset: 0;
+            background: #000;
+        }
+
+            /* Show the whole poster, letterboxed on black */
+            .upcoming-poster img,
+            .upcoming-poster-placeholder {
+                width: 100%;
+                height: 100%;
+                object-fit: contain;
+            }
+
+        .upcoming-poster-placeholder {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 4rem;
+            color: rgba(255,255,255,.35);
+            background: linear-gradient(135deg, #1a1a2e, #3a2a5e);
+        }
+
+        .upcoming-poster-info {
+            position: absolute;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: .5rem 1rem;
+            padding: 2.5rem 1.25rem 1rem;
+            color: #fff;
+            font-size: .9rem;
+            background: linear-gradient(transparent, rgba(0,0,0,.8));
+        }
+
+        .upcoming-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: .4rem;
+            padding: .3rem .75rem;
+            border-radius: 999px;
+            background: #f5a623;
+            color: #1a1a1a;
+            font-size: .78rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: .04em;
+        }
+
+        .sermon-details-header .upcoming-badge {
+            margin-bottom: .5rem;
         }
 
         /* ── Recommendation panel (overlay on video) ─ */

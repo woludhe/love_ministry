@@ -1,5 +1,6 @@
 using ChurchMinistry.Data;
 using ChurchMinistry.Models;
+using ChurchMinistry.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.SignalR;
@@ -15,7 +16,8 @@ namespace ChurchMinistry.Hubs
     public class LiveSessionHub : Hub
     {
         private readonly ApplicationDbContext _db;
-        public LiveSessionHub(ApplicationDbContext db) { _db = db; }
+        private readonly IActivityService _activity;
+        public LiveSessionHub(ApplicationDbContext db, IActivityService activity) { _db = db; _activity = activity; }
 
         // ── Viewers join the room for a sermon ─────────────────
         // Live page viewers call JoinLiveRoom; people in the sermon's meeting room call JoinLiveRoomFromMeeting
@@ -25,7 +27,8 @@ namespace ChurchMinistry.Hubs
         private async Task JoinAsync(int sermonId, bool inMeeting)
         {
             await Groups.AddToGroupAsync(Context.ConnectionId, $"live-{sermonId}");
-            await LogAttendanceAsync(sermonId);
+            await LogAttendanceAsync(sermonId, inMeeting);
+            await LogActivityAsync(sermonId);
             LiveAudience.Join(Context.ConnectionId, sermonId, inMeeting);
             await BroadcastAudienceAsync(sermonId);
         }
@@ -58,7 +61,19 @@ namespace ChurchMinistry.Hubs
 
         // ── Attendance tracking ────────────────────────────────
         // Start a log row for this connection if the sermon tracks attendance
-        private async Task LogAttendanceAsync(int sermonId)
+        // Member activity log: signed-in viewers of a live sermon, once a day per sermon
+        // (regardless of TrackAttendance, which only drives the attendance report)
+        private async Task LogActivityAsync(int sermonId)
+        {
+            if (Context.User?.Identity?.IsAuthenticated != true) return;
+            var sermon = await _db.Sermons.Where(s => s.Id == sermonId && s.IsLive)
+                .Select(s => new { s.Title }).FirstOrDefaultAsync();
+            if (sermon == null) return;
+            await _activity.LogForUserAsync(Context.User.FindFirstValue(ClaimTypes.NameIdentifier),
+                MemberActivityType.WatchLive, sermon.Title, sermonId, oncePerDay: true);
+        }
+
+        private async Task LogAttendanceAsync(int sermonId, bool inMeeting)
         {
             var sermon = await _db.Sermons
                 .FirstOrDefaultAsync(s => s.Id == sermonId && s.TrackAttendance);
@@ -84,6 +99,7 @@ namespace ChurchMinistry.Hubs
                 SermonId = sermonId,
                 ConnectionId = connId,
                 DeliveryMode = sermon.DeliveryMode,
+                InMeeting = inMeeting,
                 IsGuest = true,
                 DisplayName = "Guest"
             };

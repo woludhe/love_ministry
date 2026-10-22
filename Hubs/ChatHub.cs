@@ -1,5 +1,6 @@
 using ChurchMinistry.Data;
 using ChurchMinistry.Models;
+using ChurchMinistry.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.SignalR;
@@ -11,11 +12,13 @@ namespace ChurchMinistry.Hubs
     {
         private readonly ApplicationDbContext _db;
         private readonly UserManager<ApplicationUser> _userManager;
+        private readonly IActivityService _activity;
 
-        public ChatHub(ApplicationDbContext db, UserManager<ApplicationUser> userManager)
+        public ChatHub(ApplicationDbContext db, UserManager<ApplicationUser> userManager, IActivityService activity)
         {
             _db = db;
             _userManager = userManager;
+            _activity = activity;
         }
 
         public async Task JoinRoom(string room)
@@ -43,6 +46,9 @@ namespace ChurchMinistry.Hubs
             };
             _db.ChatMessages.Add(chat);
             await _db.SaveChangesAsync();
+            // Counted once per day: chatting is participation, not each message
+            await _activity.LogAsync(user.Member.Id, MemberActivityType.CommunityChat,
+                $"Chatted in #{room}", oncePerDay: true);
 
             await Clients.Group(room).SendAsync("ReceiveMessage", new
             {

@@ -1,0 +1,229 @@
+@model MeetingRegisterDetailsViewModel
+@using ChurchMinistry.Models
+@{
+    var r = Model.Room;
+    ViewData["Title"] = "Meeting: " + r.Title;
+    Layout = "~/Views/Shared/_AdminDashboard_Layout.cshtml";
+
+    // Scheduled against actual, when both sides are known
+    string? startNote = null, endNote = null;
+    if (r.ScheduledAt != null && r.StartedAt != null)
+    {
+        var diff = r.StartedAt.Value - r.ScheduledAt.Value;
+        startNote = Math.Abs(diff.TotalMinutes) < 1 ? "on time"
+                  : diff > TimeSpan.Zero ? $"{MeetingTimes.Span(diff)} late" : $"{MeetingTimes.Span(diff)} early";
+    }
+    if (r.ScheduledEndAt != null && r.EndedAt != null)
+    {
+        var diff = r.EndedAt.Value - r.ScheduledEndAt.Value;
+        endNote = Math.Abs(diff.TotalMinutes) < 1 ? "on time"
+                : diff > TimeSpan.Zero ? $"ran {MeetingTimes.Span(diff)} over" : $"ended {MeetingTimes.Span(diff)} early";
+    }
+    var actualLength = r.StartedAt != null && r.EndedAt != null ? r.EndedAt.Value - r.StartedAt.Value : (TimeSpan?)null;
+}
+
+<div class="admin-main">
+    <div class="admin-topbar">
+        <div>
+            <a asp-action="Index" class="mr-back"><i class="fas fa-arrow-left"></i> Meetings Register</a>
+            <h1>@r.Title</h1>
+            <div class="mr-sub">
+                <code class="mr-code">@r.RoomCode</code>
+                <span>@r.MeetingType</span>
+                <span>@(r.IsPublic ? "Public" : "Private")</span>
+                @if (r.RecurrenceLabel != null) { <span><i class="fas fa-rotate"></i> @r.RecurrenceLabel</span> }
+                <span class="status-badge @(r.Status == RoomStatus.Ended ? "status-active" : "status-inactive")">@r.Status</span>
+            </div>
+        </div>
+        <button type="button" onclick="exportCsv()" class="btn btn-outline btn-sm"><i class="fas fa-download"></i> Export CSV</button>
+    </div>
+
+    <div class="mr-cards">
+        <div class="table-card">
+            <h3><i class="fas fa-clock"></i> Timing</h3>
+            <dl class="mr-facts">
+                <dt>Scheduled start</dt><dd>@MeetingTimes.Local(r.ScheduledAt)</dd>
+                <dt>Scheduled end</dt><dd>@(r.ScheduledEndAt != null ? MeetingTimes.Local(r.ScheduledEndAt) : r.ScheduledAt != null ? "— (no duration set)" : "—")</dd>
+                <dt>Actual start</dt><dd>@MeetingTimes.Local(r.StartedAt) @if (startNote != null) { <small class="meta">(@startNote)</small> }</dd>
+                <dt>Actual end</dt><dd>@MeetingTimes.Local(r.EndedAt) @if (endNote != null) { <small class="meta">(@endNote)</small> }</dd>
+                <dt>Planned length</dt><dd>@(r.DurationMinutes != null ? MeetingTimes.Span(TimeSpan.FromMinutes(r.DurationMinutes.Value)) : "—")</dd>
+                <dt>Actual length</dt><dd>@(actualLength != null ? MeetingTimes.Span(actualLength.Value) : "—")</dd>
+            </dl>
+        </div>
+
+        <div class="table-card">
+            <h3><i class="fas fa-circle-info"></i> Overview</h3>
+            <dl class="mr-facts">
+                <dt>Host</dt>
+                <dd>
+                    @if (r.HostMember != null)
+                    {
+                        <a asp-controller="Members" asp-action="Profile" asp-route-id="@r.HostMember.Id">@r.HostMember.FullName</a>
+                    }
+                    else { @(r.HostName ?? "—") }
+                </dd>
+                <dt>Created</dt><dd>@MeetingTimes.Local(r.CreatedAt)</dd>
+                <dt>Approval</dt><dd>@r.ApprovalStatus @if (Model.ApprovedBy != null) { <small class="meta">by @Model.ApprovedBy, @MeetingTimes.Local(r.ApprovedAt)</small> }</dd>
+                <dt>Invited</dt><dd>@Model.InvitedMembers members · @Model.InvitedGroups groups · @Model.InvitedEmails emails</dd>
+                <dt>Max participants</dt><dd>@r.MaxParticipants</dd>
+                <dt>Chat messages</dt><dd>@Model.ChatMessages</dd>
+                <dt>Linked sermon</dt>
+                <dd>
+                    @if (Model.LinkedSermon != null)
+                    {
+                        @if (Model.LinkedSermon.TrackAttendance)
+                        {
+                            <a asp-controller="Admin" asp-action="SermonAttendance" asp-route-id="@Model.LinkedSermon.Id">@Model.LinkedSermon.Title</a>
+                        }
+                        else { @Model.LinkedSermon.Title }
+                    }
+                    else { @("— (not streamed on the Live page)") }
+                </dd>
+            </dl>
+        </div>
+    </div>
+
+    <div class="mr-stats">
+        <div class="attendance-stat"><span>@Model.Attendees.Count</span>Attendees</div>
+        <div class="attendance-stat"><span>@Model.PeakAttendees</span>Peak at once</div>
+        <div class="attendance-stat"><span>@Model.Attendees.Count(a => a.Joins > 1)</span>Rejoined</div>
+        <div class="attendance-stat">
+            <span>
+                @if (Model.ViewerStats == null) { @("—") }
+                else if (!Model.ViewerStats.Tracked) { @("n/a") }
+                else { @(Model.ViewerStats.Estimated ? "≈" : "")@Model.ViewerStats.Total }
+            </span>Live viewers
+        </div>
+    </div>
+
+    <div class="table-card" style="margin-top:1.25rem">
+        <h3><i class="fas fa-users"></i> Attendees</h3>
+        @if (!Model.Attendees.Any())
+        {
+            <p class="meta" style="padding:1rem 0">Nobody joined this meeting.</p>
+        }
+        else
+        {
+            <table class="data-table">
+                <thead><tr><th>#</th><th>Name</th><th>Role</th><th>First joined</th><th>Last left</th><th>Time in meeting</th><th>Joins</th></tr></thead>
+                <tbody>
+                    @{ int n = Model.AttendeesPager.First; }
+                    @foreach (var a in Model.PageAttendees)
+                    {
+                        <tr>
+                            <td>@(n++)</td>
+                            <td class="cell-title">
+                                @if (a.MemberId != null)
+                                {
+                                    <a asp-controller="Members" asp-action="Profile" asp-route-id="@a.MemberId">@a.Name</a>
+                                }
+                                else
+                                {
+                                    @a.Name <span class="tag">Not a member</span>
+                                }
+                            </td>
+                            <td>@(a.IsHost ? "Host" : a.IsCoHost ? "Co-host" : "Participant")</td>
+                            <td>@MeetingTimes.Local(a.FirstJoined, "dd MMM, h:mm tt")</td>
+                            <td>@(a.LastLeft != null ? MeetingTimes.Local(a.LastLeft, "dd MMM, h:mm tt") : "Until the end")</td>
+                            <td>@MeetingTimes.Span(a.TimeInMeeting)</td>
+                            <td>@a.Joins</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+            <partial name="_Pager" model="Model.AttendeesPager" />
+        }
+        @if (Model.NotAdmitted.Any())
+        {
+            <p class="mr-note"><i class="fas fa-door-closed"></i> Waited but weren't admitted: @string.Join(", ", Model.NotAdmitted)</p>
+        }
+    </div>
+
+    @if (Model.ViewerStats != null)
+    {
+        <div class="table-card" style="margin-top:1.25rem">
+            <h3><i class="fas fa-tower-broadcast"></i> Live viewers <small class="meta">(watched on the Live page)</small></h3>
+            @if (!Model.ViewerStats.Tracked)
+            {
+                <p class="meta" style="padding:1rem 0">The linked sermon doesn't track attendance, so Live-page viewers weren't recorded.</p>
+            }
+            else if (!Model.Viewers.Any())
+            {
+                <p class="meta" style="padding:1rem 0">Nobody watched this meeting on the Live page.</p>
+            }
+            else
+            {
+                <p class="mr-note">
+                    @Model.ViewerStats.Total unique: @Model.ViewerStats.Members members · @Model.ViewerStats.Guests guest connections
+                    (guests can't be told apart, so each connection counts).
+                    @if (Model.ViewerStats.Estimated)
+                    {
+                        <br /><span><i class="fas fa-circle-info"></i> Some viewings were logged before the Live page and the meeting room were told apart; those are estimated (marked ≈).</span>
+                    }
+                </p>
+                <table class="data-table">
+                    <thead><tr><th>Viewer</th><th>Joined</th><th>Left</th><th>Watched</th></tr></thead>
+                    <tbody>
+                        @foreach (var v in Model.PageViewers)
+                        {
+                            <tr>
+                                <td class="cell-title">
+                                    @if (v.MemberId != null)
+                                    {
+                                        <a asp-controller="Members" asp-action="Profile" asp-route-id="@v.MemberId">@v.Name</a>
+                                    }
+                                    else
+                                    {
+                                        @v.Name
+                                    }
+                                    @if (v.Estimated) { <span class="meta" title="Estimated">≈</span> }
+                                </td>
+                                <td>@MeetingTimes.Local(v.JoinedAt, "dd MMM, h:mm tt")</td>
+                                <td>@MeetingTimes.Local(v.LeftAt, "dd MMM, h:mm tt")</td>
+                                <td>@MeetingTimes.Span(v.Duration)</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+                <partial name="_Pager" model="Model.ViewersPager" />
+            }
+        </div>
+    }
+</div>
+
+@section Scripts {
+<script>
+// ── CSV Export (every attendee and viewer, not just the page on screen) ──
+const csvRows = [
+    ['Meeting', @Json.Serialize(r.Title)],
+    ['Meeting ID', @Json.Serialize(r.RoomCode)],
+    ['Host', @Json.Serialize(r.HostName ?? "")],
+    ['Scheduled', @Json.Serialize(MeetingTimes.Local(r.ScheduledAt) + " – " + MeetingTimes.Local(r.ScheduledEndAt))],
+    ['Actual', @Json.Serialize(MeetingTimes.Local(r.StartedAt) + " – " + MeetingTimes.Local(r.EndedAt))],
+    [],
+    ['#', 'Attendee', 'Role', 'First joined', 'Last left', 'Time in meeting', 'Joins'],
+    ...@Json.Serialize(Model.Attendees.Select((a, i) => new[] {
+        (i + 1).ToString(), a.Name + (a.MemberId == null ? " (not a member)" : ""),
+        a.IsHost ? "Host" : a.IsCoHost ? "Co-host" : "Participant",
+        MeetingTimes.Local(a.FirstJoined), a.LastLeft != null ? MeetingTimes.Local(a.LastLeft) : "Until the end",
+        MeetingTimes.Span(a.TimeInMeeting), a.Joins.ToString() })),
+    [],
+    ['Live viewer', 'Joined', 'Left', 'Watched', 'Estimated'],
+    ...@Json.Serialize(Model.Viewers.Select(v => new[] {
+        v.Name, MeetingTimes.Local(v.JoinedAt), MeetingTimes.Local(v.LeftAt), MeetingTimes.Span(v.Duration), v.Estimated ? "yes" : "" }))
+];
+
+function exportCsv() {
+    const csv = csvRows.map(row =>
+        row.map(cell => `"${String(cell ?? '').replace(/"/g, '""')}"`).join(',')
+    ).join('\n');
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href     = url;
+    a.download = @Json.Serialize("meeting-" + r.RoomCode + ".csv");
+    a.click();
+    URL.revokeObjectURL(url);
+}
+</script>
+}
