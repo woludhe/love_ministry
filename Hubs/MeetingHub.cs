@@ -19,13 +19,14 @@ namespace ChurchMinistry.Hubs
         private readonly IMeetingAccessService _access;
         private readonly IMeetingSeriesService _series;
         private readonly IActivityService _activity;
+        private readonly IHubContext<LiveSessionHub> _liveHub;
 
         public MeetingHub(ApplicationDbContext db, UserManager<ApplicationUser> um, ILiveKitService liveKit,
             IAttendanceService attendance, IMeetingAccessService access, IMeetingSeriesService series,
-            IActivityService activity)
+            IActivityService activity, IHubContext<LiveSessionHub> liveHub)
         {
             _db = db; _userManager = um; _liveKit = liveKit; _attendance = attendance; _access = access;
-            _series = series; _activity = activity;
+            _series = series; _activity = activity; _liveHub = liveHub;
         }
 
         // ── Join meeting room ──────────────────────────────────
@@ -294,29 +295,63 @@ namespace ChurchMinistry.Hubs
         public async Task SendMessage(string roomCode, string message, string type = "chat")
         {
             var p = await _db.MeetingParticipants
+                .Include(x => x.MeetingRoom)
                 .FirstOrDefaultAsync(x => x.ConnectionId == Context.ConnectionId);
-            if (p == null) return;
+            if (p == null || p.IsInWaitingRoom || string.IsNullOrWhiteSpace(message)) return;
+            if (type != "prayer") type = "chat";
+            // The room this connection is actually in, not whatever code the client sent
+            roomCode = p.MeetingRoom.RoomCode;
 
             var msg = new MeetingMessage
             {
                 MeetingRoomId = p.MeetingRoomId,
                 MemberId = p.MemberId,
                 SenderName = p.DisplayName,
-                Message = message,
+                Message = message.Trim(),
                 Type = type
             };
             _db.MeetingMessages.Add(msg);
             await _db.SaveChangesAsync();
 
+            var photo = p.MemberId == null ? null
+                : await _db.Members.Where(m => m.Id == p.MemberId).Select(m => m.ProfilePhoto).FirstOrDefaultAsync();
+            var item = new SermonChat.Item(msg.SenderName, msg.Message, msg.Type, msg.SentAt,
+                photo, SermonChat.FromMeeting, null, msg.MemberId);
+
+            // Room members find their own message by connectionId
             await Clients.Group(roomCode).SendAsync("ReceiveMessage", new
             {
                 id = msg.Id,
                 senderName = msg.SenderName,
                 message = msg.Message,
                 type = msg.Type,
-                sentAt = msg.SentAt.ToString("HH:mm"),
+                sentAt = DateTime.SpecifyKind(msg.SentAt, DateTimeKind.Utc).ToString("o"),
+                source = SermonChat.FromMeeting,
                 connectionId = Context.ConnectionId
             });
+
+            // Same conversation on the Live page of the sermon this room belongs to
+            if (await SermonChat.SermonForRoomAsync(_db, roomCode) is int sermonId)
+                await _liveHub.Clients.Group($"livechat-{sermonId}")
+                    .SendAsync("LiveChatMessage", SermonChat.Payload(item, isOwn: false));
+        }
+
+        // Chat so far, for someone entering the room: the room's messages, plus the Live page's
+        // when the room belongs to a sermon. Admitted participants only.
+        [Authorize]
+        public async Task<object> GetChat(string roomCode)
+        {
+            var p = await _db.MeetingParticipants
+                .Include(x => x.MeetingRoom)
+                .FirstOrDefaultAsync(x => x.ConnectionId == Context.ConnectionId && x.LeftAt == null);
+            if (p == null || p.IsInWaitingRoom || p.MeetingRoom.RoomCode != roomCode) return Array.Empty<object>();
+
+            var userId = _userManager.GetUserId(Context.User!);
+            var memberId = p.MemberId ?? await _db.Members.Where(m => m.UserId == userId)
+                .Select(m => (int?)m.Id).FirstOrDefaultAsync();
+            var sermonId = await SermonChat.SermonForRoomAsync(_db, roomCode);
+            var items = await SermonChat.LoadAsync(_db, sermonId, p.MeetingRoomId);
+            return items.Select(i => SermonChat.Payload(i, i.IsFrom(userId, memberId)));
         }
 
         // ── Reactions ──────────────────────────────────────────

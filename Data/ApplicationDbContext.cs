@@ -37,6 +37,7 @@ namespace ChurchMinistry.Data
         public DbSet<PaymentMethodConfig> PaymentMethods => Set<PaymentMethodConfig>();
         public DbSet<MeetingInvitation> MeetingInvitations => Set<MeetingInvitation>();
         public DbSet<SermonAttendance> SermonAttendances => Set<SermonAttendance>();
+        public DbSet<LiveChatMessage> LiveChatMessages => Set<LiveChatMessage>();
         public DbSet<MemberActivity> MemberActivities => Set<MemberActivity>();
         public DbSet<RecurringGift> RecurringGifts => Set<RecurringGift>();
 
@@ -195,6 +196,15 @@ namespace ChurchMinistry.Data
                 e.HasOne(a => a.Member).WithMany()
                     .HasForeignKey(a => a.MemberId).OnDelete(DeleteBehavior.SetNull);
                 e.HasIndex(a => a.ConnectionId);
+            });
+
+            builder.Entity<LiveChatMessage>(e =>
+            {
+                e.HasOne(m => m.Sermon).WithMany()
+                    .HasForeignKey(m => m.SermonId).OnDelete(DeleteBehavior.Cascade);
+                e.HasOne(m => m.Member).WithMany()
+                    .HasForeignKey(m => m.MemberId).OnDelete(DeleteBehavior.SetNull);
+                e.HasIndex(m => new { m.SermonId, m.SentAt });
             });
 
             builder.Entity<MemberActivity>(e =>

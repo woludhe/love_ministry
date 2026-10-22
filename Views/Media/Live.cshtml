@@ -193,37 +193,6 @@
 
             </div>
 
-            @* Giving sidebar *@
-            <div class="live-giving-sidebar" id="givingSidebar" style="display:none">
-                <div class="giving-sidebar-inner">
-                    <div class="giving-sidebar-header">
-                        <i class="fas fa-hand-holding-heart" style="color:#10b981"></i>
-                        <span id="givingCta">Support this ministry</span>
-                    </div>
-
-                    @* Methods rendered dynamically from PaymentMethodConfig *@
-                    <div class="giving-methods" id="givingMethods">
-                        <div class="giving-methods-loading">
-                            <i class="fas fa-spinner fa-spin"></i> Loading…
-                        </div>
-                    </div>
-
-                    @* Amounts update when a method is selected *@
-                    <div class="giving-amounts" id="givingAmountsSection" style="display:none">
-                        <div class="giving-amounts-label" id="givingAmountsLabel">Quick amount</div>
-                        <div class="giving-amounts-grid" id="givingAmountsGrid"></div>
-                        <input type="number" id="customAmount" class="form-control giving-custom-input"
-                               placeholder="Custom amount" min="1" step="1" />
-                    </div>
-
-                    <a href="/Giving/Give" id="givingBtn" class="btn btn-primary btn-full" target="_blank" rel="noopener"
-                       style="display:none">
-                        <i class="fas fa-heart"></i> Give Now
-                    </a>
-                    <p class="giving-secure-note"><i class="fas fa-lock"></i> Secured by Flutterwave</p>
-                </div>
-            </div>
-
             @* Live Chat panel *@
             @if (isLoggedIn)
             {
@@ -289,6 +258,37 @@
                     }
                 </div>
             }
+
+            @* Giving sidebar *@
+            <div class="live-giving-sidebar" id="givingSidebar" style="display:none">
+                <div class="giving-sidebar-inner">
+                    <div class="giving-sidebar-header">
+                        <i class="fas fa-hand-holding-heart" style="color:#10b981"></i>
+                        <span id="givingCta">Support this ministry</span>
+                    </div>
+
+                    @* Methods rendered dynamically from PaymentMethodConfig *@
+                    <div class="giving-methods" id="givingMethods">
+                        <div class="giving-methods-loading">
+                            <i class="fas fa-spinner fa-spin"></i> Loading…
+                        </div>
+                    </div>
+
+                    @* Amounts update when a method is selected *@
+                    <div class="giving-amounts" id="givingAmountsSection" style="display:none">
+                        <div class="giving-amounts-label" id="givingAmountsLabel">Quick amount</div>
+                        <div class="giving-amounts-grid" id="givingAmountsGrid"></div>
+                        <input type="number" id="customAmount" class="form-control giving-custom-input"
+                               placeholder="Custom amount" min="1" step="1" />
+                    </div>
+
+                    <a href="/Giving/Give" id="givingBtn" class="btn btn-primary btn-full" target="_blank" rel="noopener"
+                       style="display:none">
+                        <i class="fas fa-heart"></i> Give Now
+                    </a>
+                    <p class="giving-secure-note"><i class="fas fa-lock"></i> Secured by Flutterwave</p>
+                </div>
+            </div>
 
             @* Prayer FAB *@
             <a asp-controller="Prayer" asp-action="Submit" class="prayer-fab" id="prayerFab" style="display:none">
@@ -665,6 +665,7 @@
             if (SERMON_ID > 0) {
                 await liveConn.invoke('JoinLiveRoom', SERMON_ID);
                 reportAttendanceLocation();
+                loadLiveChat();   // catch up on messages sent while disconnected
             }
         });
 
@@ -702,13 +703,8 @@
         liveConn.on('MarqueeSpeedChanged', speed => setMarqueeSpeed(speed));
         liveConn.on('LiveChatMessage', msg => appendLiveChatMessage(msg));
         liveConn.on('LiveChatPaused', paused => {
-            chatPaused = paused;
-            const area = document.getElementById('chatInputArea');
-            if (area && !@isAdminPastor.ToString().ToLower()) {
-                area.style.opacity = paused ? '.4' : '1';
-                area.style.pointerEvents = paused ? 'none' : 'auto';
-            }
-            appendSystemChatMsg(paused ? '⏸ Chat has been paused.' : '▶ Chat has been resumed.');
+            if (paused !== chatPaused) appendSystemChatMsg(paused ? '⏸ Chat has been paused.' : '▶ Chat has been resumed.');
+            applyChatPaused(paused);
         });
         liveConn.on('LiveChatCleared', () => {
             const box = document.getElementById('liveChatMessages');
@@ -1069,19 +1065,47 @@
             document.getElementById('btnInfoChat')?.classList.toggle('active-btn', chatOpen);
             if (chatOpen) {
                 unreadChat = 0; updateChatBadge(0); document.getElementById('liveChatInput')?.focus();
-                if (SERMON_ID > 0) liveConn.invoke('JoinLiveChatRoom', SERMON_ID).catch(() => { });
             }
+        }
+        // History and pause state from the server (page load and reconnect)
+        async function loadLiveChat() {
+            if (!IS_LOGGED || SERMON_ID <= 0) return;
+            const box = document.getElementById('liveChatMessages'); if (!box) return;
+            try {
+                const { paused, messages } = await liveConn.invoke('GetLiveChat', SERMON_ID);
+                applyChatPaused(paused);
+                if (messages.length === 0) return;
+                box.innerHTML = '';
+                messages.forEach(m => appendLiveChatMessage(m, false));
+            } catch (e) { console.error(e); }
+        }
+        function applyChatPaused(paused) {
+            chatPaused = paused;
+            const area = document.getElementById('chatInputArea');
+            if (area && !IS_HOST) {
+                area.style.opacity = paused ? '.4' : '1';
+                area.style.pointerEvents = paused ? 'none' : 'auto';
+            }
+            document.getElementById('btnPauseChat')?.classList.toggle('meet-ctrl-danger', paused);
+            const banner = document.getElementById('chatPausedBanner');
+            if (banner) banner.style.display = paused ? 'flex' : 'none';
+        }
+        function fmtChatTime(iso) {
+            const d = new Date(iso);
+            return isNaN(d) ? '' : d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
         }
         function liveChatKeyDown(e) { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendLiveChat(); } }
         function autoResizeChat(el) { el.style.height = 'auto'; el.style.height = Math.min(el.scrollHeight, 100) + 'px'; }
+        const IS_HOST = @isAdminPastor.ToString().ToLower();
         function sendLiveChat() {
-            if (chatPaused && !@isAdminPastor.ToString().ToLower()) { showToast('Chat is paused'); return; }
+            if (chatPaused && !IS_HOST) { showToast('Chat is paused'); return; }
             const input = document.getElementById('liveChatInput');
             const msg = input.value.trim(); if (!msg) return;
             liveConn.invoke('SendLiveChat', SERMON_ID, msg, 'chat').catch(console.error);
             input.value = ''; input.style.height = 'auto';
         }
         function sendLivePrayer() {
+            if (chatPaused && !IS_HOST) { showToast('Chat is paused'); return; }
             const input = document.getElementById('liveChatInput');
             const msg = input.value.trim(); if (!msg) return;
             liveConn.invoke('SendLiveChat', SERMON_ID, '🙏 ' + msg, 'prayer').catch(console.error);
@@ -1089,19 +1113,20 @@
         }
         function toggleEmojiPicker() { const row = document.getElementById('emojiPickerRow'); row.style.display = row.style.display === 'none' ? 'flex' : 'none'; }
         function insertEmoji(emoji) { const input = document.getElementById('liveChatInput'); if (input) { input.value += emoji; input.focus(); } }
-        function appendLiveChatMessage({ senderName, message, type, sentAt, isOwn, photo }) {
+        // Messages from the sermon's meeting room arrive here too (source 'meeting'), tagged "Meeting"
+        function appendLiveChatMessage({ senderName, message, type, sentAt, isOwn, photo, source }, countUnread = true) {
             const box = document.getElementById('liveChatMessages'); if (!box) return;
             box.querySelector('.chat-welcome-msg')?.remove();
             const div = document.createElement('div');
             div.className = `live-chat-msg ${isOwn ? 'own' : ''} ${type === 'prayer' ? 'prayer-msg' : ''}`;
             div.innerHTML = `${!isOwn ? `<img class="chat-msg-avatar" src="${escHtml(photo ?? '/images/avatar-default.png')}" alt="${escHtml(senderName)}">` : ''}
                 <div class="chat-msg-bubble-wrap">
-                    ${!isOwn ? `<div class="chat-msg-name">${escHtml(senderName)}</div>` : ''}
+                    ${!isOwn ? `<div class="chat-msg-name">${escHtml(senderName)}${source === 'meeting' ? ' <span class="chat-msg-src" title="Sent from the meeting room">Meeting</span>' : ''}</div>` : ''}
                     <div class="chat-msg-bubble ${type === 'prayer' ? 'prayer-bubble' : ''}">${escHtml(message)}</div>
-                    <div class="chat-msg-time">${sentAt}</div>
+                    <div class="chat-msg-time">${fmtChatTime(sentAt)}</div>
                 </div>`;
             box.appendChild(div); box.scrollTop = box.scrollHeight;
-            if (!chatOpen) { unreadChat++; updateChatBadge(unreadChat); }
+            if (countUnread && !chatOpen && !isOwn) { unreadChat++; updateChatBadge(unreadChat); }
         }
         function appendSystemChatMsg(msg) {
             const box = document.getElementById('liveChatMessages'); if (!box) return;
@@ -1115,13 +1140,12 @@
                 else el.style.display = 'none';
             });
         }
+        // The server saves the state and broadcasts LiveChatPaused, which updates this page too
         function toggleChatPause() {
-            chatPaused = !chatPaused;
-            liveConn.invoke('PauseLiveChat', SERMON_ID, chatPaused).catch(console.error);
-            document.getElementById('btnPauseChat')?.classList.toggle('meet-ctrl-danger', chatPaused);
-            const banner = document.getElementById('chatPausedBanner');
-            if (banner) banner.style.display = chatPaused ? 'flex' : 'none';
-            showToast(chatPaused ? '⏸ Chat paused' : '▶ Chat resumed');
+            const paused = !chatPaused;
+            liveConn.invoke('PauseLiveChat', SERMON_ID, paused)
+                .then(() => showToast(paused ? '⏸ Chat paused' : '▶ Chat resumed'))
+                .catch(console.error);
         }
         function clearChat() {
             if (!confirm('Clear all chat messages for everyone?')) return;
@@ -1145,6 +1169,7 @@
             if (SERMON_ID > 0) {
                 await liveConn.invoke('JoinLiveRoom', SERMON_ID);
                 reportAttendanceLocation();
+                loadLiveChat();
                 try {
                     const res = await fetch(`/api/LiveSettings/${SERMON_ID}/State`);
                     const s = await res.json();

@@ -707,6 +707,21 @@
     padding: 0 .4rem;
 }
 
+/* Message sent from the sermon's meeting room */
+.chat-msg-src {
+    display: inline-block;
+    margin-left: .3rem;
+    padding: 0 .35rem;
+    border-radius: 4px;
+    background: rgba(99,102,241,.25);
+    color: #a5b4fc;
+    font-size: .6rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .03em;
+    vertical-align: middle;
+}
+
 .chat-msg-bubble {
     background: rgba(255,255,255,.09);
     color: rgba(255,255,255,.88);
@@ -1051,6 +1066,20 @@
 .ls-toast-show {
     opacity: 1;
     transform: translateY(0);
+}
+
+/* ── Desktop (> 900px): the page fits the window ──────────
+   The live screen, chat and giving panel share the window height; the chat's messages and
+   the giving panel scroll inside it, so a long chat can't stretch the live screen off-screen */
+@media (min-width: 901px) {
+    .live-page-wrap   { height: calc(100vh - 64px); min-height: 0; }
+    .live-container,
+    .live-main,
+    .live-video-col,
+    .live-chat-panel  { min-height: 0; }
+    .live-container   { flex-basis: 0; }
+    .live-chat-messages { min-height: 0; }
+    .live-giving-sidebar { min-height: 0; overflow-y: auto; flex-shrink: 0; }
 }
 
 /* ── Responsive (mobile ≤ 900px) ─────────────────────────── */

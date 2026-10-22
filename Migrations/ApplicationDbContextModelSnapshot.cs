@@ -591,6 +591,50 @@ namespace ChurchMinistry.Migrations
                     b.ToTable("LiveBibleVerses");
                 });
 
+            modelBuilder.Entity("ChurchMinistry.Models.LiveChatMessage", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    b.Property<int?>("MemberId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Message")
+                        .IsRequired()
+                        .HasMaxLength(400)
+                        .HasColumnType("varchar(400)");
+
+                    b.Property<string>("SenderName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("varchar(200)");
+
+                    b.Property<DateTime>("SentAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<int>("SermonId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Type")
+                        .IsRequired()
+                        .HasMaxLength(10)
+                        .HasColumnType("varchar(10)");
+
+                    b.Property<string>("UserId")
+                        .IsRequired()
+                        .HasMaxLength(450)
+                        .HasColumnType("varchar(450)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("MemberId");
+
+                    b.HasIndex("SermonId", "SentAt");
+
+                    b.ToTable("LiveChatMessages");
+                });
+
             modelBuilder.Entity("ChurchMinistry.Models.LiveSession", b =>
                 {
                     b.Property<int>("Id")
@@ -601,6 +645,12 @@ namespace ChurchMinistry.Migrations
                         .HasColumnType("int");
 
                     b.Property<bool>("AutoRotateVerses")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<DateTime?>("ChatClearedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<bool>("ChatPaused")
                         .HasColumnType("tinyint(1)");
 
                     b.Property<DateTime>("CreatedAt")
@@ -1893,6 +1943,24 @@ namespace ChurchMinistry.Migrations
                         .IsRequired();
 
                     b.Navigation("LiveSession");
+                });
+
+            modelBuilder.Entity("ChurchMinistry.Models.LiveChatMessage", b =>
+                {
+                    b.HasOne("ChurchMinistry.Models.Member", "Member")
+                        .WithMany()
+                        .HasForeignKey("MemberId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.HasOne("ChurchMinistry.Models.Sermon", "Sermon")
+                        .WithMany()
+                        .HasForeignKey("SermonId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Member");
+
+                    b.Navigation("Sermon");
                 });
 
             modelBuilder.Entity("ChurchMinistry.Models.LiveSession", b =>

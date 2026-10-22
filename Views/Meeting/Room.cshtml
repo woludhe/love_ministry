@@ -199,6 +199,9 @@
                   border-radius: 10px; padding: .5rem .7rem; font-size: .82rem; font-style: italic; }
     .msg-system { text-align: center; font-size: .75rem; color: var(--text-s); }
     .msg-time   { font-size: .65rem; color: var(--text-s); margin-top: .1rem; }
+    .msg-src    { display: inline-block; margin-left: .3rem; padding: 0 .35rem; border-radius: 4px;
+                  background: rgba(239,68,68,.15); color: #f87171; font-size: .6rem; font-weight: 700;
+                  text-transform: uppercase; letter-spacing: .03em; vertical-align: middle; }
     .chat-input-area { padding: .75rem; border-top: 1px solid var(--border); display: flex;
                        flex-direction: column; gap: .5rem; flex-shrink: 0; }
     .chat-input-row { display: flex; gap: .4rem; }
@@ -578,6 +581,7 @@ async function enterMeeting(participants,forceMuted,spot){
       isMuted:p.isMuted,isVideoOff:p.isVideoOff,isHandRaised:p.isHandRaised};
   }
   renderParticipants(participants);
+  loadChat();
   if(forceMuted&&!isMuted){toggleMic();toast('The host has muted participants — unmute when you want to speak','warn');}
   if(spot){spotlightId=spot===myConnId?'local':spot;reflow();}
   await connectMedia();
@@ -701,6 +705,8 @@ conn.on('Reaction',(cid,emoji)=>showFloatingReaction(emoji));
 conn.on('ScreenShareStarted',cid=>{document.getElementById(`tile-${cid}`)?.classList.add('screenshare');toast(`${peerInfo[cid]?.name??'Someone'} started screen sharing`);});
 conn.on('ScreenShareStopped',cid=>document.getElementById(`tile-${cid}`)?.classList.remove('screenshare'));
 conn.on('SystemMessage',msg=>appendSystemMessage(msg));
+// A host cleared the sermon's chat from the Live page
+conn.on('ChatCleared',()=>{document.getElementById('chatMessages').innerHTML='';appendSystemMessage('Chat was cleared by the host.');});
 conn.on('WaitingRoomRequest',({connectionId,displayName,participantId})=>{addWaitingItem(connectionId,displayName,participantId);toast(`✋ ${displayName} is waiting`);});
 conn.on('MeetingEnded',()=>{clearInterval(timerInterval);room.disconnect();document.getElementById('endedOverlay').style.display='flex';});
 conn.on('Removed',()=>{clearInterval(timerInterval);room.disconnect();document.getElementById('endedOverlay').style.display='flex';});
@@ -943,15 +949,30 @@ function switchTab(tab){
 function chatKeyDown(e){if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendChat();}}
 function sendChat(){const i=document.getElementById('chatInput');const m=i.value.trim();if(m){conn.invoke('SendMessage',ROOM_CODE,m,'chat');i.value='';}}
 function sendPrayer(){const i=document.getElementById('chatInput');const m=i.value.trim();if(m){conn.invoke('SendMessage',ROOM_CODE,'🙏 '+m,'prayer');i.value='';}}
-function appendChatMessage({senderName,message,type,sentAt,connectionId}){
+// Messages from the sermon's Live page arrive here too (source 'live'), tagged "Live"
+function appendChatMessage({senderName,message,type,sentAt,connectionId,isOwn:own,source},fromHistory=false){
   const box=document.getElementById('chatMessages');
-  const isOwn=connectionId===conn.connectionId, isPrayer=type==='prayer';
+  const isOwn=own===true||(!!connectionId&&connectionId===conn.connectionId), isPrayer=type==='prayer';
   const div=document.createElement('div'); div.className=`chat-msg-meet ${isOwn?'own':''}`;
-  div.innerHTML=`${!isOwn?`<div class="msg-sender">${escHtml(senderName)}</div>`:''}
+  const tag=source==='live'?' <span class="msg-src" title="Sent from the Live page">Live</span>':'';
+  div.innerHTML=`${!isOwn?`<div class="msg-sender">${escHtml(senderName)}${tag}</div>`:''}
     <div class="${isPrayer?'msg-prayer':'msg-bubble-meet'}">${escHtml(message)}</div>
-    <div class="msg-time">${sentAt}</div>`;
+    <div class="msg-time">${fmtChatTime(sentAt)}</div>`;
   box.appendChild(div); box.scrollTop=box.scrollHeight;
-  if(currentTab!=='chat'||!sidebarOpen){unreadChat++;const b=document.getElementById('chatCount');b.style.display='inline';b.textContent=unreadChat;}
+  if(!fromHistory&&!isOwn&&(currentTab!=='chat'||!sidebarOpen)){unreadChat++;const b=document.getElementById('chatCount');b.style.display='inline';b.textContent=unreadChat;}
+}
+function fmtChatTime(iso){const d=new Date(iso);return isNaN(d)?'':d.toLocaleTimeString([],{hour:'numeric',minute:'2-digit'});}
+// Chat so far (this room, plus the sermon's Live page chat) — on entering and after a reconnect.
+// Replaces earlier messages but keeps "joined/left" lines already shown.
+async function loadChat(){
+  try{
+    const messages=await conn.invoke('GetChat',ROOM_CODE);
+    const box=document.getElementById('chatMessages');
+    box.querySelectorAll('.chat-msg-meet').forEach(m=>m.remove());
+    const later=[...box.children]; later.forEach(c=>c.remove());
+    messages.forEach(m=>appendChatMessage(m,true));
+    later.forEach(c=>box.appendChild(c)); box.scrollTop=box.scrollHeight;
+  }catch(e){console.error('Could not load chat',e);}
 }
 function appendSystemMessage(msg){const box=document.getElementById('chatMessages');const d=document.createElement('div');d.className='msg-system';d.textContent=msg;box.appendChild(d);box.scrollTop=box.scrollHeight;}
 

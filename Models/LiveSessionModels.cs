@@ -45,6 +45,11 @@ namespace ChurchMinistry.Models
         public bool MusicShuffle         { get; set; } = false;
         public bool MusicDuckOnSpeech    { get; set; } = true;      // lower the music while someone in the meeting talks
 
+        // Live chat: while paused only Admin/Pastor can send (checked by LiveSessionHub).
+        // "Clear chat" hides everything sent before ChatClearedAt, Live page and meeting room alike.
+        public bool ChatPaused           { get; set; } = false;
+        public DateTime? ChatClearedAt   { get; set; }
+
         public static List<MusicTrack> ReadPlaylist(string? json)
         {
             if (string.IsNullOrWhiteSpace(json)) return new();
@@ -128,5 +133,25 @@ namespace ChurchMinistry.Models
 
         [System.ComponentModel.DataAnnotations.Schema.NotMapped]
         public TimeSpan? Duration => LeftAt - JoinedAt;
+    }
+
+    // ── Live chat message ─────────────────────────────────────
+    // Chat sent from the Live page for a sermon; kept so late joiners see the conversation.
+    // When the sermon has a meeting room, the room's MeetingMessages are the other half of
+    // the same conversation (merged by SermonChat in LiveSessionHub.cs).
+    public class LiveChatMessage
+    {
+        public int Id { get; set; }
+        public int SermonId { get; set; }
+        public Sermon Sermon { get; set; } = null!;
+
+        [MaxLength(450)] public string UserId { get; set; } = "";   // sender's login (admins may have no Member)
+        public int? MemberId             { get; set; }
+        public Member? Member            { get; set; }
+        [MaxLength(200)] public string SenderName { get; set; } = "";
+        [MaxLength(400)] public string Message    { get; set; } = "";
+        [MaxLength(10)]  public string Type       { get; set; } = "chat";   // chat | prayer
+
+        public DateTime SentAt           { get; set; } = DateTime.UtcNow;
     }
 }

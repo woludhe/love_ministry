@@ -17,7 +17,11 @@ namespace ChurchMinistry.Hubs
     {
         private readonly ApplicationDbContext _db;
         private readonly IActivityService _activity;
-        public LiveSessionHub(ApplicationDbContext db, IActivityService activity) { _db = db; _activity = activity; }
+        private readonly IHubContext<MeetingHub> _meetingHub;
+        public LiveSessionHub(ApplicationDbContext db, IActivityService activity, IHubContext<MeetingHub> meetingHub)
+        {
+            _db = db; _activity = activity; _meetingHub = meetingHub;
+        }
 
         // ── Viewers join the room for a sermon ─────────────────
         // Live page viewers call JoinLiveRoom; people in the sermon's meeting room call JoinLiveRoomFromMeeting
@@ -27,6 +31,8 @@ namespace ChurchMinistry.Hubs
         private async Task JoinAsync(int sermonId, bool inMeeting)
         {
             await Groups.AddToGroupAsync(Context.ConnectionId, $"live-{sermonId}");
+            // Live page viewers get chat from the start, so the unread badge counts while the panel is closed
+            if (!inMeeting) await Groups.AddToGroupAsync(Context.ConnectionId, $"livechat-{sermonId}");
             await LogAttendanceAsync(sermonId, inMeeting);
             await LogActivityAsync(sermonId);
             LiveAudience.Join(Context.ConnectionId, sermonId, inMeeting);
@@ -193,10 +199,30 @@ namespace ChurchMinistry.Hubs
             await Clients.Group($"live-{sermonId}").SendAsync("MarqueeSpeedChanged", speed);
         }
 
-        // ── Join the live chat room for a sermon ────────────────────
+        // ── Live chat ───────────────────────────────────────────────
+        private bool IsHost => Context.User?.IsInRole("Admin") == true || Context.User?.IsInRole("Pastor") == true;
+
+        // Kept for older pages: JoinLiveRoom now puts Live page viewers in the chat group
         public async Task JoinLiveChatRoom(int sermonId)
         {
             await Groups.AddToGroupAsync(Context.ConnectionId, $"livechat-{sermonId}");
+        }
+
+        // The chat so far — Live page and meeting room messages merged — and whether it's
+        // paused. Called when the page loads and after a reconnect.
+        [Authorize]
+        public async Task<object> GetLiveChat(int sermonId)
+        {
+            var userId = Context.User!.FindFirstValue(ClaimTypes.NameIdentifier);
+            var memberId = await _db.Members.Where(m => m.UserId == userId).Select(m => (int?)m.Id).FirstOrDefaultAsync();
+            var paused = await _db.LiveSessions.AnyAsync(s => s.SermonId == sermonId && s.ChatPaused);
+            var items = await SermonChat.LoadAsync(_db, sermonId, null);
+
+            return new
+            {
+                paused,
+                messages = items.Select(i => SermonChat.Payload(i, i.IsFrom(userId, memberId)))
+            };
         }
 
         // ── Send a live chat message ────────────────────────────────
@@ -204,62 +230,89 @@ namespace ChurchMinistry.Hubs
         public async Task SendLiveChat(int sermonId, string message, string type = "chat")
         {
             if (string.IsNullOrWhiteSpace(message)) return;
+            if (type != "prayer") type = "chat";
 
             // Sanitise — strip HTML tags
             message = System.Text.RegularExpressions.Regex.Replace(message, "<[^>]+>", "").Trim();
+            if (message.Length == 0) return;
             if (message.Length > 400) message = message.Substring(0, 400);
 
-            // Get sender details from DB
-            var db = Context.GetHttpContext()!.RequestServices
-                                .GetRequiredService<ApplicationDbContext>();
-            var userMgr = Context.GetHttpContext()!.RequestServices
-                                .GetRequiredService<UserManager<ApplicationUser>>();
-            var user = await userMgr.GetUserAsync(Context.GetHttpContext()!.User);
-            var member = user == null ? null
-                           : await db.Members.FirstOrDefaultAsync(m => m.UserId == user.Id);
-
-            var senderName = member?.FullName ?? user?.UserName ?? "Member";
-            var photo = member?.ProfilePhoto ?? "/images/avatar-default.png";
-            var sentAt = DateTime.UtcNow.ToString("h:mm tt");
-            var connId = Context.ConnectionId;
-
-            // Broadcast to everyone in the group
-            await Clients.Group($"livechat-{sermonId}").SendAsync("LiveChatMessage", new
+            var sermon = await _db.Sermons.Where(s => s.Id == sermonId)
+                .Select(s => new { s.MeetingRoomCode }).FirstOrDefaultAsync();
+            if (sermon == null) return;
+            // Paused chat: only the hosts can still post
+            if (!IsHost && await _db.LiveSessions.AnyAsync(s => s.SermonId == sermonId && s.ChatPaused))
             {
-                senderName,
-                message,
-                type,
-                sentAt,
-                photo,
-                connectionId = connId,
-                isOwn = false    // receiver-side always false; JS checks connectionId
-            });
+                await Clients.Caller.SendAsync("LiveChatPaused", true);
+                return;
+            }
 
-            // Send back to sender with isOwn=true
-            await Clients.Caller.SendAsync("LiveChatMessage", new
+            var userId = Context.User!.FindFirstValue(ClaimTypes.NameIdentifier) ?? "";
+            var member = await _db.Members.FirstOrDefaultAsync(m => m.UserId == userId);
+
+            var chat = new LiveChatMessage
             {
-                senderName,
-                message,
-                type,
-                sentAt,
-                photo,
-                connectionId = connId,
-                isOwn = true
-            });
+                SermonId = sermonId,
+                UserId = userId,
+                MemberId = member?.Id,
+                SenderName = member?.FullName ?? Context.User.Identity?.Name ?? "Member",
+                Message = message,
+                Type = type
+            };
+            _db.LiveChatMessages.Add(chat);
+            await _db.SaveChangesAsync();
+
+            // Everyone else in the group, then the sender's own copy
+            var item = new SermonChat.Item(chat.SenderName, chat.Message, chat.Type, chat.SentAt,
+                member?.ProfilePhoto, SermonChat.FromLive, userId, member?.Id);
+            await Clients.OthersInGroup($"livechat-{sermonId}").SendAsync("LiveChatMessage", SermonChat.Payload(item, isOwn: false));
+            await Clients.Caller.SendAsync("LiveChatMessage", SermonChat.Payload(item, isOwn: true));
+
+            // Same conversation in the sermon's meeting room
+            if (!string.IsNullOrEmpty(sermon.MeetingRoomCode))
+                await _meetingHub.Clients.Group(sermon.MeetingRoomCode)
+                    .SendAsync("ReceiveMessage", SermonChat.Payload(item, isOwn: false));
         }
 
         // ── Admin: pause/unpause chat ───────────────────────────────
+        // Saved on the sermon's LiveSession so it holds for people who join later
         [Authorize(Roles = "Admin,Pastor")]
         public async Task PauseLiveChat(int sermonId, bool paused)
         {
+            if (!await _db.Sermons.AnyAsync(s => s.Id == sermonId)) return;
+            var session = await _db.LiveSessions.FirstOrDefaultAsync(s => s.SermonId == sermonId);
+            if (session == null)
+            {
+                session = new LiveSession { SermonId = sermonId };
+                _db.LiveSessions.Add(session);
+            }
+            session.ChatPaused = paused;
+            session.UpdatedAt = DateTime.UtcNow;
+            await _db.SaveChangesAsync();
+
             await Clients.Group($"livechat-{sermonId}").SendAsync("LiveChatPaused", paused);
         }
 
         // ── Admin: clear all chat messages ─────────────────────────
+        // Hides what was said so far (Live page and meeting room); the rows stay in the database
         [Authorize(Roles = "Admin,Pastor")]
         public async Task ClearLiveChat(int sermonId)
         {
+            var sermon = await _db.Sermons.Where(s => s.Id == sermonId)
+                .Select(s => new { s.MeetingRoomCode }).FirstOrDefaultAsync();
+            if (sermon == null) return;
+            var session = await _db.LiveSessions.FirstOrDefaultAsync(s => s.SermonId == sermonId);
+            if (session == null)
+            {
+                session = new LiveSession { SermonId = sermonId };
+                _db.LiveSessions.Add(session);
+            }
+            session.ChatClearedAt = session.UpdatedAt = DateTime.UtcNow;
+            await _db.SaveChangesAsync();
+
             await Clients.Group($"livechat-{sermonId}").SendAsync("LiveChatCleared");
+            if (!string.IsNullOrEmpty(sermon.MeetingRoomCode))
+                await _meetingHub.Clients.Group(sermon.MeetingRoomCode).SendAsync("ChatCleared");
         }
 
         /// <summary>
@@ -282,6 +335,75 @@ namespace ChurchMinistry.Hubs
                     : "Guest"
             });
         }
+    }
+
+    /// <summary>
+    /// One conversation per sermon: messages sent on the Live page (LiveChatMessages) and in
+    /// the sermon's meeting room (MeetingMessages) are merged by time, each tagged with where
+    /// it came from. Used by LiveSessionHub (Live page) and MeetingHub (meeting room).
+    /// </summary>
+    public static class SermonChat
+    {
+        public const string FromLive = "live", FromMeeting = "meeting";
+        private const int HistorySize = 100;
+
+        public record Item(string SenderName, string Message, string Type, DateTime SentAt,
+            string? Photo, string Source, string? UserId, int? MemberId)
+        {
+            // Live messages know the sender's login; meeting messages only their member record
+            public bool IsFrom(string? userId, int? memberId) =>
+                Source == FromLive ? UserId != null && UserId == userId
+                                   : MemberId != null && MemberId == memberId;
+        }
+
+        // The sermon whose conversation a meeting room shares (latest, if several use the room)
+        public static Task<int?> SermonForRoomAsync(ApplicationDbContext db, string roomCode) =>
+            db.Sermons.Where(s => s.MeetingRoomCode == roomCode)
+                .OrderByDescending(s => s.Id).Select(s => (int?)s.Id).FirstOrDefaultAsync();
+
+        // Latest messages, oldest first. Pass the sermon (its meeting room is found from it),
+        // or just a meeting room id for a meeting that isn't linked to a sermon.
+        public static async Task<List<Item>> LoadAsync(ApplicationDbContext db, int? sermonId, int? meetingRoomId)
+        {
+            DateTime? clearedAt = null;
+            if (sermonId is int sid)
+            {
+                var roomCode = await db.Sermons.Where(s => s.Id == sid).Select(s => s.MeetingRoomCode).FirstOrDefaultAsync();
+                if (!string.IsNullOrEmpty(roomCode))
+                    meetingRoomId = await db.MeetingRooms.Where(r => r.RoomCode == roomCode).Select(r => (int?)r.Id).FirstOrDefaultAsync();
+                clearedAt = await db.LiveSessions.Where(s => s.SermonId == sid).Select(s => s.ChatClearedAt).FirstOrDefaultAsync();
+            }
+
+            var items = new List<Item>();
+            if (sermonId is int liveId)
+                items.AddRange(await db.LiveChatMessages
+                    .Where(m => m.SermonId == liveId && (clearedAt == null || m.SentAt > clearedAt))
+                    .OrderByDescending(m => m.SentAt).Take(HistorySize)
+                    .Select(m => new Item(m.SenderName, m.Message, m.Type, m.SentAt,
+                        m.Member != null ? m.Member.ProfilePhoto : null, FromLive, m.UserId, m.MemberId))
+                    .ToListAsync());
+            if (meetingRoomId is int roomId)
+                items.AddRange(await db.MeetingMessages
+                    .Where(m => m.MeetingRoomId == roomId && m.Type != "system" && (clearedAt == null || m.SentAt > clearedAt))
+                    .OrderByDescending(m => m.SentAt).Take(HistorySize)
+                    .Select(m => new Item(m.SenderName, m.Message, m.Type, m.SentAt,
+                        m.Member != null ? m.Member.ProfilePhoto : null, FromMeeting, null, m.MemberId))
+                    .ToListAsync());
+
+            return items.OrderBy(i => i.SentAt).TakeLast(HistorySize).ToList();
+        }
+
+        // What both pages receive. sentAt is UTC ISO time; each browser shows it in local time.
+        public static object Payload(Item i, bool isOwn) => new
+        {
+            senderName = i.SenderName,
+            message = i.Message,
+            type = i.Type,
+            sentAt = DateTime.SpecifyKind(i.SentAt, DateTimeKind.Utc).ToString("o"),
+            photo = i.Photo ?? "/images/avatar-default.png",
+            source = i.Source,
+            isOwn
+        };
     }
 
     /// <summary>
