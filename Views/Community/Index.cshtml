@@ -8,48 +8,57 @@
     {
         Layout = "~/Views/Shared/_Layout.cshtml";
     }
+    var posts = (List<ForumPost>)(ViewBag.Posts ?? new List<ForumPost>());
+    var amenCounts = (Dictionary<int, int>)(ViewBag.AmenCounts ?? new Dictionary<int, int>());
+    var myAmens = (HashSet<int>)(ViewBag.MyAmens ?? new HashSet<int>());
+    var me = ViewBag.Me as Member;
+    var selected = Context.Request.Query["category"].ToString();
+    var returnUrl = Context.Request.Path + Context.Request.QueryString;
 }
 @using ChurchMinistry.Models
+@using ChurchMinistry.ViewModels
 <section class="page-header">
     <h1><i class="fas fa-comments"></i> Community Forum</h1>
-    <a asp-action="NewPost" class="btn btn-dark"><i class="fas fa-plus"></i> New Post</a>
 </section>
 <div class="forum-page container">
+    @Html.AntiForgeryToken()
+
+    @* "What's on your mind?" — opens the New Post form *@
+    <a asp-action="NewPost" class="fb-composer">
+        <img src="@(me?.ProfilePhoto ?? "/images/avatar-default.png")" alt="" class="fb-avatar" />
+        <span class="fb-composer-prompt">What's on your mind@(me != null ? $", {me.FirstName}" : "")?</span>
+        <span class="btn btn-primary btn-sm"><i class="fas fa-plus"></i> New Post</span>
+    </a>
+
     <div class="category-filter">
-        <a href="?" class="pill @(string.IsNullOrEmpty(Context.Request.Query["category"]) ? "active" : "")">All</a>
+        <a href="?" class="pill @(string.IsNullOrEmpty(selected) ? "active" : "")">All</a>
         @foreach (var cat in Enum.GetValues<ForumCategory>())
         {
-            <a href="?category=@cat" class="pill @(Context.Request.Query["category"].ToString() == cat.ToString() ? "active" : "")">@cat</a>
+            <a href="?category=@cat" class="pill @(selected == cat.ToString() ? "active" : "")">@ForumCategories.Label(cat)</a>
         }
     </div>
-    <div class="forum-list">
-        @foreach (ForumPost post in (ViewBag.Posts ?? new List<ForumPost>()))
+
+    <div class="fb-feed">
+        @foreach (var post in posts)
         {
-            <div class="forum-item @(post.IsPinned ? "pinned" : "")">
-                @if (post.IsPinned)
-                {
-                    <span class="pin-badge"><i class="fas fa-thumbtack"></i> Pinned</span>
-                }
-                @if (post.IsPastorQuestion)
-                {
-                    <span class="pastor-badge"><i class="fas fa-church"></i> Pastor Q&amp;A</span>
-                }
-                <div class="forum-item-main">
-                    <h3><a asp-action="Post" asp-route-id="@post.Id">@post.Title</a></h3>
-                    <p class="forum-meta">
-                        <img src="@(post.Member.ProfilePhoto ?? "/images/avatar-default.png")" class="avatar-xs" />
-                        @post.Member.FullName &nbsp;·&nbsp; @post.CreatedAt.ToString("dd MMM yyyy") &nbsp;·&nbsp;
-                        <i class="fas fa-comments"></i> @post.Replies.Count replies &nbsp;·&nbsp;
-                        <i class="fas fa-eye"></i> @post.ViewCount views
-                    </p>
-                </div>
-                <span class="cat-badge">@post.Category</span>
-            </div>
+            var card = new ForumPostCardViewModel
+            {
+                Post = post,
+                AmenCount = amenCounts.GetValueOrDefault(post.Id),
+                Amened = myAmens.Contains(post.Id),
+                Me = me,
+                ReturnUrl = returnUrl
+            };
+            <partial name="_PostCard" model="card" />
         }
-        @if (((List<ForumPost>)(ViewBag.Posts ?? new List<ForumPost>())).Count == 0)
+        @if (posts.Count == 0)
         {
-            <div style="text-align:center;padding:3rem"><p>No posts yet. Be the first to start a discussion!</p><a asp-action="NewPost" class="btn btn-primary">Create First Post</a></div>
+            <div class="fb-empty"><p>No posts yet. Be the first to start a discussion!</p><a asp-action="NewPost" class="btn btn-primary">Create First Post</a></div>
         }
     </div>
     <partial name="_Pager" model="(PagerModel)ViewBag.Pager" />
 </div>
+
+@section Scripts {
+    <script src="~/js/community.js" asp-append-version="true"></script>
+}

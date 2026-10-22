@@ -211,6 +211,19 @@ namespace ChurchMinistry.ViewModels
         public bool IsPastorQuestion { get; set; }
     }
 
+    // One post card on the community feed / post page (Views/Community/_PostCard.cshtml)
+    public class ForumPostCardViewModel
+    {
+        public const int FeedReplies = 3;   // newest replies shown on the feed before "View all"
+
+        public ForumPost Post { get; set; } = null!;
+        public bool ShowAllReplies { get; set; }
+        public int AmenCount { get; set; }
+        public bool Amened { get; set; }
+        public Member? Me { get; set; }
+        public string ReturnUrl { get; set; } = "";   // where a comment posted from this card returns to
+    }
+
     // ─── Prayer ───
     public class PrayerRequestViewModel
     {

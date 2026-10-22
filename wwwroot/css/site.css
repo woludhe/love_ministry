@@ -2058,65 +2058,321 @@ input:checked ~ .toggle-track {
     border-top: 1px solid var(--border);
 }
 
-/* --- Forum --- */
+/* --- Forum: Facebook-style feed (Views/Community/_PostCard.cshtml) --- */
 .forum-page {
-    max-width: 900px;
+    max-width: 680px;
     margin: 0 auto;
-    padding: 2rem 1.5rem;
+    padding: 2rem 1rem;
 }
 
-.forum-list {
+.fb-feed {
     display: flex;
     flex-direction: column;
-    gap: .75rem;
+    gap: 1rem;
 }
 
-.forum-item {
+.fb-avatar {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    object-fit: cover;
+    flex-shrink: 0;
+}
+
+.fb-avatar-sm {
+    width: 32px;
+    height: 32px;
+}
+
+.fb-composer,
+.fb-post,
+.fb-empty {
     background: var(--white);
     border: 1px solid var(--border);
     border-radius: var(--radius);
-    padding: 1.25rem;
-    display: flex;
-    align-items: center;
-    gap: 1rem;
     box-shadow: var(--shadow);
-    transition: box-shadow .15s;
 }
 
-    .forum-item:hover {
-        box-shadow: var(--shadow-m);
+.fb-composer {
+    display: flex;
+    align-items: center;
+    gap: .75rem;
+    padding: .85rem 1rem;
+    margin-bottom: 1rem;
+    color: var(--text-s);
+    text-decoration: none;
+}
+
+    .fb-composer:hover .fb-composer-prompt {
+        background: #e5e7eb;
     }
 
-    .forum-item.pinned {
-        border-left: 3px solid var(--amber);
+.fb-composer-prompt {
+    flex: 1;
+    min-width: 0;
+    padding: .6rem 1rem;
+    border-radius: 100px;
+    background: #f0f2f5;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    transition: background .15s;
+}
+
+.fb-empty {
+    text-align: center;
+    padding: 2.5rem 1rem;
+}
+
+    .fb-empty p {
+        margin-bottom: 1rem;
     }
 
-.forum-item-main {
+.fb-back {
+    display: inline-flex;
+    align-items: center;
+    gap: .4rem;
+    margin-bottom: 1rem;
+    font-weight: 600;
+    font-size: .9rem;
+}
+
+.fb-post.is-pinned {
+    border-top: 3px solid var(--amber);
+}
+
+.fb-post-head {
+    display: flex;
+    align-items: center;
+    gap: .65rem;
+    padding: .9rem 1rem .5rem;
+    flex-wrap: wrap;
+}
+
+.fb-post-who {
+    display: flex;
+    flex-direction: column;
+    line-height: 1.25;
+    min-width: 0;
     flex: 1;
 }
 
-    .forum-item-main h3 {
-        font-size: .95rem;
-        font-weight: 700;
-        margin-bottom: .25rem;
+    .fb-post-who strong {
+        font-size: .93rem;
     }
 
-        .forum-item-main h3 a {
-            color: var(--text);
-        }
-
-            .forum-item-main h3 a:hover {
-                color: var(--purple);
-            }
-
-.forum-meta {
+.fb-time {
     font-size: .78rem;
     color: var(--text-s);
-    display: flex;
-    align-items: center;
-    gap: .4rem;
-    flex-wrap: wrap;
 }
+
+    .fb-time:hover {
+        text-decoration: underline;
+    }
+
+.fb-tags {
+    display: flex;
+    gap: .35rem;
+    flex-wrap: wrap;
+    align-items: center;
+}
+
+.fb-post-text {
+    padding: 0 1rem .75rem;
+}
+
+.fb-post-title {
+    font-size: 1rem;
+    font-weight: 700;
+    margin-bottom: .35rem;
+}
+
+    .fb-post-title a {
+        color: var(--text);
+    }
+
+        .fb-post-title a:hover {
+            color: var(--purple);
+        }
+
+.fb-post-body {
+    font-size: .93rem;
+    line-height: 1.6;
+    color: var(--text);
+    overflow-wrap: anywhere;
+}
+
+    .fb-post-body.is-clamped {
+        display: -webkit-box;
+        -webkit-line-clamp: 6;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+    }
+
+.fb-see-more,
+.fb-view-all {
+    background: none;
+    border: none;
+    padding: 0;
+    font: inherit;
+    font-weight: 600;
+    font-size: .88rem;
+    color: var(--text-s);
+    cursor: pointer;
+}
+
+    .fb-see-more:hover,
+    .fb-view-all:hover {
+        text-decoration: underline;
+    }
+
+.fb-stats {
+    display: flex;
+    justify-content: space-between;
+    gap: .75rem;
+    padding: .4rem 1rem;
+    font-size: .82rem;
+    color: var(--text-s);
+}
+
+.fb-stats-right {
+    margin-left: auto;
+}
+
+.fb-actions {
+    display: flex;
+    margin: 0 1rem;
+    border-top: 1px solid var(--border);
+    border-bottom: 1px solid var(--border);
+}
+
+.fb-action {
+    flex: 1;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: .45rem;
+    min-height: 40px;
+    margin: .25rem 0;
+    background: none;
+    border: none;
+    border-radius: 8px;
+    font: inherit;
+    font-weight: 600;
+    font-size: .9rem;
+    color: var(--text-s);
+    cursor: pointer;
+}
+
+    .fb-action:hover {
+        background: #f0f2f5;
+    }
+
+    .fb-action.is-on {
+        color: var(--purple);
+    }
+
+.fb-comments {
+    display: flex;
+    flex-direction: column;
+    gap: .6rem;
+    padding: .75rem 1rem 1rem;
+}
+
+    .fb-comments .fb-view-all {
+        align-self: flex-start;
+    }
+
+.fb-comment {
+    display: flex;
+    gap: .5rem;
+    align-items: flex-start;
+}
+
+    .fb-comment.is-hidden {
+        display: none;
+    }
+
+.fb-bubble {
+    display: inline-block;
+    max-width: 100%;
+    padding: .5rem .8rem;
+    border-radius: 18px;
+    background: #f0f2f5;
+    font-size: .88rem;
+    line-height: 1.5;
+    overflow-wrap: anywhere;
+}
+
+    .fb-bubble strong {
+        font-size: .82rem;
+    }
+
+.fb-comment.is-pastor .fb-bubble {
+    background: var(--purple-l);
+    border: 1px solid #c7d2fe;
+}
+
+.fb-pastor-tag {
+    margin-left: .35rem;
+    font-size: .7rem;
+    font-weight: 700;
+    color: var(--purple);
+}
+
+.fb-comment-time {
+    display: block;
+    margin: .15rem 0 0 .8rem;
+    font-size: .74rem;
+    color: var(--text-s);
+}
+
+.fb-comment-form {
+    display: flex;
+    align-items: flex-end;
+    gap: .5rem;
+}
+
+    .fb-comment-form textarea {
+        flex: 1;
+        min-width: 0;
+        min-height: 36px;
+        max-height: 160px;
+        padding: .5rem .9rem;
+        border: 1px solid transparent;
+        border-radius: 18px;
+        background: #f0f2f5;
+        font: inherit;
+        font-size: .9rem;
+        color: var(--text);
+        resize: none;
+    }
+
+        .fb-comment-form textarea:focus {
+            outline: none;
+            border-color: var(--purple);
+            background: var(--white);
+        }
+
+.fb-send {
+    width: 36px;
+    height: 36px;
+    flex-shrink: 0;
+    border: none;
+    border-radius: 50%;
+    background: none;
+    color: var(--purple);
+    font-size: 1rem;
+    cursor: pointer;
+}
+
+    .fb-send:hover {
+        background: var(--purple-l);
+    }
+
+    .fb-send:disabled {
+        opacity: .5;
+    }
 
 .pin-badge {
     background: #fef3c7;
@@ -2146,11 +2402,19 @@ input:checked ~ .toggle-track {
     white-space: nowrap;
 }
 
+/* One colour per category */
+.cat-badge.cat-testimony { background: #fef3c7; color: #92400e; }
+.cat-badge.cat-prayeranswered { background: #d1fae5; color: #065f46; }
+.cat-badge.cat-biblestudy { background: #dbeafe; color: #1e40af; }
+.cat-badge.cat-questions { background: #fce7f3; color: #9d174d; }
+.cat-badge.cat-announcements { background: #fee2e2; color: #991b1b; }
+.cat-badge.cat-general { background: #f3f4f6; color: #374151; }
+
 .category-filter {
     display: flex;
     gap: .5rem;
     flex-wrap: wrap;
-    margin-bottom: 1.5rem;
+    margin-bottom: 1rem;
 }
 
 .pill {
@@ -2169,6 +2433,16 @@ input:checked ~ .toggle-track {
         color: white;
         border-color: var(--purple);
     }
+
+@media (max-width: 600px) {
+    .forum-page {
+        padding: 1rem;
+    }
+
+    .fb-composer .btn {
+        display: none;
+    }
+}
 
 /* --- QR Page --- */
 .qr-page {

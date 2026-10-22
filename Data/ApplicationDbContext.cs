@@ -18,6 +18,7 @@ namespace ChurchMinistry.Data
         public DbSet<SermonNote> SermonNotes => Set<SermonNote>();
         public DbSet<ForumPost> ForumPosts => Set<ForumPost>();
         public DbSet<ForumReply> ForumReplies => Set<ForumReply>();
+        public DbSet<ForumReaction> ForumReactions => Set<ForumReaction>();
         public DbSet<ChatMessage> ChatMessages => Set<ChatMessage>();
         public DbSet<PrayerRequest> PrayerRequests => Set<PrayerRequest>();
         public DbSet<PrayerInteraction> PrayerInteractions => Set<PrayerInteraction>();
@@ -111,6 +112,15 @@ namespace ChurchMinistry.Data
                     .HasForeignKey(r => r.ForumPostId).OnDelete(DeleteBehavior.Cascade);
                 e.HasOne(r => r.Member).WithMany()
                     .HasForeignKey(r => r.MemberId).OnDelete(DeleteBehavior.Cascade);
+            });
+
+            builder.Entity<ForumReaction>(e =>
+            {
+                e.HasOne(r => r.ForumPost).WithMany(p => p.Reactions)
+                    .HasForeignKey(r => r.ForumPostId).OnDelete(DeleteBehavior.Cascade);
+                e.HasOne(r => r.Member).WithMany()
+                    .HasForeignKey(r => r.MemberId).OnDelete(DeleteBehavior.Cascade);
+                e.HasIndex(r => new { r.ForumPostId, r.MemberId }).IsUnique();
             });
 
             // Prayer

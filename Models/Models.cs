@@ -265,6 +265,7 @@ namespace ChurchMinistry.Models
         public int ViewCount { get; set; }
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
         public ICollection<ForumReply> Replies { get; set; } = new List<ForumReply>();
+        public ICollection<ForumReaction> Reactions { get; set; } = new List<ForumReaction>();
     }
 
     public class ForumReply
@@ -279,7 +280,42 @@ namespace ChurchMinistry.Models
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     }
 
-    public enum ForumCategory { General, Testimony, BibleStudy, Questions, Announcements }
+    // A member's "Amen" on a community post — one per member per post, can be taken back
+    public class ForumReaction
+    {
+        public int Id { get; set; }
+        public int ForumPostId { get; set; }
+        public ForumPost ForumPost { get; set; } = null!;
+        public int MemberId { get; set; }
+        public Member Member { get; set; } = null!;
+        public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    }
+
+    public enum ForumCategory { General, Testimony, BibleStudy, Questions, Announcements, PrayerAnswered }
+
+    public static class ForumCategories
+    {
+        public static string Label(ForumCategory c) => c switch
+        {
+            ForumCategory.BibleStudy => "Bible Study",
+            ForumCategory.PrayerAnswered => "Prayer Answered",
+            _ => c.ToString()
+        };
+    }
+
+    public static class ForumText
+    {
+        private static readonly System.Text.RegularExpressions.Regex Bold =
+            new(@"\*\*(.+?)\*\*", System.Text.RegularExpressions.RegexOptions.Compiled);
+
+        // Post and reply text as safe HTML: encoded, **bold** kept, line breaks kept
+        public static string Format(string? text)
+        {
+            var html = System.Net.WebUtility.HtmlEncode(text ?? "").Replace("\r\n", "\n");
+            html = Bold.Replace(html, "<strong>$1</strong>");
+            return html.Replace("\n", "<br>");
+        }
+    }
 
     // ─────────────────────────────────────────────
     // Chat Messages (SignalR)

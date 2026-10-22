@@ -378,6 +378,31 @@ namespace ChurchMinistry.Migrations
                     b.ToTable("ForumPosts");
                 });
 
+            modelBuilder.Entity("ChurchMinistry.Models.ForumReaction", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<int>("ForumPostId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("MemberId")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("MemberId");
+
+                    b.HasIndex("ForumPostId", "MemberId")
+                        .IsUnique();
+
+                    b.ToTable("ForumReactions");
+                });
+
             modelBuilder.Entity("ChurchMinistry.Models.ForumReply", b =>
                 {
                     b.Property<int>("Id")
@@ -1800,6 +1825,25 @@ namespace ChurchMinistry.Migrations
                     b.Navigation("Member");
                 });
 
+            modelBuilder.Entity("ChurchMinistry.Models.ForumReaction", b =>
+                {
+                    b.HasOne("ChurchMinistry.Models.ForumPost", "ForumPost")
+                        .WithMany("Reactions")
+                        .HasForeignKey("ForumPostId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("ChurchMinistry.Models.Member", "Member")
+                        .WithMany()
+                        .HasForeignKey("MemberId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("ForumPost");
+
+                    b.Navigation("Member");
+                });
+
             modelBuilder.Entity("ChurchMinistry.Models.ForumReply", b =>
                 {
                     b.HasOne("ChurchMinistry.Models.ForumPost", "ForumPost")
@@ -2147,6 +2191,8 @@ namespace ChurchMinistry.Migrations
 
             modelBuilder.Entity("ChurchMinistry.Models.ForumPost", b =>
                 {
+                    b.Navigation("Reactions");
+
                     b.Navigation("Replies");
                 });
 

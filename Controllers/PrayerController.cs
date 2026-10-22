@@ -209,7 +209,7 @@ namespace ChurchMinistry.Controllers
                     Title     = $"Prayer Answered: {prayer.Category} 🙌",
                     Content   = $"**Prayer Request:**\n{prayer.Request}\n\n**Testimony:**\n{testimony}",
                     MemberId  = member.Id,
-                    Category  = ForumCategory.Testimony,
+                    Category  = ForumCategory.PrayerAnswered,
                     IsApproved = true
                 };
                 _db.ForumPosts.Add(post);
@@ -261,7 +261,7 @@ namespace ChurchMinistry.Controllers
                     Title    = $"Prayer Answered: {prayer.Category} 🙌",
                     Content  = $"**Prayer Request:**\n{prayer.Request}\n\n**My Testimony:**\n{testimony}",
                     MemberId = member.Id,
-                    Category = ForumCategory.Testimony,
+                    Category = ForumCategory.PrayerAnswered,
                     IsApproved = true
                 };
                 _db.ForumPosts.Add(post);

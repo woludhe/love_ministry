@@ -1,0 +1,97 @@
+@model ChurchMinistry.ViewModels.ForumPostCardViewModel
+@using ChurchMinistry.Models
+@*
+    One community post as a Facebook-style card: author, tags, text, Amen / comment counts,
+    responses and a comment box. Used by the feed (newest replies only) and the post page (all).
+*@
+@{
+    var p = Model.Post;
+    const string avatar = "/images/avatar-default.png";
+
+    // "Just now", "5 min", "3 h", "Yesterday", "12 Oct", "12 Oct 2025"
+    string Ago(DateTime utc)
+    {
+        var d = DateTime.UtcNow - utc;
+        if (d.TotalMinutes < 1) return "Just now";
+        if (d.TotalHours < 1) return $"{(int)d.TotalMinutes} min";
+        if (d.TotalDays < 1) return $"{(int)d.TotalHours} h";
+        if (d.TotalDays < 2) return "Yesterday";
+        var local = utc.ToLocalTime();
+        return local.Year == DateTime.Now.Year ? local.ToString("d MMM") : local.ToString("d MMM yyyy");
+    }
+
+    var replies = p.Replies.OrderBy(r => r.CreatedAt).ToList();
+    var hiddenCount = Model.ShowAllReplies ? 0 : Math.Max(0, replies.Count - ForumPostCardViewModel.FeedReplies);
+    // Long posts are clamped on the feed with "See more"
+    var isLong = !Model.ShowAllReplies && (p.Content.Length > 450 || p.Content.Count(c => c == '\n') > 6);
+}
+<article class="fb-post @(p.IsPinned ? "is-pinned" : "")" id="post-@p.Id">
+    <header class="fb-post-head">
+        <img src="@(p.Member.ProfilePhoto ?? avatar)" alt="" class="fb-avatar" />
+        <div class="fb-post-who">
+            <strong>@p.Member.FullName</strong>
+            <a asp-action="Post" asp-route-id="@p.Id" class="fb-time" title="@p.CreatedAt.ToLocalTime().ToString("dddd d MMMM yyyy, h:mm tt")">@Ago(p.CreatedAt)</a>
+        </div>
+        <div class="fb-tags">
+            @if (p.IsPinned) { <span class="pin-badge"><i class="fas fa-thumbtack"></i> Pinned</span> }
+            @if (p.IsPastorQuestion) { <span class="pastor-badge"><i class="fas fa-church"></i> Pastor Q&amp;A</span> }
+            <a href="?category=@p.Category" class="cat-badge cat-@p.Category.ToString().ToLower()">@ForumCategories.Label(p.Category)</a>
+        </div>
+    </header>
+
+    <div class="fb-post-text">
+        <h3 class="fb-post-title"><a asp-action="Post" asp-route-id="@p.Id">@p.Title</a></h3>
+        <div class="fb-post-body @(isLong ? "is-clamped" : "")">@Html.Raw(ForumText.Format(p.Content))</div>
+        @if (isLong) { <button type="button" class="fb-see-more js-see-more">See more</button> }
+    </div>
+
+    <div class="fb-stats">
+        <span class="js-amen-summary" hidden="@(Model.AmenCount == 0)">🙏 <span class="js-amen-count">@Model.AmenCount</span> Amen</span>
+        <span class="fb-stats-right">
+            @replies.Count @(replies.Count == 1 ? "comment" : "comments") · @p.ViewCount @(p.ViewCount == 1 ? "view" : "views")
+        </span>
+    </div>
+
+    <div class="fb-actions">
+        <button type="button" class="fb-action js-amen @(Model.Amened ? "is-on" : "")" data-id="@p.Id" aria-pressed="@(Model.Amened ? "true" : "false")">
+            <span aria-hidden="true">🙏</span> Amen
+        </button>
+        <button type="button" class="fb-action js-comment" data-target="comment-@p.Id">
+            <i class="far fa-comment"></i> Comment
+        </button>
+    </div>
+
+    <div class="fb-comments">
+        @if (hiddenCount > 0)
+        {
+            <button type="button" class="fb-view-all js-view-all">View all @replies.Count comments</button>
+        }
+        @for (var i = 0; i < replies.Count; i++)
+        {
+            var r = replies[i];
+            <div class="fb-comment @(r.IsPastorReply ? "is-pastor" : "") @(i < hiddenCount ? "is-hidden" : "")">
+                <img src="@(r.Member.ProfilePhoto ?? avatar)" alt="" class="fb-avatar fb-avatar-sm" />
+                <div>
+                    <div class="fb-bubble">
+                        <strong>@r.Member.FullName</strong>
+                        @if (r.IsPastorReply) { <span class="fb-pastor-tag"><i class="fas fa-church"></i> Pastor</span> }
+                        <div>@Html.Raw(ForumText.Format(r.Content))</div>
+                    </div>
+                    <span class="fb-comment-time" title="@r.CreatedAt.ToLocalTime().ToString("d MMM yyyy, h:mm tt")">@Ago(r.CreatedAt)</span>
+                </div>
+            </div>
+        }
+
+        @if (Model.Me != null)
+        {
+            <form asp-action="Reply" method="post" class="fb-comment-form">
+                <input type="hidden" name="postId" value="@p.Id" />
+                <input type="hidden" name="returnUrl" value="@Model.ReturnUrl" />
+                <img src="@(Model.Me.ProfilePhoto ?? avatar)" alt="" class="fb-avatar fb-avatar-sm" />
+                <textarea name="content" id="comment-@p.Id" rows="1" required maxlength="4000"
+                          placeholder="Write a comment…" aria-label="Write a comment"></textarea>
+                <button type="submit" class="fb-send" aria-label="Post comment"><i class="fas fa-paper-plane"></i></button>
+            </form>
+        }
+    </div>
+</article>

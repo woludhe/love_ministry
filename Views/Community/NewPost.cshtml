@@ -15,7 +15,7 @@
     <form asp-action="NewPost" method="post">
         <div asp-validation-summary="All" class="validation-summary"></div>
         <div class="form-group"><label asp-for="Title"></label><input asp-for="Title" class="form-control" placeholder="Post title..." /><span asp-validation-for="Title" class="field-error"></span></div>
-        <div class="form-group"><label asp-for="Category"></label><select asp-for="Category" class="form-control" asp-items="Html.GetEnumSelectList<ChurchMinistry.Models.ForumCategory>()"></select></div>
+        <div class="form-group"><label asp-for="Category"></label><select asp-for="Category" class="form-control" asp-items="Enum.GetValues<ChurchMinistry.Models.ForumCategory>().Select(c => new Microsoft.AspNetCore.Mvc.Rendering.SelectListItem(ChurchMinistry.Models.ForumCategories.Label(c), c.ToString()))"></select></div>
         <div class="form-group"><label asp-for="Content">Content</label><textarea asp-for="Content" class="form-control" rows="8" placeholder="Share your thoughts..."></textarea><span asp-validation-for="Content" class="field-error"></span></div>
         <div class="form-group checkbox-group"><label><input asp-for="IsPastorQuestion" type="checkbox" /> This is a question for the Pastor</label></div>
         <button type="submit" class="btn btn-primary">Publish Post</button>

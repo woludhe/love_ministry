@@ -956,15 +956,19 @@ namespace ChurchMinistry.Controllers
                 ? await _db.Members.FirstOrDefaultAsync(m => m.UserId == u.Id)
                 : null;
 
+        // Feed: each post with its responses, Facebook style
         public async Task<IActionResult> Index(ForumCategory? category, int page = 1)
         {
             var pager = new PagerModel(page, "posts");
-            var q = _db.ForumPosts.Include(p => p.Member).Include(p => p.Replies).AsQueryable();
+            var q = _db.ForumPosts.Include(p => p.Member)
+                .Include(p => p.Replies).ThenInclude(r => r.Member).AsQueryable();
             if (category.HasValue) q = q.Where(p => p.Category == category.Value);
-            ViewBag.Posts = await q.OrderByDescending(p => p.IsPinned).ThenByDescending(p => p.CreatedAt)
+            List<ForumPost> posts = await q.OrderByDescending(p => p.IsPinned).ThenByDescending(p => p.CreatedAt)
                 .ToPageAsync(pager);
+            ViewBag.Posts = posts;
             ViewBag.Total = pager.Total; ViewBag.Page = pager.Page; ViewBag.TotalPages = pager.TotalPages;
             ViewBag.Pager = pager;
+            await SetAmenDataAsync(posts.Select(p => p.Id).ToList());
             return View();
         }
 
@@ -976,12 +980,47 @@ namespace ChurchMinistry.Controllers
             if (post == null) return NotFound();
             post.ViewCount++;
             await _db.SaveChangesAsync();
+            await SetAmenDataAsync(new List<int> { post.Id });
             return View(post);
+        }
+
+        // Amen counts for these posts, which of them the viewer said Amen to, and the viewer
+        private async Task SetAmenDataAsync(List<int> postIds)
+        {
+            var me = await GetMemberAsync();
+            ViewBag.Me = me;
+            ViewBag.AmenCounts = await _db.ForumReactions
+                .Where(r => postIds.Contains(r.ForumPostId))
+                .GroupBy(r => r.ForumPostId)
+                .Select(g => new { g.Key, Count = g.Count() })
+                .ToDictionaryAsync(x => x.Key, x => x.Count);
+            ViewBag.MyAmens = me == null ? new HashSet<int>()
+                : (await _db.ForumReactions
+                    .Where(r => r.MemberId == me.Id && postIds.Contains(r.ForumPostId))
+                    .Select(r => r.ForumPostId).ToListAsync()).ToHashSet();
+        }
+
+        // Toggle the viewer's Amen on a post
+        [HttpPost, ValidateAntiForgeryToken]
+        public async Task<IActionResult> Amen([FromBody] int id)
+        {
+            var member = await GetMemberAsync();
+            if (member == null) return Unauthorized();
+            if (!await _db.ForumPosts.AnyAsync(p => p.Id == id)) return NotFound();
+
+            var mine = await _db.ForumReactions.FirstOrDefaultAsync(r => r.ForumPostId == id && r.MemberId == member.Id);
+            if (mine == null) _db.ForumReactions.Add(new ForumReaction { ForumPostId = id, MemberId = member.Id });
+            else _db.ForumReactions.Remove(mine);
+            try { await _db.SaveChangesAsync(); }
+            catch (DbUpdateException) { /* a double click raced the unique index; the count below is still right */ }
+
+            var count = await _db.ForumReactions.CountAsync(r => r.ForumPostId == id);
+            return Json(new { count, amened = mine == null });
         }
 
         [HttpGet] public IActionResult NewPost() => View(new ForumPostViewModel());
 
-        [HttpPost]
+        [HttpPost, ValidateAntiForgeryToken]
         public async Task<IActionResult> NewPost(ForumPostViewModel vm)
         {
             if (!ModelState.IsValid) return View(vm);
@@ -1002,24 +1041,30 @@ namespace ChurchMinistry.Controllers
             return RedirectToAction("Index");
         }
 
-        [HttpPost]
-        public async Task<IActionResult> Reply(int postId, string content)
+        // returnUrl: the feed sends its own address so the member lands back on the post they commented on
+        [HttpPost, ValidateAntiForgeryToken]
+        public async Task<IActionResult> Reply(int postId, string content, string? returnUrl)
         {
             var member = await GetMemberAsync();
             if (member == null) return Unauthorized();
             var post = await _db.ForumPosts.FindAsync(postId);
             if (post == null) return NotFound();
 
-            _db.ForumReplies.Add(new ForumReply
+            if (!string.IsNullOrWhiteSpace(content))
             {
-                ForumPostId = postId,
-                MemberId = member.Id,
-                Content = content,
-                IsPastorReply = User.IsInRole("Pastor")
-            });
-            await _db.SaveChangesAsync();
-            await _activity.LogAsync(member.Id, MemberActivityType.ForumReply, $"Replied to \"{post.Title}\"", post.Id);
-            return RedirectToAction("Post", new { id = postId });
+                _db.ForumReplies.Add(new ForumReply
+                {
+                    ForumPostId = postId,
+                    MemberId = member.Id,
+                    Content = content.Trim(),
+                    IsPastorReply = User.IsInRole("Pastor")
+                });
+                await _db.SaveChangesAsync();
+                await _activity.LogAsync(member.Id, MemberActivityType.ForumReply, $"Replied to \"{post.Title}\"", post.Id);
+            }
+            return Url.IsLocalUrl(returnUrl)
+                ? LocalRedirect($"{returnUrl}#post-{postId}")
+                : RedirectToAction("Post", new { id = postId });
         }
 
         public IActionResult Chat() => View();

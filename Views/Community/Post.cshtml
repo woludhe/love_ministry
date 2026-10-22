@@ -1,4 +1,5 @@
 @model ChurchMinistry.Models.ForumPost
+@using ChurchMinistry.ViewModels
 @{
     ViewData["Title"] = Model.Title;
     @if (User.Identity?.IsAuthenticated == true)
@@ -9,147 +10,34 @@
     {
         Layout = "~/Views/Shared/_Layout.cshtml";
     }
+    var amenCounts = (Dictionary<int, int>)(ViewBag.AmenCounts ?? new Dictionary<int, int>());
+    var myAmens = (HashSet<int>)(ViewBag.MyAmens ?? new HashSet<int>());
+    var card = new ForumPostCardViewModel
+    {
+        Post = Model,
+        ShowAllReplies = true,
+        AmenCount = amenCounts.GetValueOrDefault(Model.Id),
+        Amened = myAmens.Contains(Model.Id),
+        Me = ViewBag.Me as ChurchMinistry.Models.Member,
+        ReturnUrl = Url.Action("Post", new { id = Model.Id }) ?? ""
+    };
 }
 
-<section class="page-header">
-    <div style="max-width:800px;margin:0 auto;text-align:left">
-        <span class="cat-badge" style="margin-bottom:.75rem;display:inline-block">@Model.Category</span>
-        @if (Model.IsPastorQuestion)
-        {
-            <span class="pastor-badge" style="margin-left:.4rem"><i class="fas fa-church"></i> Pastor Q&amp;A</span>
-        }
-        <h1 style="font-size:1.75rem;font-weight:800;margin-bottom:.5rem">@Model.Title</h1>
-        <div style="display:flex;align-items:center;gap:.75rem;flex-wrap:wrap;opacity:.85;font-size:.88rem">
-            <img src="@(Model.Member.ProfilePhoto ?? "/images/avatar-default.png")"
-                 class="avatar-xs" style="width:32px;height:32px" />
-            <span>@Model.Member.FullName</span>
-            <span>·</span>
-            <span><i class="fas fa-calendar"></i> @Model.CreatedAt.ToString("dd MMM yyyy, h:mm tt")</span>
-            <span>·</span>
-            <span><i class="fas fa-eye"></i> @Model.ViewCount views</span>
-            <span>·</span>
-            <span><i class="fas fa-comments"></i> @Model.Replies.Count replies</span>
-        </div>
-    </div>
-</section>
+<div class="forum-page container">
+    @Html.AntiForgeryToken()
+    <a asp-action="Index" class="fb-back"><i class="fas fa-arrow-left"></i> Back to Community</a>
 
-<div class="post-page">
+    <partial name="_PostCard" model="card" />
 
-    @* Original post *@
-    <div class="post-body">
-        <div class="post-content">
-            @Html.Raw(Model.Content.Replace("\n", "<br/>"))
-        </div>
-        <div class="post-footer">
-            <a asp-action="Index" class="btn btn-outline btn-sm">
-                <i class="fas fa-arrow-left"></i> Back to Forum
-            </a>
-            @if (User.Identity?.IsAuthenticated == true)
-            {
-                <button class="btn btn-outline btn-sm" onclick="document.getElementById('replyBox').scrollIntoView({behavior:'smooth'})">
-                    <i class="fas fa-reply"></i> Reply
-                </button>
-            }
-        </div>
-    </div>
-
-    @* Replies *@
-    @if (Model.Replies.Any())
+    @if (card.Me == null)
     {
-        <div class="replies-section">
-            <h3 class="replies-heading">
-                <i class="fas fa-comments"></i> @Model.Replies.Count
-                @(Model.Replies.Count == 1 ? "Reply" : "Replies")
-            </h3>
-
-            @foreach (var reply in Model.Replies.OrderBy(r => r.CreatedAt))
-            {
-                <div class="reply-item @(reply.IsPastorReply ? "pastor-reply" : "")">
-                    @if (reply.IsPastorReply)
-                    {
-                        <div class="pastor-reply-badge">
-                            <i class="fas fa-church"></i> Pastor's Response
-                        </div>
-                    }
-                    <div class="reply-header">
-                        <img src="@(reply.Member.ProfilePhoto ?? "/images/avatar-default.png")"
-                             class="avatar-xs" style="width:36px;height:36px;border-radius:50%;object-fit:cover" />
-                        <div>
-                            <strong>@reply.Member.FullName</strong>
-                            @if (reply.IsPastorReply)
-                            {
-                                <span class="tag" style="margin-left:.4rem">Pastor</span>
-                            }
-                            <br />
-                            <small class="meta">@reply.CreatedAt.ToString("dd MMM yyyy, h:mm tt")</small>
-                        </div>
-                    </div>
-                    <div class="reply-content">
-                        @Html.Raw(reply.Content.Replace("\n", "<br/>"))
-                    </div>
-                </div>
-            }
+        <div class="fb-empty">
+            <p>Sign in to join the discussion</p>
+            <a asp-controller="Account" asp-action="Login" class="btn btn-primary"><i class="fas fa-sign-in-alt"></i> Sign In to Reply</a>
         </div>
     }
-
-    @* Reply form *@
-    @if (User.Identity?.IsAuthenticated == true)
-    {
-        <div class="reply-form-card" id="replyBox">
-            <h3><i class="fas fa-reply"></i> Leave a Reply</h3>
-            <form asp-action="Reply" method="post">
-                <input type="hidden" name="postId" value="@Model.Id" />
-                <div class="form-group">
-                    <textarea name="content" class="form-control" rows="5"
-                              placeholder="Share your thoughts, testimony or answer..." required></textarea>
-                </div>
-                <button type="submit" class="btn btn-primary">
-                    <i class="fas fa-paper-plane"></i> Post Reply
-                </button>
-            </form>
-        </div>
-    }
-    else
-    {
-        <div class="reply-form-card" style="text-align:center">
-            <p style="color:var(--text-s);margin-bottom:1rem">Sign in to join the discussion</p>
-            <a asp-controller="Account" asp-action="Login" class="btn btn-primary">
-                <i class="fas fa-sign-in-alt"></i> Sign In to Reply
-            </a>
-        </div>
-    }
-
 </div>
 
 @section Scripts {
-<style>
-.post-page        { max-width: 800px; margin: 2rem auto; padding: 0 1.5rem; }
-.post-body        { background: var(--white); border: 1px solid var(--border);
-                    border-radius: var(--radius); padding: 2rem; box-shadow: var(--shadow);
-                    margin-bottom: 2rem; }
-.post-content     { font-size: .95rem; line-height: 1.8; color: var(--text); margin-bottom: 1.5rem; }
-.post-footer      { display: flex; gap: .75rem; padding-top: 1rem;
-                    border-top: 1px solid var(--border); }
-
-.replies-section  { margin-bottom: 2rem; }
-.replies-heading  { font-size: 1.1rem; font-weight: 700; margin-bottom: 1rem;
-                    display: flex; align-items: center; gap: .5rem; }
-
-.reply-item       { background: var(--white); border: 1px solid var(--border);
-                    border-radius: var(--radius); padding: 1.25rem;
-                    margin-bottom: .75rem; box-shadow: var(--shadow); }
-.reply-item.pastor-reply { border-left: 3px solid var(--purple);
-                            background: linear-gradient(135deg, #faf5ff, var(--white)); }
-.pastor-reply-badge { display: inline-flex; align-items: center; gap: .35rem;
-                      background: var(--purple-l); color: var(--purple);
-                      font-size: .75rem; font-weight: 700; padding: .2rem .65rem;
-                      border-radius: 100px; margin-bottom: .75rem; }
-.reply-header     { display: flex; align-items: center; gap: .75rem; margin-bottom: .75rem; }
-.reply-content    { font-size: .9rem; line-height: 1.7; padding-left: 2.75rem; }
-
-.reply-form-card  { background: var(--white); border: 1px solid var(--border);
-                    border-radius: var(--radius); padding: 1.75rem; box-shadow: var(--shadow); }
-.reply-form-card h3 { font-size: 1rem; font-weight: 700; margin-bottom: 1.25rem;
-                      display: flex; align-items: center; gap: .5rem; }
-</style>
+    <script src="~/js/community.js" asp-append-version="true"></script>
 }
