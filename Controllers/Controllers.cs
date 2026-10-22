@@ -116,11 +116,18 @@ namespace ChurchMinistry.Controllers
         private readonly ApplicationDbContext _db;
         private readonly IEmailService _email;
         private readonly IQrCodeService _qr;
+        private readonly ISmsService _sms;
+        private readonly ILogger<AccountController> _log;
+
+        // Roles that can turn on two-step verification. Admin only for now;
+        // add "Pastor" and "Member" here to offer it to everyone.
+        private const string TwoFactorRoles = "Admin";
 
         public AccountController(UserManager<ApplicationUser> um, SignInManager<ApplicationUser> sm,
-            ApplicationDbContext db, IEmailService email, IQrCodeService qr)
+            ApplicationDbContext db, IEmailService email, IQrCodeService qr, ISmsService sms,
+            ILogger<AccountController> log)
         {
-            _userManager = um; _signInManager = sm; _db = db; _email = email; _qr = qr;
+            _userManager = um; _signInManager = sm; _db = db; _email = email; _qr = qr; _sms = sms; _log = log;
         }
 
         [HttpGet] public IActionResult Login(string? returnUrl = null) { ViewBag.ReturnUrl = returnUrl; return View(); }
@@ -132,16 +139,31 @@ namespace ChurchMinistry.Controllers
             if (!ModelState.IsValid) return View(vm);
 
             var result = await _signInManager.PasswordSignInAsync(vm.Email, vm.Password, vm.RememberMe, false);
+            if (result.RequiresTwoFactor)
+            {
+                // Password was right; send the code to their usual channel and ask for it
+                var pending = await _userManager.FindByEmailAsync(vm.Email);
+                var channels = TwoFactorChannels(pending!);
+                var channel = pending!.TwoFactorMethod is string m && channels.ContainsKey(m) ? m : channels.Keys.First();
+                if (!await SendTwoFactorCodeAsync(pending, channel))
+                    TempData["Error"] = $"We couldn't send a code to {channels[channel]}. Please choose another option below.";
+                return RedirectToAction(nameof(LoginWith2fa), new { returnUrl, rememberMe = vm.RememberMe, channel });
+            }
             if (!result.Succeeded)
             {
                 ModelState.AddModelError("", result.IsLockedOut
-                    ? "This account has been deactivated. Please contact the church office."
+                    ? await LockedOutMessageAsync(await _userManager.FindByEmailAsync(vm.Email))
                     : "Invalid email or password.");
                 return View(vm);
             }
 
             var signedIn = await _userManager.FindByEmailAsync(vm.Email);
-            if (activity != null) await activity.LogForUserAsync(signedIn?.Id, MemberActivityType.Login);
+            return await AfterSignInAsync(signedIn, returnUrl, activity);
+        }
+
+        private async Task<IActionResult> AfterSignInAsync(ApplicationUser? user, string? returnUrl, IActivityService? activity)
+        {
+            if (activity != null) await activity.LogForUserAsync(user?.Id, MemberActivityType.Login);
 
             // If a specific returnUrl was requested (e.g. they tried to access a
             // protected page before logging in), honour it regardless of role.
@@ -149,7 +171,6 @@ namespace ChurchMinistry.Controllers
                 return Redirect(returnUrl);
 
             // Otherwise route by role
-            var user = signedIn;
             if (user != null)
             {
                 if (await _userManager.IsInRoleAsync(user, "Admin") ||
@@ -158,6 +179,329 @@ namespace ChurchMinistry.Controllers
             }
 
             return RedirectToAction("Dashboard", "Members");
+        }
+
+        // Deactivated accounts are locked out indefinitely; too many wrong codes only for a few minutes
+        private async Task<string> LockedOutMessageAsync(ApplicationUser? user)
+        {
+            var end = user == null ? null : await _userManager.GetLockoutEndDateAsync(user);
+            if (end == null || end > DateTimeOffset.UtcNow.AddYears(1))
+                return "This account has been deactivated. Please contact the church office.";
+            var minutes = Math.Max(1, (int)Math.Ceiling((end.Value - DateTimeOffset.UtcNow).TotalMinutes));
+            return $"Too many incorrect codes. Please try again in {minutes} minute{(minutes == 1 ? "" : "s")}.";
+        }
+
+        // ── Two-step verification: second sign-in step ──
+        [HttpGet]
+        public async Task<IActionResult> LoginWith2fa(string? returnUrl = null, bool rememberMe = false, string? channel = null)
+        {
+            var user = await _signInManager.GetTwoFactorAuthenticationUserAsync();
+            if (user == null) return RedirectToAction(nameof(Login), new { returnUrl });
+
+            var channels = TwoFactorChannels(user);
+            return View(new LoginWith2faViewModel
+            {
+                Channel = channel != null && channels.ContainsKey(channel) ? channel : channels.Keys.First(),
+                RememberMe = rememberMe,
+                ReturnUrl = returnUrl,
+                Channels = channels
+            });
+        }
+
+        [HttpPost, ValidateAntiForgeryToken]
+        public async Task<IActionResult> LoginWith2fa(LoginWith2faViewModel vm,
+            [FromServices] IActivityService? activity = null)
+        {
+            var user = await _signInManager.GetTwoFactorAuthenticationUserAsync();
+            if (user == null)
+            {
+                TempData["Error"] = "Your sign-in timed out. Please enter your password again.";
+                return RedirectToAction(nameof(Login), new { returnUrl = vm.ReturnUrl });
+            }
+
+            vm.Channels = TwoFactorChannels(user);
+            if (!vm.Channels.ContainsKey(vm.Channel)) vm.Channel = vm.Channels.Keys.First();
+            if (!ModelState.IsValid) return View(vm);
+
+            var result = await _signInManager.TwoFactorSignInAsync(TwoFactorProvider(vm.Channel),
+                vm.Code.Trim(), vm.RememberMe, vm.RememberDevice);
+            if (result.Succeeded)
+                return await AfterSignInAsync(user, vm.ReturnUrl, activity);
+
+            if (result.IsLockedOut)
+            {
+                TempData["Error"] = await LockedOutMessageAsync(user);
+                return RedirectToAction(nameof(Login), new { returnUrl = vm.ReturnUrl });
+            }
+
+            ModelState.AddModelError(nameof(vm.Code), "That code is incorrect or has expired. Check it, or send a new one.");
+            return View(vm);
+        }
+
+        // Resend the code, or send it to another channel
+        [HttpPost, ValidateAntiForgeryToken]
+        public async Task<IActionResult> SendLoginCode(string channel, string? returnUrl = null, bool rememberMe = false)
+        {
+            var user = await _signInManager.GetTwoFactorAuthenticationUserAsync();
+            if (user == null) return RedirectToAction(nameof(Login), new { returnUrl });
+
+            var channels = TwoFactorChannels(user);
+            if (!channels.ContainsKey(channel)) channel = channels.Keys.First();
+            if (await SendTwoFactorCodeAsync(user, channel))
+                TempData["Info"] = $"A new code has been sent to {channels[channel]}.";
+            else
+                TempData["Error"] = $"We couldn't send a code to {channels[channel]}. Please choose another option.";
+            return RedirectToAction(nameof(LoginWith2fa), new { returnUrl, rememberMe, channel });
+        }
+
+        // Where a sign-in code can go: the account email, a verified phone and a verified recovery email
+        private static Dictionary<string, string> TwoFactorChannels(ApplicationUser user)
+        {
+            var channels = new Dictionary<string, string>();
+            if (!string.IsNullOrEmpty(user.Email)) channels["Email"] = MaskEmail(user.Email);
+            if (user.PhoneNumberConfirmed && !string.IsNullOrEmpty(user.PhoneNumber)) channels["Phone"] = MaskPhone(user.PhoneNumber);
+            if (user.RecoveryEmailConfirmed && !string.IsNullOrEmpty(user.RecoveryEmail)) channels["Recovery"] = MaskEmail(user.RecoveryEmail);
+            return channels;
+        }
+
+        // Both email channels use Identity's email code provider; only where the code is sent differs
+        private static string TwoFactorProvider(string channel) =>
+            channel == "Phone" ? TokenOptions.DefaultPhoneProvider : TokenOptions.DefaultEmailProvider;
+
+        private async Task<bool> SendTwoFactorCodeAsync(ApplicationUser user, string channel)
+        {
+            var code = await _userManager.GenerateTwoFactorTokenAsync(user, TwoFactorProvider(channel));
+            var church = HttpContext.RequestServices.GetRequiredService<IConfiguration>()["Church:Name"] ?? "Church";
+            try
+            {
+                if (channel == "Phone")
+                    await _sms.SendSmsAsync(user.PhoneNumber!, $"{code} is your {church} sign-in code. Don't share it with anyone.");
+                else
+                    await _email.SendEmailAsync(channel == "Recovery" ? user.RecoveryEmail! : user.Email!,
+                        "Your sign-in code", CodeEmailBody(code, "sign in to your account"), user.FullName);
+                return true;
+            }
+            catch (Exception ex)
+            {
+                _log.LogError(ex, "Couldn't send a {Channel} sign-in code to user {UserId}", channel, user.Id);
+                return false;
+            }
+        }
+
+        private static string CodeEmailBody(string code, string purpose) =>
+            $"<p>Use this code to {purpose}:</p>" +
+            $"<p style=\"font-size:28px;font-weight:700;letter-spacing:6px\">{code}</p>" +
+            "<p>It expires in a few minutes. If you didn't ask for it, someone may know your password; " +
+            "please change it straight away.</p>";
+
+        private static string MaskEmail(string email)
+        {
+            var at = email.IndexOf('@');
+            if (at <= 0) return email;
+            return email[..Math.Min(2, at)] + "•••" + email[at..];
+        }
+
+        private static string MaskPhone(string phone) =>
+            phone.Length <= 4 ? phone : phone[..Math.Min(4, phone.Length - 2)] + "•••••" + phone[^2..];
+
+        // ── Account security: two-step verification, phone and recovery email ──
+        [HttpGet, Authorize(Roles = TwoFactorRoles)]
+        public async Task<IActionResult> Security(string? pendingPhone = null, string? pendingRecovery = null,
+            string? pendingMethod = null)
+        {
+            var user = await _userManager.GetUserAsync(User);
+            if (user == null) return RedirectToAction(nameof(Login));
+            return View(new SecuritySettingsViewModel
+            {
+                Email = user.Email ?? "",
+                TwoFactorEnabled = user.TwoFactorEnabled,
+                TwoFactorMethod = user.TwoFactorMethod,
+                PhoneNumber = user.PhoneNumber,
+                PhoneConfirmed = user.PhoneNumberConfirmed,
+                RecoveryEmail = user.RecoveryEmail,
+                RecoveryEmailConfirmed = user.RecoveryEmailConfirmed,
+                PendingPhone = pendingPhone,
+                PendingRecoveryEmail = pendingRecovery,
+                PendingMethod = pendingMethod is "Email" or "Phone" ? pendingMethod : null
+            });
+        }
+
+        [HttpPost, Authorize(Roles = TwoFactorRoles), ValidateAntiForgeryToken]
+        public async Task<IActionResult> SendPhoneCode(string phone)
+        {
+            var user = await _userManager.GetUserAsync(User);
+            if (user == null) return RedirectToAction(nameof(Login));
+
+            // Africa's Talking expects international format, e.g. +254712345678
+            phone = new string((phone ?? "").Where(c => char.IsDigit(c) || c == '+').ToArray());
+            if (!System.Text.RegularExpressions.Regex.IsMatch(phone, @"^\+\d{9,15}$"))
+            {
+                TempData["Error"] = "Enter the phone number in international format, starting with + and the country code (e.g. +254712345678).";
+                return RedirectToAction(nameof(Security));
+            }
+
+            var code = await _userManager.GenerateChangePhoneNumberTokenAsync(user, phone);
+            try
+            {
+                await _sms.SendSmsAsync(phone, $"{code} is your code to verify this phone for sign-in. Don't share it with anyone.");
+            }
+            catch (Exception ex)
+            {
+                _log.LogError(ex, "Couldn't send a phone verification code to user {UserId}", user.Id);
+                TempData["Error"] = "We couldn't send a text message to that number. Please check it and try again.";
+                return RedirectToAction(nameof(Security));
+            }
+            TempData["Info"] = $"We've texted a code to {phone}.";
+            return RedirectToAction(nameof(Security), new { pendingPhone = phone });
+        }
+
+        [HttpPost, Authorize(Roles = TwoFactorRoles), ValidateAntiForgeryToken]
+        public async Task<IActionResult> VerifyPhone(string phone, string code)
+        {
+            var user = await _userManager.GetUserAsync(User);
+            if (user == null) return RedirectToAction(nameof(Login));
+
+            // Saves the number and marks it confirmed only if the code matches
+            var result = await _userManager.ChangePhoneNumberAsync(user, phone, (code ?? "").Trim());
+            if (!result.Succeeded)
+            {
+                TempData["Error"] = "That code is incorrect or has expired.";
+                return RedirectToAction(nameof(Security), new { pendingPhone = phone });
+            }
+            await _signInManager.RefreshSignInAsync(user);
+            TempData["Success"] = "Your phone number has been verified.";
+            return RedirectToAction(nameof(Security));
+        }
+
+        [HttpPost, Authorize(Roles = TwoFactorRoles), ValidateAntiForgeryToken]
+        public async Task<IActionResult> SendRecoveryEmailCode(string email)
+        {
+            var user = await _userManager.GetUserAsync(User);
+            if (user == null) return RedirectToAction(nameof(Login));
+
+            email = (email ?? "").Trim();
+            if (!new System.ComponentModel.DataAnnotations.EmailAddressAttribute().IsValid(email) || email.Length > 256)
+            {
+                TempData["Error"] = "Enter a valid recovery email address.";
+                return RedirectToAction(nameof(Security));
+            }
+            if (string.Equals(email, user.Email, StringComparison.OrdinalIgnoreCase))
+            {
+                TempData["Error"] = "The recovery email must be different from the email you sign in with.";
+                return RedirectToAction(nameof(Security));
+            }
+
+            var code = await _userManager.GenerateUserTokenAsync(user, TokenOptions.DefaultEmailProvider, RecoveryEmailPurpose(email));
+            try
+            {
+                await _email.SendEmailAsync(email, "Verify your recovery email",
+                    CodeEmailBody(code, "verify this address as the recovery email for your account"), user.FullName);
+            }
+            catch (Exception ex)
+            {
+                _log.LogError(ex, "Couldn't send a recovery email verification code to user {UserId}", user.Id);
+                TempData["Error"] = "We couldn't send an email to that address. Please check it and try again.";
+                return RedirectToAction(nameof(Security));
+            }
+            TempData["Info"] = $"We've emailed a code to {email}.";
+            return RedirectToAction(nameof(Security), new { pendingRecovery = email });
+        }
+
+        [HttpPost, Authorize(Roles = TwoFactorRoles), ValidateAntiForgeryToken]
+        public async Task<IActionResult> VerifyRecoveryEmail(string email, string code)
+        {
+            var user = await _userManager.GetUserAsync(User);
+            if (user == null) return RedirectToAction(nameof(Login));
+
+            email = (email ?? "").Trim();
+            if (!await _userManager.VerifyUserTokenAsync(user, TokenOptions.DefaultEmailProvider,
+                    RecoveryEmailPurpose(email), (code ?? "").Trim()))
+            {
+                TempData["Error"] = "That code is incorrect or has expired.";
+                return RedirectToAction(nameof(Security), new { pendingRecovery = email });
+            }
+            user.RecoveryEmail = email;
+            user.RecoveryEmailConfirmed = true;
+            await _userManager.UpdateAsync(user);
+            TempData["Success"] = "Your recovery email has been verified.";
+            return RedirectToAction(nameof(Security));
+        }
+
+        // The address is part of the purpose, so a code only verifies the address it was sent to
+        private static string RecoveryEmailPurpose(string email) => "RecoveryEmail:" + email.ToLowerInvariant();
+
+        // Turning on two-step verification (or switching its method) first proves the
+        // chosen channel works, so no one locks themselves out with an unreachable inbox
+        [HttpPost, Authorize(Roles = TwoFactorRoles), ValidateAntiForgeryToken]
+        public async Task<IActionResult> SendEnableCode(string method)
+        {
+            var user = await _userManager.GetUserAsync(User);
+            if (user == null) return RedirectToAction(nameof(Login));
+
+            if (!user.RecoveryEmailConfirmed)
+            {
+                TempData["Error"] = "Add and verify a recovery email first, so you can still sign in if you lose access.";
+                return RedirectToAction(nameof(Security));
+            }
+            if (method != "Email" && method != "Phone") method = "Email";
+            if (method == "Phone" && !user.PhoneNumberConfirmed)
+            {
+                TempData["Error"] = "Verify your phone number first.";
+                return RedirectToAction(nameof(Security));
+            }
+
+            if (!await SendTwoFactorCodeAsync(user, method))
+            {
+                TempData["Error"] = method == "Phone"
+                    ? "We couldn't send a text message to your phone. Please try again."
+                    : $"We couldn't send an email to {user.Email}. Please try again, or use your phone instead.";
+                return RedirectToAction(nameof(Security));
+            }
+            TempData["Info"] = method == "Phone" ? "We've texted a code to your phone." : $"We've emailed a code to {user.Email}.";
+            return RedirectToAction(nameof(Security), new { pendingMethod = method });
+        }
+
+        [HttpPost, Authorize(Roles = TwoFactorRoles), ValidateAntiForgeryToken]
+        public async Task<IActionResult> EnableTwoFactor(string method, string code)
+        {
+            var user = await _userManager.GetUserAsync(User);
+            if (user == null) return RedirectToAction(nameof(Login));
+            if (method != "Email" && method != "Phone") method = "Email";
+
+            if (!await _userManager.VerifyTwoFactorTokenAsync(user, TwoFactorProvider(method), (code ?? "").Trim()))
+            {
+                TempData["Error"] = "That code is incorrect or has expired.";
+                return RedirectToAction(nameof(Security), new { pendingMethod = method });
+            }
+
+            // The code reached the inbox, so it's confirmed. Identity only asks for a
+            // code at sign-in when the email or phone it would go to is confirmed.
+            if (method == "Email") user.EmailConfirmed = true;
+            user.TwoFactorMethod = method;
+            await _userManager.UpdateAsync(user);
+            await _userManager.SetTwoFactorEnabledAsync(user, true);
+            await _signInManager.RefreshSignInAsync(user);
+
+            TempData["Success"] = $"Two-step verification is on. We'll send a code to your {(method == "Phone" ? "phone" : "email")} each time you sign in.";
+            return RedirectToAction(nameof(Security));
+        }
+
+        [HttpPost, Authorize(Roles = TwoFactorRoles), ValidateAntiForgeryToken]
+        public async Task<IActionResult> DisableTwoFactor(string currentPassword)
+        {
+            var user = await _userManager.GetUserAsync(User);
+            if (user == null) return RedirectToAction(nameof(Login));
+
+            if (!await _userManager.CheckPasswordAsync(user, currentPassword ?? ""))
+            {
+                TempData["Error"] = "Your password is incorrect. Two-step verification is still on.";
+                return RedirectToAction(nameof(Security));
+            }
+            await _userManager.SetTwoFactorEnabledAsync(user, false);
+            await _signInManager.ForgetTwoFactorClientAsync();
+            await _signInManager.RefreshSignInAsync(user);
+            TempData["Success"] = "Two-step verification has been turned off.";
+            return RedirectToAction(nameof(Security));
         }
 
         [HttpGet] public IActionResult Register() => View();
@@ -239,6 +583,9 @@ namespace ChurchMinistry.Controllers
             // The password change renews the security stamp; keep this session signed in
             await _signInManager.RefreshSignInAsync(user);
             TempData["Success"] = "Your password has been changed.";
+            // Admins and pastors may have no member profile to return to
+            if (User.IsInRole("Admin")) return RedirectToAction(nameof(Security));
+            if (User.IsInRole("Pastor")) return RedirectToAction("Index", "Admin");
             return RedirectToAction("Profile", "Members");
         }
 
@@ -254,10 +601,18 @@ namespace ChurchMinistry.Controllers
                 var token = await _userManager.GeneratePasswordResetTokenAsync(user);
                 var code = Microsoft.AspNetCore.WebUtilities.WebEncoders.Base64UrlEncode(Encoding.UTF8.GetBytes(token));
                 var link = Url.Action("ResetPassword", "Account", new { code, email }, Request.Scheme)!;
-                await _email.SendEmailAsync(email, "Reset your password",
-                    $"<p>We received a request to reset your password.</p>" +
+                var body = $"<p>We received a request to reset your password.</p>" +
                     $"<p><a href=\"{System.Net.WebUtility.HtmlEncode(link)}\">Choose a new password</a></p>" +
-                    $"<p>If you didn't ask for this, you can ignore this email; your password won't change.</p>");
+                    $"<p>If you didn't ask for this, you can ignore this email; your password won't change.</p>";
+                // Also to a verified recovery email, in case the main inbox can't be reached
+                var hasRecovery = user.RecoveryEmailConfirmed && !string.IsNullOrEmpty(user.RecoveryEmail);
+                try { await _email.SendEmailAsync(email, "Reset your password", body); }
+                catch (Exception ex) when (hasRecovery)
+                {
+                    _log.LogError(ex, "Couldn't send a password reset email to user {UserId}", user.Id);
+                }
+                if (hasRecovery)
+                    await _email.SendEmailAsync(user.RecoveryEmail!, "Reset your password", body);
             }
             TempData["Info"] = "If that email exists, a reset link has been sent.";
             return RedirectToAction("Login");

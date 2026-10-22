@@ -1,0 +1,162 @@
+@model ChurchMinistry.ViewModels.SecuritySettingsViewModel
+@{
+    ViewData["Title"] = "Account Security";
+    Layout = "~/Views/Shared/_AdminDashboard_Layout.cshtml";
+    var methodName = Model.TwoFactorMethod == "Phone" ? "text message to your phone" : "email to " + Model.Email;
+}
+
+<div class="admin-main">
+    <div class="admin-topbar">
+        <div>
+            <h1><i class="fas fa-shield-halved"></i> Account Security</h1>
+            <p>Signed in as @Model.Email</p>
+        </div>
+    </div>
+
+    <div style="display:grid;gap:1.5rem;max-width:720px">
+
+        <!-- Two-step verification -->
+        <div class="table-card">
+            <h3 style="margin-bottom:.35rem">
+                Two-Step Verification
+                <span class="status-badge @(Model.TwoFactorEnabled ? "status-active" : "status-inactive")">
+                    @(Model.TwoFactorEnabled ? "On" : "Off")
+                </span>
+            </h3>
+            <p style="color:var(--text-s);margin-bottom:1rem">
+                @if (Model.TwoFactorEnabled)
+                {
+                    <text>Each time you sign in we send a code by @methodName. You can also have it sent to your
+                    @(Model.TwoFactorMethod == "Phone" ? "email" : "verified phone") or recovery email from the sign-in page.</text>
+                }
+                else
+                {
+                    <text>After your password, you'll enter a 6-digit code sent to your email or phone, so a stolen password alone can't get into the admin panel.</text>
+                }
+            </p>
+
+            @if (Model.PendingMethod != null)
+            {
+                <form asp-action="EnableTwoFactor" method="post" style="display:flex;gap:.5rem;flex-wrap:wrap;align-items:flex-end">
+                    <input type="hidden" name="method" value="@Model.PendingMethod" />
+                    <div class="form-group" style="margin:0;flex:1;min-width:180px">
+                        <label>Code sent to your @(Model.PendingMethod == "Phone" ? "phone" : "email")</label>
+                        <input name="code" class="form-control" inputmode="numeric" autocomplete="one-time-code" maxlength="8" required autofocus />
+                    </div>
+                    <button type="submit" class="btn btn-primary"><i class="fas fa-check"></i> @(Model.TwoFactorEnabled ? "Confirm" : "Turn On")</button>
+                    <a asp-action="Security" class="btn btn-outline">Cancel</a>
+                </form>
+            }
+            else if (!Model.RecoveryEmailConfirmed)
+            {
+                <p class="alert alert-info" style="margin:0"><i class="fas fa-info-circle"></i>
+                    Add and verify a recovery email below first, so you can still get a code if you lose access to your email or phone.</p>
+            }
+            else
+            {
+                <form asp-action="SendEnableCode" method="post" style="display:flex;gap:1rem;flex-wrap:wrap;align-items:center">
+                    <span>@(Model.TwoFactorEnabled ? "Send codes by:" : "Send my code by:")</span>
+                    <label><input type="radio" name="method" value="Email" checked="@(Model.TwoFactorMethod != "Phone")" /> Email</label>
+                    <label title="@(Model.PhoneConfirmed ? "" : "Verify a phone number below first")">
+                        <input type="radio" name="method" value="Phone" disabled="@(!Model.PhoneConfirmed)"
+                               checked="@(Model.TwoFactorMethod == "Phone" && Model.PhoneConfirmed)" />
+                        Text message@(Model.PhoneConfirmed ? "" : " (verify a phone first)")
+                    </label>
+                    <button type="submit" class="btn btn-primary btn-sm">
+                        @(Model.TwoFactorEnabled ? "Change Method" : "Set Up")
+                    </button>
+                </form>
+                <small style="display:block;margin-top:.5rem;color:var(--text-s)">We'll send a test code first to make sure it reaches you.</small>
+            }
+
+            @if (Model.TwoFactorEnabled)
+            {
+                <details style="margin-top:1.25rem">
+                    <summary style="cursor:pointer;color:var(--text-s)">Turn off two-step verification</summary>
+                    <form asp-action="DisableTwoFactor" method="post" style="display:flex;gap:.5rem;flex-wrap:wrap;align-items:flex-end;margin-top:.75rem">
+                        <div class="form-group" style="margin:0;flex:1;min-width:180px">
+                            <label>Your password</label>
+                            <input type="password" name="currentPassword" class="form-control" autocomplete="current-password" required />
+                        </div>
+                        <button type="submit" class="btn btn-outline">Turn Off</button>
+                    </form>
+                </details>
+            }
+        </div>
+
+        <!-- Recovery email -->
+        <div class="table-card">
+            <h3 style="margin-bottom:.35rem">Recovery Email</h3>
+            <p style="color:var(--text-s);margin-bottom:1rem">
+                A second address, different from @Model.Email, for sign-in codes and password reset links.
+            </p>
+            @if (Model.RecoveryEmailConfirmed)
+            {
+                <p style="margin-bottom:1rem"><strong>@Model.RecoveryEmail</strong>
+                    <span class="status-badge status-active">Verified</span></p>
+            }
+            @if (Model.PendingRecoveryEmail != null)
+            {
+                <form asp-action="VerifyRecoveryEmail" method="post" style="display:flex;gap:.5rem;flex-wrap:wrap;align-items:flex-end">
+                    <input type="hidden" name="email" value="@Model.PendingRecoveryEmail" />
+                    <div class="form-group" style="margin:0;flex:1;min-width:180px">
+                        <label>Code sent to @Model.PendingRecoveryEmail</label>
+                        <input name="code" class="form-control" inputmode="numeric" autocomplete="one-time-code" maxlength="8" required autofocus />
+                    </div>
+                    <button type="submit" class="btn btn-primary"><i class="fas fa-check"></i> Verify</button>
+                    <a asp-action="Security" class="btn btn-outline">Cancel</a>
+                </form>
+            }
+            else
+            {
+                <form asp-action="SendRecoveryEmailCode" method="post" style="display:flex;gap:.5rem;flex-wrap:wrap;align-items:flex-end">
+                    <div class="form-group" style="margin:0;flex:1;min-width:180px">
+                        <label>@(Model.RecoveryEmailConfirmed ? "Change to" : "Email address")</label>
+                        <input type="email" name="email" class="form-control" placeholder="you@example.com" autocomplete="email" required />
+                    </div>
+                    <button type="submit" class="btn btn-primary">Send Code</button>
+                </form>
+            }
+        </div>
+
+        <!-- Phone -->
+        <div class="table-card">
+            <h3 style="margin-bottom:.35rem">Phone Number</h3>
+            <p style="color:var(--text-s);margin-bottom:1rem">Lets us text your sign-in code instead of, or as well as, emailing it.</p>
+            @if (Model.PhoneConfirmed)
+            {
+                <p style="margin-bottom:1rem"><strong>@Model.PhoneNumber</strong>
+                    <span class="status-badge status-active">Verified</span></p>
+            }
+            @if (Model.PendingPhone != null)
+            {
+                <form asp-action="VerifyPhone" method="post" style="display:flex;gap:.5rem;flex-wrap:wrap;align-items:flex-end">
+                    <input type="hidden" name="phone" value="@Model.PendingPhone" />
+                    <div class="form-group" style="margin:0;flex:1;min-width:180px">
+                        <label>Code texted to @Model.PendingPhone</label>
+                        <input name="code" class="form-control" inputmode="numeric" autocomplete="one-time-code" maxlength="8" required autofocus />
+                    </div>
+                    <button type="submit" class="btn btn-primary"><i class="fas fa-check"></i> Verify</button>
+                    <a asp-action="Security" class="btn btn-outline">Cancel</a>
+                </form>
+            }
+            else
+            {
+                <form asp-action="SendPhoneCode" method="post" style="display:flex;gap:.5rem;flex-wrap:wrap;align-items:flex-end">
+                    <div class="form-group" style="margin:0;flex:1;min-width:180px">
+                        <label>@(Model.PhoneConfirmed ? "Change to" : "Phone number")</label>
+                        <input type="tel" name="phone" class="form-control" placeholder="+254712345678" autocomplete="tel" required />
+                    </div>
+                    <button type="submit" class="btn btn-primary">Text Me a Code</button>
+                </form>
+            }
+        </div>
+
+        <!-- Password -->
+        <div class="table-card">
+            <h3 style="margin-bottom:.35rem">Password</h3>
+            <p style="color:var(--text-s);margin-bottom:1rem">Use at least 8 characters, with a number and a lowercase letter.</p>
+            <a asp-action="ChangePassword" class="btn btn-outline"><i class="fas fa-key"></i> Change Password</a>
+        </div>
+    </div>
+</div>

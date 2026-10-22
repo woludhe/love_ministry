@@ -1,0 +1,57 @@
+@model ChurchMinistry.ViewModels.LoginWith2faViewModel
+@{
+    ViewData["Title"] = "Two-Step Verification"; Layout = "~/Views/Shared/_Layout.cshtml";
+    var sentTo = Model.Channels.GetValueOrDefault(Model.Channel, "");
+    var labels = new Dictionary<string, string>
+    {
+        ["Email"] = "Email it to", ["Phone"] = "Text it to", ["Recovery"] = "Email my recovery address"
+    };
+}
+<div class="auth-page">
+  <div class="auth-card">
+    <div class="auth-logo"><i class="fas fa-shield-halved"></i></div>
+    <h2>Two-Step Verification</h2>
+    <p>We sent a 6-digit code to <strong>@sentTo</strong>. Enter it below to finish signing in.</p>
+    <form asp-action="LoginWith2fa" method="post">
+      <input type="hidden" asp-for="Channel" />
+      <input type="hidden" asp-for="RememberMe" />
+      <input type="hidden" asp-for="ReturnUrl" />
+      <div asp-validation-summary="ModelOnly" class="validation-summary"></div>
+      <div class="form-group">
+        <label asp-for="Code"></label>
+        <input asp-for="Code" class="form-control" inputmode="numeric" autocomplete="one-time-code"
+               maxlength="8" placeholder="123456" autofocus
+               style="font-size:1.4rem;letter-spacing:.4em;text-align:center" />
+        <span asp-validation-for="Code" class="field-error"></span>
+      </div>
+      <div class="form-group">
+        <label><input asp-for="RememberDevice" /> @Html.DisplayNameFor(m => m.RememberDevice)</label>
+      </div>
+      <button type="submit" class="btn btn-primary btn-full">Verify &amp; Sign In</button>
+    </form>
+
+    <div style="margin-top:1.5rem;font-size:.88rem;color:var(--text-s)">
+      <p style="margin-bottom:.5rem">Didn't get it? It can take a minute to arrive.</p>
+      @foreach (var (channel, destination) in Model.Channels)
+      {
+          <form asp-action="SendLoginCode" method="post" style="margin-bottom:.35rem">
+            <input type="hidden" name="channel" value="@channel" />
+            <input type="hidden" name="rememberMe" value="@Model.RememberMe.ToString().ToLower()" />
+            <input type="hidden" name="returnUrl" value="@Model.ReturnUrl" />
+            <button type="submit" class="btn btn-outline btn-sm" style="width:100%;justify-content:flex-start">
+              @if (channel == Model.Channel)
+              {
+                  <span><i class="fas fa-rotate-right"></i> Resend the code to @destination</span>
+              }
+              else
+              {
+                  <span><i class="fas @(channel == "Phone" ? "fa-mobile-screen" : "fa-envelope")"></i>
+                      @labels[channel]@(channel == "Recovery" ? $" ({destination})" : $" {destination}")</span>
+              }
+            </button>
+          </form>
+      }
+    </div>
+    <p class="auth-switch"><a asp-action="Login" asp-route-returnUrl="@Model.ReturnUrl">Back to Sign In</a></p>
+  </div>
+</div>

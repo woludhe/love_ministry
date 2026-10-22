@@ -122,6 +122,17 @@
                         </a>
                     </details>
                     <hr />
+                    @if (User.IsInRole("Admin"))
+                    {
+                        <a asp-controller="Account" asp-action="Security"
+                           class="@(ViewContext.RouteData.Values["controller"]?.ToString() == "Account" ? "active" : "")">
+                            <i class="fas fa-shield-halved"></i> Account Security
+                        </a>
+                    }
+                    else
+                    {
+                        <a asp-controller="Account" asp-action="ChangePassword"><i class="fas fa-key"></i> Change Password</a>
+                    }
                     <a asp-controller="Home" asp-action="Index"><i class="fas fa-home"></i> View Site</a>
                 </nav>
             </aside>

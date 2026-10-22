@@ -80,11 +80,22 @@ namespace ChurchMinistry.Migrations
                     b.Property<string>("ProfilePhoto")
                         .HasColumnType("longtext");
 
+                    b.Property<string>("RecoveryEmail")
+                        .HasMaxLength(256)
+                        .HasColumnType("varchar(256)");
+
+                    b.Property<bool>("RecoveryEmailConfirmed")
+                        .HasColumnType("tinyint(1)");
+
                     b.Property<string>("SecurityStamp")
                         .HasColumnType("longtext");
 
                     b.Property<bool>("TwoFactorEnabled")
                         .HasColumnType("tinyint(1)");
+
+                    b.Property<string>("TwoFactorMethod")
+                        .HasMaxLength(10)
+                        .HasColumnType("varchar(10)");
 
                     b.Property<string>("UserName")
                         .HasMaxLength(256)

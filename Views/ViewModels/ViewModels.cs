@@ -84,6 +84,42 @@ namespace ChurchMinistry.ViewModels
         public string ConfirmPassword { get; set; } = "";
     }
 
+    // ─── Two-step verification ───
+    // Second sign-in step: the code sent to the user's email, phone or recovery email
+    public class LoginWith2faViewModel
+    {
+        [Required(ErrorMessage = "Enter the code we sent you."), Display(Name = "Verification Code")]
+        [RegularExpression(@"^\s*\d{6}\s*$", ErrorMessage = "The code is the 6 digits we sent you.")]
+        public string Code { get; set; } = "";
+
+        // "Email", "Phone" or "Recovery"
+        [Required] public string Channel { get; set; } = "Email";
+        public bool RememberMe { get; set; }
+        [Display(Name = "Trust this device and don't ask for a code here again")]
+        public bool RememberDevice { get; set; }
+        public string? ReturnUrl { get; set; }
+
+        // Channel → masked destination, e.g. "Email" → "ad•••@church.org"
+        public Dictionary<string, string> Channels { get; set; } = new();
+    }
+
+    // Account Security page (Account/Security)
+    public class SecuritySettingsViewModel
+    {
+        public string Email { get; set; } = "";
+        public bool TwoFactorEnabled { get; set; }
+        public string? TwoFactorMethod { get; set; }
+        public string? PhoneNumber { get; set; }
+        public bool PhoneConfirmed { get; set; }
+        public string? RecoveryEmail { get; set; }
+        public bool RecoveryEmailConfirmed { get; set; }
+
+        // A code is on its way and this step is waiting for it
+        public string? PendingPhone { get; set; }
+        public string? PendingRecoveryEmail { get; set; }
+        public string? PendingMethod { get; set; }
+    }
+
     public class RegisterViewModel
     {
         [Required] public string FirstName { get; set; } = "";

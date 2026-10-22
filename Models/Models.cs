@@ -16,6 +16,13 @@ namespace ChurchMinistry.Models
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
         public bool IsActive { get; set; } = true;
 
+        // Two-step verification. Identity's own TwoFactorEnabled switches it on;
+        // this is the channel the sign-in code goes to first ("Email" or "Phone").
+        [MaxLength(10)] public string? TwoFactorMethod { get; set; }
+        // A second inbox for sign-in codes and password resets when the main one can't be reached
+        [MaxLength(256)] public string? RecoveryEmail { get; set; }
+        public bool RecoveryEmailConfirmed { get; set; }
+
         // Navigation
         public Member? Member { get; set; }
     }
