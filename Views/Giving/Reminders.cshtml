@@ -1,0 +1,31 @@
+@model List<ChurchMinistry.Models.RecurringGift>
+@{
+    ViewData["Title"] = "Giving Reminders";
+    Layout = "~/Views/Shared/_MemberDashboard_Layout.cshtml";
+}
+<section class="page-header"><h1><i class="fas fa-bell"></i> Giving Reminders</h1></section>
+<div class="container">
+  <div class="table-card" style="margin-bottom:2rem">
+    <p class="meta">We'll remind you when each gift is due, with a link to give. Nothing is charged automatically.
+       You'll get a notification each time a gift is received.</p>
+    @foreach (var r in Model) {
+      <div class="reminder-row">
+        <div>
+          <strong>@r.GivingType · @r.Currency @r.Amount.ToString("N0")</strong>
+          <span class="meta">@ChurchMinistry.Services.RecurringGiftReminderService.IntervalWord(r.Interval) · next reminder @(r.NextDueAt?.ToLocalTime().ToString("dd MMM yyyy") ?? "—")</span>
+        </div>
+        <div class="reminder-actions">
+          <a href="@ChurchMinistry.Services.RecurringGiftReminderService.GiveLink(r)" class="btn btn-outline btn-sm">Give now</a>
+          <form asp-action="StopReminder" asp-route-id="@r.Id" method="post"
+                onsubmit="return confirm('Stop this giving reminder?')">
+            <button type="submit" class="btn btn-sm btn-outline">Stop</button>
+          </form>
+        </div>
+      </div>
+    }
+    @if (!Model.Any()) {
+      <p style="text-align:center;padding:1.5rem 0">You have no giving reminders. Tick "Remind me to give this regularly" when you give to set one up.</p>
+    }
+  </div>
+  <a asp-controller="Giving" asp-action="Give" class="btn btn-primary"><i class="fas fa-hand-holding-heart"></i> Give</a>
+</div>

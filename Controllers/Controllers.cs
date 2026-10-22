@@ -1741,19 +1741,25 @@ namespace ChurchMinistry.Controllers
 
         // ── Giving management ──
         // status: a PaymentStatus name, or "reconcile" for manual gifts still waiting on an admin
-        public async Task<IActionResult> Givings(string? type, string? method, string? status, int page = 1)
+        // from/to: local dates, both days included
+        public async Task<IActionResult> Givings(string? type, string? method, string? status,
+            DateTime? from, DateTime? to, int page = 1)
         {
+            if (from > to) (from, to) = (to, from);
             var pager = new PagerModel(page, "givings");
             var q = _db.Givings.Include(g => g.Member).AsQueryable();
             if (Enum.TryParse<GivingType>(type, out var gt)) q = q.Where(g => g.GivingType == gt);
             if (Enum.TryParse<PaymentMethod>(method, out var pm)) q = q.Where(g => g.PaymentMethod == pm);
             if (status == "reconcile") q = q.Where(UnreconciledGiving);
             else if (Enum.TryParse<PaymentStatus>(status, out var ps)) q = q.Where(g => g.PaymentStatus == ps);
+            if (from != null) q = q.Where(g => g.GivingDate >= from.Value.ToUniversalTime());
+            if (to != null) q = q.Where(g => g.GivingDate < to.Value.AddDays(1).ToUniversalTime());
             ViewBag.Givings = await q.OrderByDescending(g => g.GivingDate).ToPageAsync(pager);
             ViewBag.Total = pager.Total;
             ViewBag.Pager = pager;
             ViewBag.ToReconcile = await _db.Givings.CountAsync(UnreconciledGiving);
             ViewBag.Type = type; ViewBag.Method = method; ViewBag.Status = status;
+            ViewBag.From = from; ViewBag.To = to;
             return View();
         }
 
@@ -1801,8 +1807,7 @@ namespace ChurchMinistry.Controllers
                     {
                         MemberId = giving.MemberId.Value,
                         Title    = "Giving Confirmed ✅",
-                        Message  = $"Your {giving.GivingType} of {amount} was received. Thank you!",
-                        Link     = "/Giving/History"
+                        Message  = $"Your {giving.GivingType} of {amount} was received. Thank you!"
                     });
                     await _db.SaveChangesAsync();
                 }
@@ -1821,8 +1826,7 @@ namespace ChurchMinistry.Controllers
                         Title    = "Giving not received",
                         Message  = $"We couldn't find your {giving.GivingType} of {amount} " +
                                    $"(ref {giving.TransactionId}). Please contact the church office." +
-                                   (giving.ReconciliationNote == null ? "" : $" Note: {giving.ReconciliationNote}"),
-                        Link     = "/Giving/History"
+                                   (giving.ReconciliationNote == null ? "" : $" Note: {giving.ReconciliationNote}")
                     });
                     await _db.SaveChangesAsync();
                 }

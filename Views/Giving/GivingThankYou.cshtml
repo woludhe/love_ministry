@@ -51,12 +51,6 @@
         </div>
 
         <div style="display:flex;gap:.75rem;justify-content:center;flex-wrap:wrap">
-            @if (User.Identity?.IsAuthenticated == true)
-            {
-                <a asp-action="History" class="gv-btn-primary">
-                    <i class="fas fa-history"></i> View Giving History
-                </a>
-            }
             <a asp-controller="Home" asp-action="Index" class="gv-btn-ghost">
                 <i class="fas fa-home"></i> Home
             </a>

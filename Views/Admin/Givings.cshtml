@@ -2,6 +2,7 @@
     ViewData["Title"] = "Givings"; Layout = "~/Views/Shared/_AdminDashboard_Layout.cshtml";
     string? selType = ViewBag.Type, selMethod = ViewBag.Method, selStatus = ViewBag.Status;
     int toReconcile = ViewBag.ToReconcile ?? 0;
+    DateTime? from = ViewBag.From, to = ViewBag.To;
     var returnUrl = Context.Request.Path + Context.Request.QueryString;
 }
 @using ChurchMinistry.Models
@@ -41,7 +42,13 @@
                 <option selected="@(selStatus == s.ToString())">@s</option>
             }
         </select>
+        <input type="date" name="from" class="form-control" value="@from?.ToString("yyyy-MM-dd")" title="From date" aria-label="From date" />
+        <input type="date" name="to" class="form-control" value="@to?.ToString("yyyy-MM-dd")" title="To date" aria-label="To date" />
         <button class="btn btn-primary">Filter</button>
+        @if (from != null || to != null || !string.IsNullOrEmpty(selType + selMethod + selStatus))
+        {
+            <a asp-action="Givings" class="btn btn-outline btn-sm">Clear</a>
+        }
     </form>
     <div class="table-card">
         <table class="data-table">

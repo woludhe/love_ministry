@@ -738,7 +738,7 @@ namespace ChurchMinistry.Services
                         $@"<h2>Giving reminder</h2>
                            <p>Hi {System.Net.WebUtility.HtmlEncode(r.Member.FirstName)}, your {what} is due.</p>
                            <p><a href=""{site}{link}"" style=""display:inline-block;padding:.7rem 1.4rem;background:#6366f1;color:#fff;border-radius:8px;text-decoration:none"">Give now</a></p>
-                           <p style=""color:#6b7280;font-size:.85rem"">You asked us to remind you. You can stop these reminders any time from Giving History.</p>",
+                           <p style=""color:#6b7280;font-size:.85rem"">You asked us to remind you. You can <a href=""{site}/Giving/Reminders"">stop these reminders</a> any time.</p>",
                         r.Member.FullName);
                 }
                 catch (Exception ex)

@@ -177,14 +177,6 @@ namespace ChurchMinistry.ViewModels
         public string MethodCode { get; set; } = "";   // matches PaymentMethodConfig.Code
     }
 
-    public class GivingHistoryViewModel
-    {
-        public List<Giving> Givings { get; set; } = new();
-        public decimal TotalThisYear { get; set; }
-        public decimal TotalThisMonth { get; set; }
-        public Dictionary<string, decimal> ByType { get; set; } = new();
-    }
-
     // ─── Attendance ───
     public class AttendanceCheckInViewModel
     {

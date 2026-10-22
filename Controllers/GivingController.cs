@@ -263,7 +263,7 @@ namespace ChurchMinistry.Controllers
             { TempData["Error"] = $"Reference not found: {tx_ref}"; return RedirectToAction("Give"); }
 
             if (giving.PaymentStatus == PaymentStatus.Successful)
-            { TempData["Info"] = "This payment is already confirmed."; return RedirectToAction("History"); }
+            { TempData["Info"] = "This payment is already confirmed."; return RedirectToAction("GivingThankYou", new { id = giving.Id }); }
 
             if (status is "successful" or "completed")
             {
@@ -291,8 +291,7 @@ namespace ChurchMinistry.Controllers
                             MemberId = giving.MemberId.Value,
                             Title    = "Giving Confirmed ✅",
                             Message  = $"Your {giving.GivingType} of {giving.Currency} " +
-                                       $"{giving.Amount:N0} was received. Thank you!",
-                            Link     = "/Giving/History"
+                                       $"{giving.Amount:N0} was received. Thank you!"
                         });
                         await _db.SaveChangesAsync();
                     }
@@ -309,38 +308,20 @@ namespace ChurchMinistry.Controllers
             return RedirectToAction("Give");
         }
 
-        // ── Giving history ───────────────────────────────────────
-        public async Task<IActionResult> History(int page = 1)
+        // ── Giving history: not shown to members ─────────────────
+        // Members hear about each gift through notifications. Old notification links land here.
+        public IActionResult History() => RedirectToAction("Index", "Notifications");
+
+        // ── Giving reminders (the member's "remind me" requests) ─
+        public async Task<IActionResult> Reminders()
         {
             var member = await GetMemberAsync();
             if (member == null) return NotFound();
 
-            var now     = DateTime.UtcNow;
-            var givings = await _db.Givings
-                .Where(g => g.MemberId == member.Id)
-                .OrderByDescending(g => g.GivingDate)
-                .ToListAsync();
-
-            // Totals cover every gift; the table shows one page
-            var pager = new PagerModel(page, "gifts");
-            ViewBag.Pager = pager;
-            ViewBag.Reminders = await _db.RecurringGifts
+            var reminders = await _db.RecurringGifts
                 .Where(r => r.MemberId == member.Id && r.IsActive)
                 .OrderBy(r => r.NextDueAt).ToListAsync();
-            return View(new GivingHistoryViewModel
-            {
-                Givings        = givings.ToPage(pager),
-                TotalThisYear  = givings.Where(g => g.GivingDate.Year == now.Year
-                                                 && g.PaymentStatus == PaymentStatus.Successful)
-                                        .Sum(g => g.Amount),
-                TotalThisMonth = givings.Where(g => g.GivingDate.Month == now.Month
-                                                 && g.GivingDate.Year == now.Year
-                                                 && g.PaymentStatus == PaymentStatus.Successful)
-                                        .Sum(g => g.Amount),
-                ByType         = givings.Where(g => g.PaymentStatus == PaymentStatus.Successful)
-                                        .GroupBy(g => g.GivingType.ToString())
-                                        .ToDictionary(g => g.Key, g => g.Sum(x => x.Amount))
-            });
+            return View(reminders);
         }
 
         // ── Stop a giving reminder ───────────────────────────────
@@ -357,7 +338,7 @@ namespace ChurchMinistry.Controllers
                 await _db.SaveChangesAsync();
                 TempData["Success"] = "Giving reminder stopped.";
             }
-            return RedirectToAction("History");
+            return RedirectToAction("Reminders");
         }
 
         private Task StartRecurringReminderAsync(Giving giving)
