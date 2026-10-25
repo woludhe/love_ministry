@@ -738,6 +738,7 @@ namespace ChurchMinistry.Controllers
                 .ThenByDescending(s => s.SermonDate)
                 .FirstOrDefaultAsync();
             ViewBag.LiveSermonId = linkedSermon?.Id;
+            ViewBag.SermonIsLive = linkedSermon?.IsLive == true;
             ViewBag.TrackAttendance = linkedSermon?.TrackAttendance == true;
 
             return View(new MeetingRoomViewModel
@@ -747,6 +748,36 @@ namespace ChurchMinistry.Controllers
                 IsHost = isHost,
                 CurrentMemberId = member?.Id
             });
+        }
+
+        // ── Recording: a 10 s piece of the meeting's audio from the host's page ──
+        // A new part starts only while the room and its sermon are live; the last pieces of a
+        // part still arrive after the sermon stops, until it's finalized (Services/RecordingService)
+        [HttpPost, ValidateAntiForgeryToken]
+        [RequestSizeLimit(5 * 1024 * 1024)]
+        public async Task<IActionResult> RecordingChunk(string code, string part, int seq, string format,
+            IFormFile? chunk, [FromServices] IRecordingService recordings)
+        {
+            if (chunk == null || chunk.Length == 0) return BadRequest();
+            var room = await _db.MeetingRooms.FirstOrDefaultAsync(r => r.RoomCode == code);
+            if (room == null) return NotFound();
+
+            var member = await GetMemberAsync();
+            var isHost = (member != null && room.HostMemberId == member.Id)
+                      || room.HostUserId == _userManager.GetUserId(User);
+            if (!isHost && !IsAdminOrPastor()) return Forbid();
+
+            var sermon = await _db.Sermons
+                .Where(s => s.IsOnlineMeeting && s.MeetingRoomCode == code)
+                .OrderByDescending(s => s.IsLive).ThenByDescending(s => s.Id)
+                .Select(s => new { s.Id, s.IsLive }).FirstOrDefaultAsync();
+            if (sermon == null) return Conflict();
+            var recording = room.Status == RoomStatus.Live && sermon.IsLive;
+            if (!recording && !recordings.HasPart(sermon.Id, part, format)) return Conflict();
+
+            await using var data = chunk.OpenReadStream();
+            return await recordings.SaveChunkAsync(sermon.Id, part, seq, format, data)
+                ? Ok() : BadRequest();
         }
 
         // ── Participants API ────────────────────────────────────

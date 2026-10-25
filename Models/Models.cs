@@ -230,6 +230,7 @@ namespace ChurchMinistry.Models
         public string? MeetingRoomCode { get; set; }   // links to MeetingRoom.RoomCode
         public bool IsOnlineMeeting { get; set; } = false;
         public bool TrackAttendance { get; set; } = false;
+        public string? RecordingUrl { get; set; }   // audio recorded from its meeting room while live
 
         // Delivery mode derived from which delivery field is set: video | audio | live | meeting
         [NotMapped]

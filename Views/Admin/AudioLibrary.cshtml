@@ -65,7 +65,7 @@
     else
     {
         <table class="data-table">
-            <thead><tr><th>File</th><th>Type</th><th>Size</th><th>Uploaded</th><th>Used by</th><th></th></tr></thead>
+            <thead><tr><th>File</th><th>Type</th><th>Size</th><th>Uploaded</th><th></th></tr></thead>
             <tbody>
                 @foreach (var f in files)
                 {
@@ -77,16 +77,6 @@
                         <td><span class="tag">@f.TypeLabel</span></td>
                         <td style="white-space:nowrap">@Size(f.Size)</td>
                         <td style="white-space:nowrap">@f.Modified.ToString("dd MMM yyyy")</td>
-                        <td>
-                            @if (f.UsedBy.Any())
-                            {
-                                @string.Join(", ", f.UsedBy)
-                            }
-                            else
-                            {
-                                <span style="color:var(--text-s)">—</span>
-                            }
-                        </td>
                         <td style="white-space:nowrap">
                             <button type="button" class="btn btn-outline btn-xs" onclick="copyAudioLink(this, '@f.Url')">
                                 <i class="fas fa-link"></i> Copy link
@@ -97,7 +87,7 @@
                                 <input type="hidden" name="returnType" value="@selected" />
                                 <button type="submit" class="btn btn-outline btn-xs al-delete"
                                         disabled="@f.UsedBy.Any()"
-                                        title="@(f.UsedBy.Any() ? "In use" : "Delete")"
+                                        title="@(f.UsedBy.Any() ? $"In use by {string.Join(", ", f.UsedBy)}" : "Delete")"
                                         data-confirm="Delete @f.Name? This can't be undone.">
                                     <i class="fas fa-trash"></i>
                                 </button>

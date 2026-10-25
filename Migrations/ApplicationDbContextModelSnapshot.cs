@@ -1510,6 +1510,9 @@ namespace ChurchMinistry.Migrations
                     b.Property<string>("MeetingRoomCode")
                         .HasColumnType("longtext");
 
+                    b.Property<string>("RecordingUrl")
+                        .HasColumnType("longtext");
+
                     b.Property<string>("ScriptureReference")
                         .HasColumnType("longtext");
 

@@ -40,3 +40,9 @@ appsettings.*.json
 
 # Bible translations (copyrighted, licensed with EasyWorship) - copy to the server by hand
 App_Data/bibles/
+
+# Meeting recordings waiting to be finalized
+App_Data/recordings/
+
+# ffmpeg for meeting recordings (Recording:FfmpegPath) - copy to the server by hand
+tools/

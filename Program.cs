@@ -57,6 +57,7 @@ builder.Services.AddHostedService<RecurringGiftReminderService>();
 builder.Services.AddScoped<ILiveKitService, LiveKitService>();
 builder.Services.AddScoped<IMeetingAccessService, MeetingAccessService>();
 builder.Services.AddScoped<IMeetingSeriesService, MeetingSeriesService>();
+builder.Services.AddScoped<IRecordingService, RecordingService>();
 builder.Services.AddMemoryCache();
 builder.Services.AddScoped<IBibleService, BibleService>();
 builder.Services.AddHttpClient();

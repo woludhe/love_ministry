@@ -171,6 +171,29 @@
                         Guests see the video stream only.
                     </p>
                 </div>
+
+                @* {{-- Audio recorded from the room while the sermon was live --}} *@
+                <div class="form-group">
+                    <label><i class="fas fa-microphone" style="color:var(--purple)"></i> Recording</label>
+                    @if (!string.IsNullOrEmpty(Model.RecordingUrl))
+                    {
+                        <audio controls preload="none" src="@Model.RecordingUrl" style="width:100%"></audio>
+                        <small class="meta">
+                            <a href="@Model.RecordingUrl" download>Download</a> ·
+                            <label style="display:inline;font-weight:normal">
+                                <input type="checkbox" name="removeRecording" value="true" /> Remove the recording from this sermon
+                            </label>
+                            (the file stays in the Audio Library)
+                        </small>
+                    }
+                    else
+                    {
+                        <small class="meta">
+                            The meeting's audio is recorded while this sermon is live, and members can
+                            listen to it here after the meeting ends.
+                        </small>
+                    }
+                </div>
             </div>
 
             @* {{-- Standard live stream URL --}} *@

@@ -91,6 +91,21 @@
                                class="audio-player-bar"></audio>
                     </div>
                 }
+                else if (!Model.IsLive && !string.IsNullOrEmpty(Model.RecordingUrl))
+                {
+                    @* {{-- Audio recorded from the meeting room while it was live --}} *@
+                    <div class="audio-only-wrap">
+                        @if (!string.IsNullOrEmpty(Model.ThumbnailUrl))
+                        {
+                            <img src="@Model.ThumbnailUrl" alt="@Model.Title" class="audio-thumb" />
+                        }
+                        <audio id="htmlPlayer"
+                               controls
+                               src="@Model.RecordingUrl"
+                               data-video-type="html5"
+                               class="audio-player-bar"></audio>
+                    </div>
+                }
 
                 @* {{-- ── Recommendations panel (hidden until 5 min before end) ── --}} *@
                 <div class="reco-panel" id="recoPanel" aria-hidden="true">
@@ -198,6 +213,14 @@
                     <div class="audio-download-row">
                         <a href="@Model.AudioUrl" class="btn btn-outline btn-sm">
                             <i class="fas fa-headphones"></i> Listen / Download Audio
+                        </a>
+                    </div>
+                }
+                else if (!Model.IsLive && !string.IsNullOrEmpty(Model.RecordingUrl))
+                {
+                    <div class="audio-download-row">
+                        <a href="@Model.RecordingUrl" class="btn btn-outline btn-sm" download>
+                            <i class="fas fa-download"></i> Download Audio
                         </a>
                     </div>
                 }

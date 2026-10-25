@@ -55,6 +55,17 @@
     @@keyframes livePulse { 0%,100%{box-shadow:0 0 0 0 rgba(239,68,68,.6)} 70%{box-shadow:0 0 0 6px rgba(239,68,68,0)} }
     .live-text    { font-size:.7rem; font-weight:800; letter-spacing:.1em; color:var(--red); }
 
+    /* ── Recording indicator (host) ── */
+    .rec-indicator { display:flex; align-items:center; gap:.4rem; border:1px solid rgba(239,68,68,.3);
+                     border-radius:100px; padding:.15rem .3rem .15rem .65rem; flex-shrink:0;
+                     font-size:.72rem; font-weight:700; color:var(--red); font-variant-numeric:tabular-nums; }
+    .rec-indicator .rec-dot { width:8px; height:8px; border-radius:50%; background:var(--red); }
+    .rec-indicator.paused { color:var(--text-s); border-color:var(--border); }
+    .rec-indicator.paused .rec-dot { background:var(--text-s); }
+    .rec-indicator button { background:none; border:none; color:inherit; cursor:pointer;
+                            padding:.15rem .35rem; border-radius:100px; font-size:.7rem; }
+    .rec-indicator button:hover { background:rgba(239,68,68,.15); }
+
     /* ── Count chips ── */
     .count-chips  { display:flex; align-items:center; gap:.4rem; flex-shrink:0; }
     .count-chip   { display:inline-flex; align-items:center; gap:.3rem; font-size:.74rem;
@@ -330,6 +341,13 @@
         <span class="live-text">LIVE</span>
       </div>
     }
+    @if (isHost)
+    {
+      <div class="rec-indicator" id="recBadge" style="display:none" title="The meeting's audio is being recorded for the sermon">
+        <span class="rec-dot"></span><span id="recTime">REC 00:00</span>
+        <button type="button" id="recPauseBtn" onclick="toggleRecPause()" title="Pause recording"><i class="fas fa-pause"></i></button>
+      </div>
+    }
   </div>
   <div style="display:flex;align-items:center;gap:.75rem;flex-wrap:wrap">
     <div class="count-chips">
@@ -437,8 +455,9 @@
      data-member-id="@(Model.CurrentMemberId?.ToString() ?? "")"
      data-waiting-room="@Model.Room.WaitingRoomEnabled.ToString().ToLower()"
      data-sermon-id="@(ViewBag.LiveSermonId as int? ?? 0)"
+     data-sermon-live="@((ViewBag.SermonIsLive as bool? == true).ToString().ToLower())"
      data-track-attendance="@((ViewBag.TrackAttendance as bool? == true).ToString().ToLower())"
-     style="display:none"></div>
+     style="display:none">@Html.AntiForgeryToken()</div>
 
 <script src="~/js/wake-lock.js" asp-append-version="true"></script>
 <script src="~/js/live-music.js" asp-append-version="true"></script>
@@ -599,6 +618,7 @@ async function connectMedia(){
     for(const track of [micTrack,camTrack]) if(track) await room.localParticipant.publishTrack(track);
     room.remoteParticipants.forEach(p=>{ensureTile(p);showRemoteVideo(p.identity);});
     if(!room.canPlaybackAudio) showSoundUnlock();
+    await maybeRecord();
   }catch(e){
     console.error('Media connection failed',e);
     toast('Could not connect audio/video — refresh to try again','warn');
@@ -614,11 +634,11 @@ room
   .on(LK.RoomEvent.ParticipantConnected,p=>ensureTile(p))
   .on(LK.RoomEvent.ParticipantDisconnected,p=>{document.getElementById(`tile-${p.identity}`)?.remove();reflow();})
   .on(LK.RoomEvent.TrackSubscribed,(track,pub,p)=>{
-    if(track.kind==='audio') audioBox.appendChild(track.attach());
+    if(track.kind==='audio'){audioBox.appendChild(track.attach());recAdd(track.sid,track.mediaStreamTrack);}
     else showRemoteVideo(p.identity);
   })
   .on(LK.RoomEvent.TrackUnsubscribed,(track,pub,p)=>{
-    if(track.kind==='audio') track.detach().forEach(el=>el.remove());
+    if(track.kind==='audio'){track.detach().forEach(el=>el.remove());recRemove(track.sid);}
     else showRemoteVideo(p.identity);
   })
   .on(LK.RoomEvent.TrackMuted,(pub,p)=>{
@@ -687,6 +707,135 @@ function removePeer(cid){
 
 conn.on('ViewerCountUpdated', count => updateViewerCount(count));
 
+// ── Recording ─────────────────────────────────────────────
+// While the sermon is live, one host's page records the meeting's audio: everyone's
+// microphone mixed together, sent to the server in 10 s pieces so little is lost if the
+// page closes. When the meeting ends (or the sermon stops being live) the server turns
+// the pieces into the sermon's recording. Background music plays on each device
+// separately, so it isn't in the recording.
+let sermonLive = data.sermonLive === 'true';
+const ANTI_FORGERY = document.querySelector('#meetData input[name="__RequestVerificationToken"]')?.value ?? '';
+const rec = { ctx:null, dest:null, sources:new Map(), recorder:null, part:null, seq:0,
+              queue:[], sending:false, seconds:0, timer:null };
+
+function recFormat(){
+  if(!window.MediaRecorder) return null;
+  if(MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) return {mime:'audio/webm;codecs=opus',ext:'webm'};
+  if(MediaRecorder.isTypeSupported('audio/mp4')) return {mime:'audio/mp4',ext:'m4a'};
+  return null;
+}
+// Adds a microphone (ours, or a participant's by track sid) to the mix
+function recAdd(key,mediaStreamTrack){
+  if(!rec.ctx||!mediaStreamTrack||rec.sources.has(key)) return;
+  const src=rec.ctx.createMediaStreamSource(new MediaStream([mediaStreamTrack]));
+  src.connect(rec.dest);
+  rec.sources.set(key,src);
+}
+function recRemove(key){rec.sources.get(key)?.disconnect();rec.sources.delete(key);}
+
+// Starts recording when this host may: the sermon is live and no other host's page records
+async function maybeRecord(){
+  if(!IS_HOST||!SERMON_ID||!sermonLive) return;
+  const claimed=await conn.invoke('ClaimRecorder',ROOM_CODE).catch(()=>false);
+  if(!claimed){if(rec.recorder) await stopRecording();return;}   // another host's page records
+  if(rec.recorder) return;                                         // still recording after a reconnect
+  const fmt=recFormat();
+  if(!fmt){toast('This browser can\'t record the meeting audio — use Chrome or Edge','warn');return;}
+
+  rec.ctx=new AudioContext();
+  if(rec.ctx.state==='suspended') await rec.ctx.resume().catch(()=>{});
+  if(rec.ctx.state==='suspended') toast('Click anywhere on the page so the recording can hear the meeting','warn');
+  rec.dest=rec.ctx.createMediaStreamDestination();
+  recAdd('local',micTrack?.mediaStreamTrack);
+  room.remoteParticipants.forEach(p=>p.audioTrackPublications.forEach(pub=>{
+    if(pub.track) recAdd(pub.track.sid,pub.track.mediaStreamTrack);
+  }));
+
+  // A new part each time recording starts; the server joins the parts in order
+  const part=crypto.randomUUID();
+  let seq=0;
+  const recorder=new MediaRecorder(rec.dest.stream,{mimeType:fmt.mime,audioBitsPerSecond:64000});
+  recorder.ondataavailable=e=>{
+    if(e.data.size===0) return;
+    rec.queue.push({part,seq:seq++,ext:fmt.ext,blob:e.data});
+    recSend();
+  };
+  recorder.start(10000);
+  rec.recorder=recorder;
+  rec.seconds=0;
+  rec.timer=setInterval(()=>{if(rec.recorder?.state==='recording'){rec.seconds++;showRecUi();}},1000);
+  showRecUi();
+  toast('Recording the meeting audio for the sermon','success');
+}
+
+// Stops recording; resolves once what was recorded has been sent (at most ~10 s)
+async function stopRecording(){
+  const recorder=rec.recorder;
+  if(!recorder) return;
+  rec.recorder=null;
+  if(recorder.state!=='inactive')
+    await new Promise(done=>{recorder.addEventListener('stop',done,{once:true});recorder.stop();});
+  rec.sources.forEach(s=>s.disconnect()); rec.sources.clear();
+  rec.ctx?.close().catch(()=>{}); rec.ctx=null; rec.dest=null;
+  clearInterval(rec.timer);
+  showRecUi();
+  const deadline=Date.now()+10000;
+  while((rec.queue.length||rec.sending)&&Date.now()<deadline) await new Promise(r=>setTimeout(r,250));
+}
+
+// Sends the pieces in order; a network or server error is retried, a refusal is dropped
+async function recSend(){
+  if(rec.sending) return;
+  rec.sending=true;
+  let wait=1000;
+  while(rec.queue.length){
+    const c=rec.queue[0];
+    const form=new FormData();
+    form.append('code',ROOM_CODE); form.append('part',c.part); form.append('seq',c.seq);
+    form.append('format',c.ext); form.append('chunk',c.blob,`${c.seq}.${c.ext}`);
+    form.append('__RequestVerificationToken',ANTI_FORGERY);
+    let res=null;
+    try{res=await fetch('/Meeting/RecordingChunk',{method:'POST',body:form});}catch{}
+    if(res&&(res.ok||(res.status>=400&&res.status<500&&res.status!==429))){rec.queue.shift();wait=1000;continue;}
+    await new Promise(r=>setTimeout(r,wait));
+    wait=Math.min(wait*2,30000);
+  }
+  rec.sending=false;
+}
+
+function toggleRecPause(){
+  const r=rec.recorder;
+  if(!r) return;
+  if(r.state==='recording') r.pause(); else if(r.state==='paused') r.resume();
+  showRecUi();
+}
+function showRecUi(){
+  const badge=document.getElementById('recBadge');
+  if(!badge) return;
+  const r=rec.recorder;
+  badge.style.display=r?'flex':'none';
+  if(!r) return;
+  const paused=r.state==='paused';
+  badge.classList.toggle('paused',paused);
+  const m=Math.floor(rec.seconds/60);
+  document.getElementById('recTime').textContent=`${paused?'PAUSED':'REC'} ${m>=60?Math.floor(m/60)+':'+pad(m%60):pad(m)}:${pad(rec.seconds%60)}`;
+  const btn=document.getElementById('recPauseBtn');
+  btn.title=paused?'Resume recording':'Pause recording';
+  btn.innerHTML=`<i class="fas fa-${paused?'play':'pause'}"></i>`;
+}
+// The browser may hold back sound until the page is clicked
+document.addEventListener('click',()=>{if(rec.ctx?.state==='suspended')rec.ctx.resume().catch(()=>{});});
+
+// The admin started or stopped the sermon's live stream
+conn.on('SermonLiveChanged',async(sermonId,live)=>{
+  if(sermonId!==SERMON_ID) return;
+  sermonLive=live;
+  if(live) await maybeRecord();
+  else if(rec.recorder){await stopRecording();toast('Recording stopped — it will be on the sermon page shortly','success');}
+});
+// The recording host left: one of the other hosts takes over
+conn.on('RecorderFree',()=>maybeRecord());
+
 conn.on('ParticipantMuted',(cid,m)=>{
   if(peerInfo[cid]) peerInfo[cid].isMuted=m;
   if(m) addBadge(cid,'mute','🔇'); else document.getElementById(`badge-mute-${cid}`)?.remove();
@@ -708,7 +857,7 @@ conn.on('SystemMessage',msg=>appendSystemMessage(msg));
 // A host cleared the sermon's chat from the Live page
 conn.on('ChatCleared',()=>{document.getElementById('chatMessages').innerHTML='';appendSystemMessage('Chat was cleared by the host.');});
 conn.on('WaitingRoomRequest',({connectionId,displayName,participantId})=>{addWaitingItem(connectionId,displayName,participantId);toast(`✋ ${displayName} is waiting`);});
-conn.on('MeetingEnded',()=>{clearInterval(timerInterval);room.disconnect();document.getElementById('endedOverlay').style.display='flex';});
+conn.on('MeetingEnded',()=>{clearInterval(timerInterval);stopRecording();room.disconnect();document.getElementById('endedOverlay').style.display='flex';});
 conn.on('Removed',()=>{clearInterval(timerInterval);room.disconnect();document.getElementById('endedOverlay').style.display='flex';});
 // Private meeting this user isn't invited to (e.g. an invite removed after the page loaded)
 conn.on('AccessDenied',msg=>{clearInterval(timerInterval);room.disconnect();conn.stop();window.location.href='/Meeting';});
@@ -927,7 +1076,12 @@ function screenShareStopped(){
 }
 function toggleHand(){isHandRaised=!isHandRaised;document.getElementById('btnHand').classList.toggle('ctrl-active',isHandRaised);conn.invoke('RaiseHand',ROOM_CODE,isHandRaised);}
 function muteAll(){conn.invoke('MuteAll',ROOM_CODE);}
-function confirmEnd(){if(confirm('End the meeting for everyone?'))conn.invoke('EndMeeting',ROOM_CODE);}
+async function confirmEnd(){
+  if(!confirm('End the meeting for everyone?')) return;
+  // Send the last of the recording before the meeting closes
+  if(rec.recorder){toast('Saving the recording…');await stopRecording();}
+  conn.invoke('EndMeeting',ROOM_CODE);
+}
 function leaveMeeting(){room.disconnect();conn.invoke('LeaveRoom',ROOM_CODE).then(()=>window.location.href='/Meeting');}
 
 // ── Sidebar ───────────────────────────────────────────────

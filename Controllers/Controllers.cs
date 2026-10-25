@@ -5,6 +5,7 @@ using ChurchMinistry.ViewModels;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
 using System.Text;
 
@@ -2400,7 +2401,8 @@ namespace ChurchMinistry.Controllers
             Sermon updated,
             IFormFile? thumbnail,
             string? deliveryMode,
-            [FromServices] IWebHostEnvironment env)
+            [FromServices] IWebHostEnvironment env,
+            bool removeRecording = false)
         {
             var sermon = await _db.Sermons.FindAsync(updated.Id);
             if (sermon == null) return NotFound();
@@ -2428,6 +2430,7 @@ namespace ChurchMinistry.Controllers
             sermon.MeetingRoomCode = updated.MeetingRoomCode;
             sermon.LiveStreamUrl = updated.LiveStreamUrl;
             ApplyDeliveryMode(sermon, deliveryMode);
+            if (removeRecording) sermon.RecordingUrl = null;
 
             await _db.SaveChangesAsync();
             TempData["Success"] = "Sermon updated!";
@@ -2555,6 +2558,10 @@ namespace ChurchMinistry.Controllers
                          .Select(s => new { s.AudioUrl, s.Title }).ToListAsync())
                 Add(s.AudioUrl!, s.Title);
 
+            foreach (var s in await _db.Sermons.Where(s => s.RecordingUrl != null && s.RecordingUrl.StartsWith("/uploads/audio/"))
+                         .Select(s => new { s.RecordingUrl, s.Title }).ToListAsync())
+                Add(s.RecordingUrl!, $"recording of {s.Title}");
+
             foreach (var ls in await _db.LiveSessions.Where(l => l.MusicPlaylistJson != null)
                          .Select(l => new { l.MusicPlaylistJson, l.Sermon.Title }).ToListAsync())
                 foreach (var track in LiveSession.ReadPlaylist(ls.MusicPlaylistJson))
@@ -2582,7 +2589,9 @@ namespace ChurchMinistry.Controllers
         }
 
         [HttpPost]
-        public async Task<IActionResult> ToggleLive(int id)
+        public async Task<IActionResult> ToggleLive(int id,
+            [FromServices] IHubContext<ChurchMinistry.Hubs.MeetingHub> meetingHub,
+            [FromServices] IRecordingService recordings)
         {
             var sermon = await _db.Sermons.FindAsync(id);
             if (sermon == null) return NotFound();
@@ -2609,6 +2618,17 @@ namespace ChurchMinistry.Controllers
             // End the attendance of everyone still watching a stream that just stopped
             await _attendance.CloseSermonAttendanceAsync(
                 stopped.Where(s => !s.IsLive).Select(s => s.Id));
+
+            // A meeting room records its audio while its sermon is live: tell the host's page
+            // to start or stop, and turn what was recorded into the sermon's recording
+            foreach (var s in stopped.Where(s => !s.IsLive && s.IsOnlineMeeting && s.MeetingRoomCode != null))
+            {
+                await meetingHub.Clients.Group(s.MeetingRoomCode!).SendAsync("SermonLiveChanged", s.Id, false);
+                recordings.QueueFinalize(s.Id);
+            }
+            if (sermon.IsLive && sermon.IsOnlineMeeting && sermon.MeetingRoomCode != null)
+                await meetingHub.Clients.Group(sermon.MeetingRoomCode).SendAsync("SermonLiveChanged", sermon.Id, true);
+
             return Json(new { isLive = sermon.IsLive });
         }
 

@@ -975,7 +975,7 @@ namespace ChurchMinistry.Services
     public static class AudioStore
     {
         public const long MaxBytes = 200L * 1024 * 1024;
-        public static readonly string[] Extensions = { ".mp3", ".m4a", ".aac", ".ogg", ".wav" };
+        public static readonly string[] Extensions = { ".mp3", ".m4a", ".aac", ".ogg", ".wav", ".webm" };
         public static readonly string[] BuiltInTypes = { "sermons", "music" };
 
         public static string Folder(IWebHostEnvironment env) => Path.Combine(env.WebRootPath, "uploads", "audio");
@@ -1045,6 +1045,205 @@ namespace ChurchMinistry.Services
                 _ => null
             };
             return path != null && File.Exists(path);
+        }
+    }
+
+    // ─── Meeting recordings ───
+    // While a sermon is live, the host's Room page records the meeting's audio and sends a
+    // piece every 10 s. The pieces wait in App_Data/recordings/{sermonId}/{part}.{ext}/ until the
+    // meeting ends or the sermon stops being live; then they become one file in the audio
+    // library's Sermons folder and the sermon's RecordingUrl. A part is one recorder run
+    // (the host refreshing the page starts a new one).
+    public interface IRecordingService
+    {
+        // False when the part, piece number or format isn't valid
+        Task<bool> SaveChunkAsync(int sermonId, string partId, int seq, string ext, Stream data);
+        // True while this part has pieces waiting (it hasn't been finalized yet)
+        bool HasPart(int sermonId, string partId, string ext);
+        // Finalizes after a short wait, so the host's last piece can still arrive
+        void QueueFinalize(int sermonId);
+        Task FinalizeAsync(int sermonId);
+    }
+
+    public class RecordingService : IRecordingService
+    {
+        public static readonly string[] Formats = { "webm", "m4a" };
+        private const int MaxChunks = 100_000;   // 10 s each: far longer than any service
+        private static readonly TimeSpan FinalizeDelay = TimeSpan.FromSeconds(20);
+        private static readonly SemaphoreSlim FinalizeLock = new(1, 1);
+
+        private readonly ApplicationDbContext _db;
+        private readonly IWebHostEnvironment _env;
+        private readonly IConfiguration _config;
+        private readonly IServiceScopeFactory _scopes;
+        private readonly ILogger<RecordingService> _logger;
+
+        public RecordingService(ApplicationDbContext db, IWebHostEnvironment env, IConfiguration config,
+            IServiceScopeFactory scopes, ILogger<RecordingService> logger)
+        {
+            _db = db; _env = env; _config = config; _scopes = scopes; _logger = logger;
+        }
+
+        private string SermonFolder(int sermonId) =>
+            Path.Combine(_env.ContentRootPath, "App_Data", "recordings", sermonId.ToString());
+
+        private string? PartFolder(int sermonId, string partId, string ext) =>
+            Guid.TryParseExact(partId, "D", out _) && Formats.Contains(ext)
+                ? Path.Combine(SermonFolder(sermonId), $"{partId}.{ext}") : null;
+
+        public bool HasPart(int sermonId, string partId, string ext) =>
+            PartFolder(sermonId, partId, ext) is { } folder && Directory.Exists(folder);
+
+        public async Task<bool> SaveChunkAsync(int sermonId, string partId, int seq, string ext, Stream data)
+        {
+            var folder = PartFolder(sermonId, partId, ext);
+            if (folder == null || seq < 0 || seq >= MaxChunks) return false;
+            Directory.CreateDirectory(folder);
+            // A retried piece simply replaces itself
+            await using var file = new FileStream(Path.Combine(folder, $"{seq:D6}.chunk"), FileMode.Create);
+            await data.CopyToAsync(file);
+            return true;
+        }
+
+        public void QueueFinalize(int sermonId)
+        {
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    await Task.Delay(FinalizeDelay);
+                    using var scope = _scopes.CreateScope();
+                    await scope.ServiceProvider.GetRequiredService<IRecordingService>().FinalizeAsync(sermonId);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Finalizing the recording of sermon {SermonId} failed", sermonId);
+                }
+            });
+        }
+
+        public async Task FinalizeAsync(int sermonId)
+        {
+            // The meeting ending and the sermon stopping can both ask at once
+            await FinalizeLock.WaitAsync();
+            try
+            {
+                var root = SermonFolder(sermonId);
+                if (!Directory.Exists(root)) return;
+                var sermon = await _db.Sermons.FindAsync(sermonId);
+                if (sermon == null) return;
+
+                // Each part's pieces joined in order make a playable file
+                var parts = new List<string>();
+                foreach (var dir in new DirectoryInfo(root).GetDirectories().OrderBy(d => d.CreationTimeUtc))
+                {
+                    var chunks = dir.GetFiles("*.chunk").OrderBy(f => f.Name).ToList();
+                    if (chunks.Count == 0) continue;
+                    var joined = Path.Combine(root, $"{parts.Count}{dir.Extension}");
+                    await using (var output = new FileStream(joined, FileMode.Create))
+                        foreach (var chunk in chunks)
+                        {
+                            await using var input = chunk.OpenRead();
+                            await input.CopyToAsync(output);
+                        }
+                    parts.Add(joined);
+                }
+                if (parts.Count == 0) { Directory.Delete(root, true); return; }
+
+                // The sermon went live more than once: the earlier recording comes first
+                var previous = AudioStore.IsLibraryUrl(_env, sermon.RecordingUrl)
+                    ? Path.Combine(_env.WebRootPath, sermon.RecordingUrl!.TrimStart('/').Replace('/', Path.DirectorySeparatorChar))
+                    : null;
+                var inputs = (previous != null ? new[] { previous } : Array.Empty<string>()).Concat(parts).ToList();
+
+                var folder = Path.Combine(AudioStore.Folder(_env), "sermons");
+                Directory.CreateDirectory(folder);
+                var stem = AudioStore.Slug(sermon.Title, 60);
+                if (stem.Length == 0) stem = "sermon";
+                stem += $"-{sermon.SermonDate:yyyy-MM-dd}";
+
+                string name;
+                var mp3 = Path.Combine(root, "recording.mp3");
+                if (await ConvertAsync(inputs, mp3))
+                {
+                    name = FreeName(folder, stem, ".mp3");
+                    File.Move(mp3, Path.Combine(folder, name));
+                    if (previous != null) File.Delete(previous);
+                }
+                else
+                {
+                    // Without ffmpeg the pieces can't be merged; keep the longest part as recorded.
+                    // It plays, but browsers may not show its length or seek well.
+                    var longest = parts.OrderByDescending(p => new FileInfo(p).Length).First();
+                    var ext = Path.GetExtension(longest);
+                    name = FreeName(folder, stem, ext);
+                    File.Move(longest, Path.Combine(folder, name));
+                    _logger.LogWarning("Recording of sermon {SermonId} saved without ffmpeg as {Name} ({Parts} part(s) recorded)",
+                        sermonId, name, parts.Count);
+                }
+
+                sermon.RecordingUrl = AudioStore.Url("sermons", name);
+                await _db.SaveChangesAsync();
+                Directory.Delete(root, true);
+                _logger.LogInformation("Recording of sermon {SermonId} saved as {Url}", sermonId, sermon.RecordingUrl);
+            }
+            finally
+            {
+                FinalizeLock.Release();
+            }
+        }
+
+        // "name.mp3", then "name-2.mp3", "name-3.mp3"… if it's taken
+        private static string FreeName(string folder, string stem, string ext)
+        {
+            var name = stem + ext;
+            for (var n = 2; File.Exists(Path.Combine(folder, name)); n++) name = $"{stem}-{n}{ext}";
+            return name;
+        }
+
+        // One mono 64 kbps MP3 with a proper length, so the player can seek. False when ffmpeg
+        // isn't there or fails.
+        private async Task<bool> ConvertAsync(List<string> inputs, string output)
+        {
+            var ffmpeg = _config["Recording:FfmpegPath"];
+            if (string.IsNullOrWhiteSpace(ffmpeg)) return false;
+            // "tools/ffmpeg.exe" is inside the app's folder; a bare "ffmpeg" is looked up on PATH
+            if (!Path.IsPathRooted(ffmpeg) && File.Exists(Path.Combine(_env.ContentRootPath, ffmpeg)))
+                ffmpeg = Path.Combine(_env.ContentRootPath, ffmpeg);
+
+            var psi = new System.Diagnostics.ProcessStartInfo(ffmpeg)
+            {
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true
+            };
+            foreach (var a in new[] { "-hide_banner", "-loglevel", "error", "-y" }) psi.ArgumentList.Add(a);
+            foreach (var input in inputs) { psi.ArgumentList.Add("-i"); psi.ArgumentList.Add(input); }
+            var filter = string.Concat(inputs.Select((_, i) => $"[{i}:a]aresample=48000,aformat=channel_layouts=mono[a{i}];"))
+                       + string.Concat(inputs.Select((_, i) => $"[a{i}]")) + $"concat=n={inputs.Count}:v=0:a=1[out]";
+            foreach (var a in new[] { "-filter_complex", filter, "-map", "[out]", "-c:a", "libmp3lame", "-b:a", "64k", output })
+                psi.ArgumentList.Add(a);
+
+            try
+            {
+                using var process = System.Diagnostics.Process.Start(psi)!;
+                var errors = process.StandardError.ReadToEndAsync();
+                using var timeout = new CancellationTokenSource(TimeSpan.FromMinutes(30));
+                try { await process.WaitForExitAsync(timeout.Token); }
+                catch (OperationCanceledException)
+                {
+                    process.Kill(true);
+                    _logger.LogWarning("ffmpeg took too long converting a recording");
+                    return false;
+                }
+                if (process.ExitCode == 0 && File.Exists(output)) return true;
+                _logger.LogWarning("ffmpeg could not convert the recording: {Errors}", await errors);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "ffmpeg ({Path}) could not be run for a recording", ffmpeg);
+            }
+            return false;
         }
     }
 

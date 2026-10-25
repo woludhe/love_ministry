@@ -20,13 +20,14 @@ namespace ChurchMinistry.Hubs
         private readonly IMeetingSeriesService _series;
         private readonly IActivityService _activity;
         private readonly IHubContext<LiveSessionHub> _liveHub;
+        private readonly IRecordingService _recordings;
 
         public MeetingHub(ApplicationDbContext db, UserManager<ApplicationUser> um, ILiveKitService liveKit,
             IAttendanceService attendance, IMeetingAccessService access, IMeetingSeriesService series,
-            IActivityService activity, IHubContext<LiveSessionHub> liveHub)
+            IActivityService activity, IHubContext<LiveSessionHub> liveHub, IRecordingService recordings)
         {
             _db = db; _userManager = um; _liveKit = liveKit; _attendance = attendance; _access = access;
-            _series = series; _activity = activity; _liveHub = liveHub;
+            _series = series; _activity = activity; _liveHub = liveHub; _recordings = recordings;
         }
 
         // ── Join meeting room ──────────────────────────────────
@@ -459,9 +460,13 @@ namespace ChurchMinistry.Hubs
                     .Select(s => s.Id).ToListAsync();
                 await _attendance.CloseSermonAttendanceAsync(sermonIds);
 
+                // The audio recorded while the sermon was live becomes its recording
+                foreach (var id in sermonIds) _recordings.QueueFinalize(id);
+
                 // Recurring: next week's meeting (its own room code) is created now
                 await _series.CreateNextAsync(room);
             }
+            _recorders.TryRemove(roomCode, out _);
             _muteOnEntry.TryRemove(roomCode, out _);
             _spotlight.TryRemove(roomCode, out _);
             await Clients.Group(roomCode).SendAsync("MeetingEnded");
@@ -523,12 +528,39 @@ namespace ChurchMinistry.Hubs
             foreach (var roomCode in _roomViewers.Keys)
                 if (RemoveViewer(roomCode, Context.ConnectionId)) await BroadcastViewerCount(roomCode);
 
+            // A recording host whose participant row was already closed
+            foreach (var (roomCode, holder) in _recorders)
+                if (holder == Context.ConnectionId) await ReleaseRecorderAsync(roomCode);
+
             await base.OnDisconnectedAsync(exception);
+        }
+
+        // ── Recording ─────────────────────────────────────────
+        // One host's page records the meeting's audio while its sermon is live (several
+        // hosts may be in the room: Admins and Pastors count as hosts too).
+        // Room code → the recording connection.
+        private static readonly ConcurrentDictionary<string, string> _recorders = new();
+
+        // True when this connection may record: nobody else is recording the room
+        [Authorize]
+        public async Task<bool> ClaimRecorder(string roomCode)
+        {
+            if (!await IsRoomHostAsync(roomCode)) return false;
+            var holder = _recorders.GetOrAdd(roomCode, Context.ConnectionId);
+            return holder == Context.ConnectionId;
+        }
+
+        // The recording host left: another host's page can take over
+        private async Task ReleaseRecorderAsync(string roomCode)
+        {
+            if (_recorders.TryRemove(new KeyValuePair<string, string>(roomCode, Context.ConnectionId)))
+                await Clients.OthersInGroup(roomCode).SendAsync("RecorderFree");
         }
 
         [Authorize]
         private async Task HandleDisconnect(string roomCode)
         {
+            await ReleaseRecorderAsync(roomCode);
             var p = await _db.MeetingParticipants.AsNoTracking()
                 .FirstOrDefaultAsync(x => x.ConnectionId == Context.ConnectionId && x.LeftAt == null);
             // Only if the row still belongs to this connection: the same person may have just
