@@ -129,6 +129,18 @@
                  background:rgba(0,0,0,.6); backdrop-filter:blur(6px); color:#fff;
                  font-size:.75rem; font-weight:600; pointer-events:none; }
     #musicChip i { color:#a5b4fc; flex-shrink:0; }
+    /* Audio only mode: covers the video grid; spotlight/music labels and verses stay on top */
+    #audioOnlyStage { position:absolute; top:0; left:0; right:0; bottom:var(--controls-h, 80px); z-index:5;
+                      display:flex; flex-direction:column; align-items:center; justify-content:center; gap:1rem;
+                      overflow:hidden; background:radial-gradient(circle at 50% 40%, #312e81, var(--bg) 70%); }
+    .ao-poster-bg { position:absolute; inset:-20px; background-size:cover; background-position:center;
+                    filter:blur(24px) brightness(.4); }
+    .ao-poster { position:relative; max-width:min(60%, 320px); max-height:55%; border-radius:14px;
+                 box-shadow:0 18px 50px rgba(0,0,0,.55); object-fit:cover; }
+    .ao-poster-icon { position:relative; width:96px; height:96px; border-radius:50%; display:flex;
+                      align-items:center; justify-content:center; font-size:2.4rem; color:#fff;
+                      background:rgba(99,102,241,.85); }
+    .ao-wave { position:relative; width:min(80%, 320px); height:56px; }
     #musicChipTitle { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 
     /* ── Verse overlay ── */
@@ -369,6 +381,21 @@
   <div class="meet-main">
     <div class="video-grid solo" id="videoGrid"></div>
 
+    <!-- Audio only mode: the sermon poster with a waveform of what's being said -->
+    @{ var sermonPoster = ViewBag.SermonPoster as string; }
+    <div id="audioOnlyStage" style="display:none">
+      @if (!string.IsNullOrEmpty(sermonPoster))
+      {
+        <div class="ao-poster-bg" style="background-image:url('@sermonPoster')"></div>
+        <img src="@sermonPoster" alt="" class="ao-poster" />
+      }
+      else
+      {
+        <div class="ao-poster-icon"><i class="fas fa-headphones"></i></div>
+      }
+      <canvas class="ao-wave" id="audioWave" width="320" height="56" aria-hidden="true"></canvas>
+    </div>
+
     <!-- Spotlight label on stage -->
     <div id="spotlightLabel" style="display:none">
       <i class="fas fa-star"></i> <span id="spotlightName"></span>
@@ -395,6 +422,7 @@
       <button class="ctrl-btn ctrl-default" id="btnScreen" onclick="toggleScreenShare()"><i class="fas fa-desktop"></i><span>Share</span></button>
       <button class="ctrl-btn ctrl-default" id="btnHand" onclick="toggleHand()"><i class="fas fa-hand"></i><span>Hand</span></button>
       <button class="ctrl-btn ctrl-default" onclick="toggleReactions()"><i class="fas fa-face-smile"></i><span>React</span></button>
+      <button class="ctrl-btn ctrl-default" id="btnAudioOnly" onclick="toggleAudioOnly()" title="Listen without other people's video to save data"><i class="fas fa-headphones"></i><span>Audio only</span></button>
       <div class="controls-spacer"></div>
       @if (Model.Room.ChatEnabled)
       {
@@ -461,6 +489,7 @@
 
 <script src="~/js/wake-lock.js" asp-append-version="true"></script>
 <script src="~/js/live-music.js" asp-append-version="true"></script>
+<script src="~/js/audio-wave.js" asp-append-version="true"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/microsoft-signalr/8.0.0/signalr.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/livekit-client@2.22.3/dist/livekit-client.umd.js"
         integrity="sha384-G/xxtkVytOx/ia9Q8MXxM+V0ohsaY1fZAgVP3iSGTPz4wJ0s3+ulJNKXh/gnzEDZ" crossorigin="anonymous"></script>
@@ -614,7 +643,9 @@ async function connectMedia(){
       console.warn('Media connection failed: the hub refused a media token');
       toast('Could not join the meeting audio/video — refresh to try again','warn');return;
     }
-    await room.connect(t.url,t.token);
+    // Tracks are subscribed by hand so audio only mode never downloads video
+    await room.connect(t.url,t.token,{autoSubscribe:false});
+    applyAllSubscriptions();
     for(const track of [micTrack,camTrack]) if(track) await room.localParticipant.publishTrack(track);
     room.remoteParticipants.forEach(p=>{ensureTile(p);showRemoteVideo(p.identity);});
     if(!room.canPlaybackAudio) showSoundUnlock();
@@ -625,6 +656,34 @@ async function connectMedia(){
   }
 }
 
+// ── Audio only mode ───────────────────────────────────────
+// Other people's video isn't subscribed, so the server doesn't send it (saves data).
+// Our own camera is left as it is: the host's camera may be what the Live page shows.
+const wave=AudioWave(document.getElementById('audioWave'));
+let audioOnly=(()=>{
+  try{const saved=localStorage.getItem('meet.audioOnly');if(saved!==null)return saved==='true';}catch{}
+  // No saved choice: follow the browser's data-saver / slow-connection hint
+  const c=navigator.connection;
+  const slow=!!(c&&(c.saveData||['slow-2g','2g'].includes(c.effectiveType)));
+  if(slow) setTimeout(()=>toast('Slow connection — Audio only mode. Tap Audio only to see video.'),1500);
+  return slow;
+})();
+function applySubscription(pub){pub.setSubscribed(pub.kind==='audio'||!audioOnly);}
+function applyAllSubscriptions(){room.remoteParticipants.forEach(p=>p.trackPublications.forEach(applySubscription));}
+function showAudioOnlyState(){
+  document.getElementById('btnAudioOnly').classList.toggle('ctrl-active',audioOnly);
+  document.getElementById('audioOnlyStage').style.display=audioOnly?'flex':'none';
+  if(audioOnly){wave.unlock();wave.start();} else wave.stop();
+}
+function toggleAudioOnly(){
+  audioOnly=!audioOnly;
+  try{localStorage.setItem('meet.audioOnly',audioOnly);}catch{}
+  if(room.state==='connected') applyAllSubscriptions();
+  showAudioOnlyState();
+  toast(audioOnly?'Audio only mode':'Video on');
+}
+showAudioOnlyState();
+
 // ── LiveKit events ────────────────────────────────────────
 const audioBox=document.createElement('div');
 audioBox.style.display='none';
@@ -632,13 +691,15 @@ document.body.appendChild(audioBox);
 
 room
   .on(LK.RoomEvent.ParticipantConnected,p=>ensureTile(p))
+  // A camera, mic or screen share was turned on: subscribe unless it's video in audio only mode
+  .on(LK.RoomEvent.TrackPublished,pub=>applySubscription(pub))
   .on(LK.RoomEvent.ParticipantDisconnected,p=>{document.getElementById(`tile-${p.identity}`)?.remove();reflow();})
   .on(LK.RoomEvent.TrackSubscribed,(track,pub,p)=>{
-    if(track.kind==='audio'){audioBox.appendChild(track.attach());recAdd(track.sid,track.mediaStreamTrack);}
+    if(track.kind==='audio'){audioBox.appendChild(track.attach());recAdd(track.sid,track.mediaStreamTrack);wave.addTrack(track.sid,track.mediaStreamTrack);}
     else showRemoteVideo(p.identity);
   })
   .on(LK.RoomEvent.TrackUnsubscribed,(track,pub,p)=>{
-    if(track.kind==='audio'){track.detach().forEach(el=>el.remove());recRemove(track.sid);}
+    if(track.kind==='audio'){track.detach().forEach(el=>el.remove());recRemove(track.sid);wave.removeTrack(track.sid);}
     else showRemoteVideo(p.identity);
   })
   .on(LK.RoomEvent.TrackMuted,(pub,p)=>{

@@ -41,6 +41,15 @@ if (typeof module !== 'undefined') module.exports = LivePlayerMath;
     let finished = false;
     const elapsed = () => LivePlayerMath.elapsedSeconds(started, Date.now(), skew);
     const show = (el, on, display = 'flex') => { if (el) el.style.display = on ? display : 'none'; };
+    // The poster screen (audio, or a stream with no picture) draws a waveform of the sound
+    function showArtwork(media) {
+        show(artwork, true);
+        const canvas = document.getElementById('lpWave');
+        if (!canvas || typeof AudioWave === 'undefined' || canvas._wave) return;
+        canvas._wave = AudioWave(canvas);
+        canvas._wave.addMedia(media);
+        canvas._wave.start();
+    }
     const ready = () => show(waiting, false);
 
     function showTap(label, onTap) {
@@ -170,7 +179,7 @@ if (typeof module !== 'undefined') module.exports = LivePlayerMath;
         if (!audio) { media.muted = true; media.autoplay = true; media.controls = !premiere; }
         stage.appendChild(media);
 
-        if (audio) show(artwork, true);
+        if (audio) showArtwork(media);
 
         if (hls && !media.canPlayType('application/vnd.apple.mpegurl')) {
             await loadScript('https://cdnjs.cloudflare.com/ajax/libs/hls.js/1.5.13/hls.min.js');
@@ -194,7 +203,7 @@ if (typeof module !== 'undefined') module.exports = LivePlayerMath;
         media.addEventListener('loadedmetadata', () => {
             ready();
             // A stream with no picture is shown as audio
-            if (!audio && media.videoWidth === 0) show(artwork, true);
+            if (!audio && media.videoWidth === 0) showArtwork(media);
             if (!audio && catchUp()) media.play().catch(() => { });
         }, { once: true });
 

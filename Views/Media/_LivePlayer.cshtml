@@ -34,7 +34,7 @@
 
     <div class="lp-stage" id="lpStage"></div>
 
-    @* Audio: sermon artwork with a moving equaliser *@
+    @* Audio: the sermon poster with a waveform of the sound (no title, so scriptures stay clear) *@
     <div class="lp-artwork" id="lpArtwork" style="display:none">
         @if (!string.IsNullOrEmpty(Model.ThumbnailUrl))
         {
@@ -45,8 +45,7 @@
         {
             <div class="lp-artwork-icon"><i class="fas fa-headphones"></i></div>
         }
-        <div class="lp-eq" aria-hidden="true"><span></span><span></span><span></span><span></span><span></span></div>
-        <p class="lp-artwork-title">@Model.Title</p>
+        <canvas class="audio-wave" id="lpWave" width="320" height="56" aria-hidden="true"></canvas>
     </div>
 
     @* Browsers only start sound after a tap *@

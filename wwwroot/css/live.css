@@ -168,45 +168,6 @@
     background: rgba(99,102,241,.85);
 }
 
-.lp-artwork-title {
-    position: relative;
-    color: white;
-    font-weight: 700;
-    font-size: 1rem;
-    text-align: center;
-    padding: 0 1rem;
-    text-shadow: 0 1px 6px rgba(0,0,0,.6);
-}
-
-.lp-eq {
-    position: relative;
-    display: flex;
-    align-items: flex-end;
-    gap: 4px;
-    height: 22px;
-}
-
-    .lp-eq span {
-        width: 4px;
-        border-radius: 2px;
-        background: #a5b4fc;
-        animation: lpEq 1s ease-in-out infinite;
-    }
-
-        .lp-eq span:nth-child(2) { animation-delay: .2s; }
-        .lp-eq span:nth-child(3) { animation-delay: .4s; }
-        .lp-eq span:nth-child(4) { animation-delay: .1s; }
-        .lp-eq span:nth-child(5) { animation-delay: .3s; }
-
-@keyframes lpEq {
-    0%, 100% { height: 5px; }
-    50% { height: 22px; }
-}
-
-@media (prefers-reduced-motion: reduce) {
-    .lp-eq span { animation: none; height: 12px; }
-}
-
 .lp-tap {
     position: absolute;
     top: 50%;
@@ -306,6 +267,38 @@
 
         .music-chip button:hover { background: rgba(255,255,255,.3); }
         .music-chip button:focus-visible { outline: 2px solid white; outline-offset: 2px; }
+
+/* ── Audio-only chip (viewer turned video off to save data) ─ */
+.audio-only-chip {
+    position: absolute;
+    top: .75rem;
+    right: .75rem;
+    z-index: 20;
+    display: flex;
+    align-items: center;
+    gap: .45rem;
+    padding: .35rem .8rem;
+    border: none;
+    border-radius: 100px;
+    background: rgba(0,0,0,.6);
+    color: white;
+    font-size: .78rem;
+    cursor: pointer;
+    backdrop-filter: blur(6px);
+}
+
+    .audio-only-chip > i { color: #a5b4fc; }
+
+/* Audio only mode: poster + waveform over the (empty) video grid, under the verse overlay */
+.audio-only-stage { z-index: 4; }
+
+.audio-wave {
+    position: relative;
+    width: min(80%, 320px);
+    height: 56px;
+}
+    .audio-only-chip:hover { background: rgba(0,0,0,.75); }
+    .audio-only-chip:focus-visible { outline: 2px solid white; outline-offset: 2px; }
 
 /* ── Verse overlay ───────────────────────────────────────── */
 .live-verse-overlay {

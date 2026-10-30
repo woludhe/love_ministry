@@ -740,6 +740,7 @@ namespace ChurchMinistry.Controllers
             ViewBag.LiveSermonId = linkedSermon?.Id;
             ViewBag.SermonIsLive = linkedSermon?.IsLive == true;
             ViewBag.TrackAttendance = linkedSermon?.TrackAttendance == true;
+            ViewBag.SermonPoster = linkedSermon?.ThumbnailUrl;   // shown in audio only mode
 
             return View(new MeetingRoomViewModel
             {

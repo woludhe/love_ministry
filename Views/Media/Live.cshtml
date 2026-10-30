@@ -38,6 +38,21 @@
                             <div id="guestMeetingWrap" style="position:absolute;inset:0;background:#0f0f13">
                                 <div id="guestVideoGrid" class="video-grid solo" style="position:absolute;inset:0"></div>
 
+                                @* Audio only mode: the meeting poster with a waveform of what's being said
+                                   (no title underneath, so the scripture overlay stays clear) *@
+                                <div class="lp-artwork audio-only-stage" id="audioOnlyStage" style="display:none">
+                                    @if (!string.IsNullOrEmpty(Model?.ThumbnailUrl))
+                                    {
+                                        <div class="lp-artwork-bg" style="background-image:url('@Model.ThumbnailUrl')"></div>
+                                        <img src="@Model.ThumbnailUrl" alt="" class="lp-artwork-img" />
+                                    }
+                                    else
+                                    {
+                                        <div class="lp-artwork-icon"><i class="fas fa-headphones"></i></div>
+                                    }
+                                    <canvas class="audio-wave" id="audioWave" width="320" height="56" aria-hidden="true"></canvas>
+                                </div>
+
                                 <div class="live-verse-overlay" id="verseOverlay" style="display:none">
                                     <p class="live-verse-text" id="verseText"></p>
                                     <span class="live-verse-ref" id="verseRef"></span>
@@ -96,6 +111,12 @@
                                     </button>
                                 </div>
 
+                                @* Shown while this viewer has video turned off to save data *@
+                                <button type="button" class="audio-only-chip" id="audioOnlyChip" style="display:none"
+                                        onclick="toggleAudioOnly()">
+                                    <i class="fas fa-headphones"></i> Audio only mode · tap to show video
+                                </button>
+
                                 <div id="autoplayUnblock"
                                      style="display:none;position:absolute;inset:0;z-index:40;
                                         align-items:center;justify-content:center;
@@ -148,6 +169,14 @@
                             <button class="live-action-btn" onclick="shareStream()">
                                 <i class="fas fa-share-alt"></i> Share
                             </button>
+
+                            @if (isOnline)
+                            {
+                                <button class="live-action-btn" id="btnAudioOnly" onclick="toggleAudioOnly()"
+                                        title="Listen without video to save data">
+                                    <i class="fas fa-headphones"></i> <span>Audio only</span>
+                                </button>
+                            }
 
                             @* Reactions button — between Share and Chat *@
                             <div style="position:relative">
@@ -619,6 +648,7 @@
     @if (Model != null)
     {
         <script src="~/js/wake-lock.js" asp-append-version="true"></script>
+        <script src="~/js/audio-wave.js" asp-append-version="true"></script>
     }
     @if (Model != null && !isOnline)
     {
@@ -767,23 +797,68 @@
         // LiveKit media (watch only)
         async function connectMedia({ url, token }) {
             try {
-                await mediaRoom.connect(url, token);
+                // Tracks are subscribed by hand so audio-only viewers never download video
+                await mediaRoom.connect(url, token, { autoSubscribe: false });
+                applyAllSubscriptions();
                 if (!mediaRoom.canPlaybackAudio) showAutoplayUnblock();
             } catch (e) { console.error('Could not connect to the meeting audio/video', e); }
         }
+
+        // Waveform of the meeting's sound, drawn in audio only mode (wwwroot/js/audio-wave.js)
+        const wave = IS_ONLINE ? AudioWave(document.getElementById('audioWave')) : null;
+
+        // Audio only: video isn't subscribed, so the server doesn't send it (saves data)
+        let audioOnly = (() => {
+            try {
+                const saved = localStorage.getItem('live.audioOnly');
+                if (saved !== null) return saved === 'true';
+            } catch { }
+            // No saved choice: follow the browser's data-saver / slow-connection hint
+            const c = navigator.connection;
+            const slow = !!(c && (c.saveData || ['slow-2g', '2g'].includes(c.effectiveType)));
+            if (slow && IS_ONLINE) setTimeout(() => showToast('🎧 Slow connection — Audio only mode. Tap "Show video" to watch.'), 1500);
+            return slow;
+        })();
+        function applySubscription(pub) { pub.setSubscribed(pub.kind === 'audio' || !audioOnly); }
+        function applyAllSubscriptions() {
+            mediaRoom.remoteParticipants.forEach(p => p.trackPublications.forEach(applySubscription));
+        }
+        function showAudioOnlyState() {
+            const btn = document.getElementById('btnAudioOnly');
+            if (btn) {
+                btn.classList.toggle('active-btn', audioOnly);
+                btn.querySelector('span').textContent = audioOnly ? 'Show video' : 'Audio only';
+            }
+            const chip = document.getElementById('audioOnlyChip');
+            if (chip) chip.style.display = audioOnly ? 'flex' : 'none';
+            const stage = document.getElementById('audioOnlyStage');
+            if (stage) stage.style.display = audioOnly ? 'flex' : 'none';
+            if (audioOnly) { wave?.unlock(); wave?.start(); } else wave?.stop();
+        }
+        function toggleAudioOnly() {
+            audioOnly = !audioOnly;
+            try { localStorage.setItem('live.audioOnly', audioOnly); } catch { }
+            if (mediaRoom?.state === 'connected') applyAllSubscriptions();
+            showAudioOnlyState();
+            showToast(audioOnly ? '🎧 Audio only mode' : '🎥 Video on');
+        }
+
+        if (IS_ONLINE) showAudioOnlyState();
         if (mediaRoom) {
             const audioBox = document.createElement('div');
             audioBox.style.display = 'none';
             document.body.appendChild(audioBox);
             mediaRoom
                 .on(LK.RoomEvent.ParticipantConnected, p => ensureTile(p))
+                // A camera, mic or screen share was turned on: subscribe unless it's video in audio-only mode
+                .on(LK.RoomEvent.TrackPublished, pub => applySubscription(pub))
                 .on(LK.RoomEvent.ParticipantDisconnected, p => { document.getElementById(`tile-${p.identity}`)?.remove(); reflow(); })
                 .on(LK.RoomEvent.TrackSubscribed, (track, pub, p) => {
-                    if (track.kind === 'audio') audioBox.appendChild(track.attach());
+                    if (track.kind === 'audio') { audioBox.appendChild(track.attach()); wave.addTrack(track.sid, track.mediaStreamTrack); }
                     else showRemoteVideo(p.identity);
                 })
                 .on(LK.RoomEvent.TrackUnsubscribed, (track, pub, p) => {
-                    if (track.kind === 'audio') track.detach().forEach(el => el.remove());
+                    if (track.kind === 'audio') { track.detach().forEach(el => el.remove()); wave.removeTrack(track.sid); }
                     else showRemoteVideo(p.identity);
                 })
                 .on(LK.RoomEvent.TrackMuted, (pub, p) => showRemoteVideo(p.identity))
