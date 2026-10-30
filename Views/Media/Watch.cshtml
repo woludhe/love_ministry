@@ -10,6 +10,7 @@
                       ?? new List<ChurchMinistry.Models.Sermon>();
     // Scheduled for later and not live yet: show the poster instead of a player
     var isUpcoming = !Model.IsLive && Model.SermonDate > DateTime.UtcNow;
+    var isSignedIn = User.Identity?.IsAuthenticated == true;
 }
 
 <div class="watch-page">
@@ -94,6 +95,8 @@
                         <canvas class="audio-wave" id="audioWave" width="320" height="56" aria-hidden="true"></canvas>
                         <audio id="htmlPlayer"
                                controls
+                               controlsList="@(isSignedIn ? null : "nodownload")"
+                               oncontextmenu="@(isSignedIn ? null : "return false")"
                                src="@(!string.IsNullOrEmpty(Model.AudioUrl) ? Model.AudioUrl : Model.RecordingUrl)"
                                data-video-type="html5"
                                class="audio-player-bar"></audio>
@@ -201,7 +204,8 @@
                         }
                     </div>
                 }
-                @if (!string.IsNullOrEmpty(Model.AudioUrl))
+                @* {{-- Downloading is for signed-in members only --}} *@
+                @if (isSignedIn && !string.IsNullOrEmpty(Model.AudioUrl))
                 {
                     <div class="audio-download-row">
                         <a href="@Model.AudioUrl" class="btn btn-outline btn-sm">
@@ -209,7 +213,7 @@
                         </a>
                     </div>
                 }
-                else if (!Model.IsLive && !string.IsNullOrEmpty(Model.RecordingUrl))
+                else if (isSignedIn && !Model.IsLive && !string.IsNullOrEmpty(Model.RecordingUrl))
                 {
                     <div class="audio-download-row">
                         <a href="@Model.RecordingUrl" class="btn btn-outline btn-sm" download>
