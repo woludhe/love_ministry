@@ -82,7 +82,7 @@
                         <option value="@m.Id">@m.FullName (@m.Email)</option>
                     }
                 </select>
-                <small style="color:var(--text-s);font-size:.78rem">The leader is added to the group as a member.</small>
+                <small class="form-hint">The leader is added to the group as a member.</small>
                 <span asp-validation-for="LeaderId" class="field-error"></span>
             </div>
 
@@ -90,7 +90,7 @@
                 <label style="display:flex;align-items:center;gap:.5rem;font-weight:600">
                     <input asp-for="IsActive" type="checkbox" /> Active
                 </label>
-                <small style="color:var(--text-s);font-size:.78rem">Inactive groups are hidden from the member directory filter and meeting invitations.</small>
+                <small class="form-hint">Inactive groups are hidden from the member directory filter and meeting invitations.</small>
             </div>
 
             <button type="submit" class="btn btn-primary"><i class="fas fa-save"></i> @(isEdit ? "Save Changes" : "Create Group")</button>
@@ -99,7 +99,7 @@
         @if (isEdit)
         {
             <form asp-action="DeleteGroup" asp-route-id="@Model.Id" method="post" style="margin-top:2rem;padding-top:1.25rem;border-top:1px solid var(--border)">
-                <p style="font-size:.85rem;color:var(--text-s);margin-bottom:.6rem">
+                <p class="form-hint" style="margin:0 0 .6rem">
                     Deleting the group removes everyone from it and cancels its meeting invitations. Members' accounts are not affected.
                 </p>
                 <button type="submit" class="btn grp-delete-btn"

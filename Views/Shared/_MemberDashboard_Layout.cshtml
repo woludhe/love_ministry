@@ -6,6 +6,12 @@
     var me = User.Identity?.IsAuthenticated == true
         ? await MemberVc.GetModelAsync()
         : new CurrentMemberViewModel();
+
+    // Sidebar: the link for the current page keeps its hover look; related pages light up their parent link
+    var controller = ViewContext.RouteData.Values["controller"]?.ToString();
+    var action = ViewContext.RouteData.Values["action"]?.ToString();
+    bool At(string c, params string[] actions) => controller == c && (actions.Length == 0 || actions.Contains(action));
+    string? Active(bool on) => on ? "active" : null;
 }
 
 <!DOCTYPE html>
@@ -39,9 +45,12 @@
     }
 
     <main>
-        <button type="button" class="sidebar-toggle" id="sidebarToggle" aria-controls="dashSidebar" aria-expanded="false">
-            <i class="fas fa-bars"></i> Dashboard Menu
-        </button>
+        <div class="sidebar-toggle-bar">
+            <button type="button" class="sidebar-toggle" id="sidebarToggle" aria-controls="dashSidebar" aria-expanded="false">
+                <i class="fas fa-bars"></i> Dashboard Menu
+            </button>
+            @await Component.InvokeAsync("NavUnread", new { place = "bar" })
+        </div>
         <div class="sidebar-backdrop" id="sidebarBackdrop"></div>
         <div class="member-layout">
             <aside class="member-sidebar dash-sidebar" id="dashSidebar">
@@ -60,17 +69,17 @@
                     }
                 </div>
                 <nav class="sidebar-nav">
-                    <a asp-controller="Members" asp-action="Dashboard" class="active"><i class="fas fa-home"></i> Dashboard</a>
-                    <a asp-controller="Devotionals" asp-action="Index"><i class="fas fa-book-bible"></i> Devotions</a>
-                    <a asp-controller="Members" asp-action="Profile"><i class="fas fa-user"></i> My Profile</a>
-                    <a asp-controller="Members" asp-action="MyQrCode"><i class="fas fa-qrcode"></i> My QR Code</a>
-                    <a asp-controller="Members" asp-action="Attendance"><i class="fas fa-calendar-check"></i> Attendance</a>
-                    <a asp-controller="Giving" asp-action="Give"><i class="fas fa-hand-holding-heart"></i> Give</a>
-                    <a asp-controller="Giving" asp-action="Reminders"><i class="fas fa-bell"></i> Giving Reminders</a>
-                    <a asp-controller="Prayer" asp-action="Submit"><i class="fas fa-hands-praying"></i> Prayer Request</a>
-                    <a asp-controller="Community" asp-action="Index"><i class="fas fa-comments"></i> Community</a>
-                    <a asp-controller="Community" asp-action="Chat"><i class="fas fa-comment-dots"></i> Live Chat</a>
-                    <a asp-controller="Members" asp-action="Directory"><i class="fas fa-address-book"></i> Directory</a>
+                    <a asp-controller="Members" asp-action="Dashboard" class="sidebar-nav-home @Active(At("Members", "Dashboard"))"><i class="fas fa-home"></i> Dashboard</a>
+                    <a asp-controller="Devotionals" asp-action="Index" class="@Active(At("Devotionals"))"><i class="fas fa-book-bible"></i> Devotions</a>
+                    <a asp-controller="Members" asp-action="Profile" class="@Active(At("Members", "Profile", "EditProfile") || At("Account", "ChangePassword"))"><i class="fas fa-user"></i> My Profile</a>
+                    <a asp-controller="Members" asp-action="MyQrCode" class="@Active(At("Members", "MyQrCode"))"><i class="fas fa-qrcode"></i> My QR Code</a>
+                    <a asp-controller="Members" asp-action="Attendance" class="@Active(At("Members", "Attendance"))"><i class="fas fa-calendar-check"></i> Attendance</a>
+                    <a asp-controller="Giving" asp-action="Give" class="@Active(At("Giving") && action != "Reminders")"><i class="fas fa-hand-holding-heart"></i> Give</a>
+                    <a asp-controller="Giving" asp-action="Reminders" class="@Active(At("Giving", "Reminders"))"><i class="fas fa-bell"></i> Giving Reminders</a>
+                    <a asp-controller="Prayer" asp-action="Submit" class="@Active(At("Prayer", "Submit"))"><i class="fas fa-hands-praying"></i> Prayer Request</a>
+                    <a asp-controller="Community" asp-action="Index" class="@Active(At("Community") && action != "Chat")"><i class="fas fa-comments"></i> Community @await Component.InvokeAsync("NavUnread", new { place = "community" })</a>
+                    <a asp-controller="Community" asp-action="Chat" class="@Active(At("Community", "Chat"))"><i class="fas fa-comment-dots"></i> Live Chat @await Component.InvokeAsync("NavUnread", new { place = "chat" })</a>
+                    <a asp-controller="Members" asp-action="Directory" class="@Active(At("Members", "Directory", "ViewProfile"))"><i class="fas fa-address-book"></i> Directory</a>
                 </nav>
             </aside>
             <div class="member-main">
@@ -125,6 +134,15 @@
 
     <script src="~/js/site.js" asp-append-version="true"></script>
     @await RenderSectionAsync("Scripts", required: false)
+    @if (me.MemberId != null)
+    {
+        @* Keeps the Live Chat / Community tags live; the chat page already loads SignalR in its Scripts section *@
+        if (!Context.Request.Path.StartsWithSegments("/Community/Chat"))
+        {
+            <script src="https://cdnjs.cloudflare.com/ajax/libs/microsoft-signalr/8.0.0/signalr.min.js"></script>
+        }
+        <script src="~/js/nav-unread.js" asp-append-version="true"></script>
+    }
     @await Component.InvokeAsync("TodaysDevotion")
     @if (User.Identity?.IsAuthenticated == true)
     {

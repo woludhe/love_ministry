@@ -3,7 +3,8 @@
     ViewData["Title"] = "My Attendance"; Layout = "~/Views/Shared/_MemberDashboard_Layout.cshtml";
 }
 <section class="page-header"><h1>My Attendance History</h1></section>
-<div class="table-card" style="max-width:800px;margin:2rem auto">
+<div class="container" style="max-width:850px">
+<div class="table-card" style="margin:.5rem 0 2rem">
   <table class="data-table">
     <thead><tr><th>Service</th><th>Type</th><th>Date</th><th>Check-in Time</th><th>Method</th></tr></thead>
     <tbody>
@@ -20,4 +21,5 @@
     </tbody>
   </table>
   <partial name="_Pager" model="(PagerModel)ViewBag.Pager" />
+</div>
 </div>

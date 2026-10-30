@@ -1,3 +1,4 @@
+@inject ChurchMinistry.ViewComponents.CurrentMemberViewComponent MemberVc
 @{
     ViewData["Title"] = "Live Chat";
     @if (User.Identity?.IsAuthenticated == true)
@@ -9,20 +10,23 @@
         Layout = "~/Views/Shared/_Layout.cshtml";
     }
 }
-<section class="page-header"><h1><i class="fas fa-comment-dots"></i> Members Chat</h1></section>
 <div class="chat-page">
     <div class="chat-rooms">
+        <h1 class="chat-title"><i class="fas fa-comment-dots"></i> Members Chat</h1>
         <div class="room-btn active" data-room="general" onclick="joinRoom('general',this)"><i class="fas fa-globe"></i> General</div>
         <div class="room-btn" data-room="prayer" onclick="joinRoom('prayer',this)"><i class="fas fa-hands-praying"></i> Prayer</div>
         <div class="room-btn" data-room="youth" onclick="joinRoom('youth',this)"><i class="fas fa-users"></i> Youth</div>
         <div class="room-btn" data-room="announcements" onclick="joinRoom('announcements',this)"><i class="fas fa-bullhorn"></i> Announcements</div>
     </div>
     <div class="chat-container">
-        <div class="chat-header"><span id="currentRoomLabel">General Chat</span></div>
+        <div class="chat-header">
+            <span id="currentRoomLabel">General Chat</span>
+            <span class="chat-online" id="chatOnline" hidden><span class="chat-online-dot"></span> <span id="chatOnlineCount"></span></span>
+        </div>
         <div class="chat-messages" id="chatMessages"></div>
         <div class="chat-input-row">
-            <input type="text" id="messageInput" class="form-control" placeholder="Type a message... (Enter to send)" />
-            <button onclick="sendMessage()" class="btn btn-primary"><i class="fas fa-paper-plane"></i></button>
+            <input type="text" id="messageInput" class="form-control" placeholder="Type a message... (Enter to send)" maxlength="1000" />
+            <button type="button" onclick="sendMessage()" class="btn btn-primary" aria-label="Send"><i class="fas fa-paper-plane"></i></button>
         </div>
     </div>
 </div>
@@ -30,42 +34,107 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/microsoft-signalr/8.0.0/signalr.min.js"></script>
     <script>
         let currentRoom = 'general';
+        let joinSeq = 0;   // ignores a slow history reply after the user has moved to another room
+        const box = document.getElementById('chatMessages');
+        const input = document.getElementById('messageInput');
         const conn = new signalR.HubConnectionBuilder().withUrl('/chatHub').withAutomaticReconnect().build();
 
-        conn.on('ReceiveMessage', m => {
-            const box = document.getElementById('chatMessages');
+        function escHtml(t) { const d = document.createElement('div'); d.textContent = t ?? ''; return d.innerHTML; }
+
+        // Server sends UTC ISO times; show them in the reader's local time
+        function timeLabel(iso) {
+            const d = new Date(iso);
+            const time = d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+            return d.toDateString() === new Date().toDateString()
+                ? time : d.toLocaleDateString([], { day: 'numeric', month: 'short' }) + ', ' + time;
+        }
+
+        function addMessage(m) {
             const div = document.createElement('div');
-            div.className = 'chat-msg';
-            div.innerHTML = `<img src="${m.senderPhoto}" class="avatar-xs"/><div class="msg-bubble"><strong>${m.senderName}</strong><p>${escHtml(m.message)}</p><small>${m.sentAt}</small></div>`;
+            div.className = 'chat-msg' + (m.isOwn ? ' own' : '');
+            div.innerHTML = `<img src="${escHtml(m.senderPhoto)}" class="avatar-xs" alt=""/>`
+                + `<div class="msg-bubble"><strong>${m.isOwn ? 'You' : escHtml(m.senderName)}</strong>`
+                + `<p>${escHtml(m.message)}</p><small>${timeLabel(m.sentAt)}</small></div>`;
+            box.appendChild(div);
+        }
+
+        function systemMessage(text, cls) {
+            const div = document.createElement('div');
+            div.className = 'system-msg' + (cls ? ' ' + cls : '');
+            div.textContent = text;
             box.appendChild(div);
             box.scrollTop = box.scrollHeight;
+        }
+
+        function errorText(err) {
+            const msg = String(err?.message ?? err);
+            const i = msg.indexOf('HubException: ');
+            return i >= 0 ? msg.slice(i + 14) : 'Something went wrong. Please try again.';
+        }
+
+        async function loadRoom(room) {
+            const seq = ++joinSeq;
+            box.innerHTML = '';
+            systemMessage('Loading messages…');
+            try {
+                const history = await conn.invoke('JoinRoom', room);
+                if (seq !== joinSeq) return;
+                box.innerHTML = '';
+                if (!history.length) systemMessage('No messages yet. Say hello!', 'empty');
+                history.forEach(addMessage);
+                box.scrollTop = box.scrollHeight;
+            } catch (err) {
+                if (seq === joinSeq) { box.innerHTML = ''; systemMessage(errorText(err)); }
+            }
+        }
+
+        conn.on('ReceiveMessage', m => {
+            const nearBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 80;
+            box.querySelector('.system-msg.empty')?.remove();
+            addMessage(m);
+            if (nearBottom || m.isOwn) box.scrollTop = box.scrollHeight;
         });
 
-        conn.on('SystemMessage', msg => {
-            const box = document.getElementById('chatMessages');
-            box.innerHTML += `<div class="system-msg">${msg}</div>`;
+        // People with the chat page open, across all rooms
+        conn.on('OnlineCount', n => {
+            document.getElementById('chatOnlineCount').textContent = n === 1 ? '1 online' : `${n} online`;
+            document.getElementById('chatOnline').hidden = false;
         });
 
-        conn.start().then(() => conn.invoke('JoinRoom', currentRoom)).catch(console.error);
+        // A message in another room: dot on that room's button until it is opened
+        const myMemberId = @((await MemberVc.GetModelAsync()).MemberId?.ToString() ?? "null");
+        conn.on('ChatActivity', a => {
+            if (a.room !== currentRoom && a.memberId !== myMemberId)
+                document.querySelector(`.room-btn[data-room="${a.room}"]`)?.classList.add('has-new');
+        });
+
+        conn.onreconnecting(() => systemMessage('Connection lost. Reconnecting…'));
+        conn.onreconnected(() => loadRoom(currentRoom));   // the new connection is in no rooms yet
+        conn.onclose(() => systemMessage('Disconnected. Refresh the page to rejoin the chat.'));
+
+        conn.start().then(() => loadRoom(currentRoom))
+            .catch(() => { box.innerHTML = ''; systemMessage('Could not connect to the chat. Refresh the page to try again.'); });
 
         function joinRoom(room, el) {
-            conn.invoke('LeaveRoom', currentRoom);
+            if (room === currentRoom) return;
+            const connected = conn.state === signalR.HubConnectionState.Connected;
+            if (connected) conn.invoke('LeaveRoom', currentRoom).catch(() => {});
             currentRoom = room;
-            conn.invoke('JoinRoom', room);
             document.querySelectorAll('.room-btn').forEach(b => b.classList.remove('active'));
             el.classList.add('active');
-            document.getElementById('chatMessages').innerHTML = '';
+            el.classList.remove('has-new');
             document.getElementById('currentRoomLabel').textContent = el.textContent.trim() + ' Chat';
+            if (connected) loadRoom(room);
         }
 
         function sendMessage() {
-            const input = document.getElementById('messageInput');
             const msg = input.value.trim();
-            if (msg) { conn.invoke('SendMessage', currentRoom, msg); input.value = ''; }
+            if (!msg) return;
+            if (conn.state !== signalR.HubConnectionState.Connected) { systemMessage('Not connected yet. Please wait a moment.'); return; }
+            input.value = '';
+            conn.invoke('SendMessage', currentRoom, msg).catch(err => { input.value = msg; systemMessage(errorText(err)); });
         }
 
-        document.getElementById('messageInput').addEventListener('keypress', e => { if (e.key === 'Enter') sendMessage(); });
-
-        function escHtml(t) { const d = document.createElement('div'); d.textContent = t; return d.innerHTML; }
+        input.addEventListener('keydown', e => { if (e.key === 'Enter' && !e.isComposing) { e.preventDefault(); sendMessage(); } });
     </script>
 }

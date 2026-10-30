@@ -1,0 +1,4 @@
+@using ChurchMinistry.ViewComponents
+@model NavUnreadTag
+@* Sidebar link tag, kept up to date by wwwroot/js/nav-unread.js *@
+<span class="nav-count" id="@Model.Id" aria-label="@Model.AriaLabel" hidden="@(Model.Count == 0)">@NavUnread.Label(Model.Count)</span>

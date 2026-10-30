@@ -1,0 +1,14 @@
+@using ChurchMinistry.ViewComponents
+@model NavUnreadModel
+@* Phones: Community and Live Chat shortcuts on the "Dashboard Menu" bar, each only while it has something new.
+   Kept up to date by wwwroot/js/nav-unread.js *@
+<span class="toggle-shortcuts" id="navUnread" data-member-id="@Model.MemberId">
+    <a asp-controller="Community" asp-action="Index" class="toggle-chat" id="communityUnreadBar"
+       aria-label="Community: new posts" hidden="@(Model.CommunityCount == 0)">
+        <i class="fas fa-comments"></i><span class="toggle-chat-count">@NavUnread.Label(Model.CommunityCount)</span>
+    </a>
+    <a asp-controller="Community" asp-action="Chat" class="toggle-chat" id="chatUnreadBar"
+       aria-label="Live Chat: new messages" hidden="@(Model.ChatCount == 0)">
+        <i class="fas fa-comment-dots"></i><span class="toggle-chat-count">@NavUnread.Label(Model.ChatCount)</span>
+    </a>
+</span>

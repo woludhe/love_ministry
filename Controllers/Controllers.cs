@@ -1,4 +1,5 @@
 using ChurchMinistry.Data;
+using ChurchMinistry.Hubs;
 using ChurchMinistry.Models;
 using ChurchMinistry.Services;
 using ChurchMinistry.ViewModels;
@@ -1315,10 +1316,12 @@ namespace ChurchMinistry.Controllers
         private readonly ApplicationDbContext _db;
         private readonly UserManager<ApplicationUser> _userManager;
         private readonly IActivityService _activity;
+        private readonly IHubContext<ChatHub> _chatHub;
 
-        public CommunityController(ApplicationDbContext db, UserManager<ApplicationUser> um, IActivityService activity)
+        public CommunityController(ApplicationDbContext db, UserManager<ApplicationUser> um, IActivityService activity,
+            IHubContext<ChatHub> chatHub)
         {
-            _db = db; _userManager = um; _activity = activity;
+            _db = db; _userManager = um; _activity = activity; _chatHub = chatHub;
         }
 
         private async Task<Member?> GetMemberAsync() =>
@@ -1339,6 +1342,11 @@ namespace ChurchMinistry.Controllers
             ViewBag.Total = pager.Total; ViewBag.Page = pager.Page; ViewBag.TotalPages = pager.TotalPages;
             ViewBag.Pager = pager;
             await SetAmenDataAsync(posts.Select(p => p.Id).ToList());
+
+            // The feed has been seen: clears the Community "new" tag (NavUnreadViewComponent)
+            var userId = _userManager.GetUserId(User);
+            await _db.Members.Where(m => m.UserId == userId)
+                .ExecuteUpdateAsync(s => s.SetProperty(m => m.CommunityLastSeenAt, DateTime.UtcNow));
             return View();
         }
 
@@ -1418,6 +1426,8 @@ namespace ChurchMinistry.Controllers
             _db.ForumPosts.Add(post);
             await _db.SaveChangesAsync();
             await _activity.LogAsync(member.Id, MemberActivityType.ForumPost, post.Title, post.Id);
+            // Community "new" tag on other members' pages (wwwroot/js/nav-unread.js)
+            await _chatHub.Clients.All.SendAsync("CommunityActivity", new { memberId = member.Id });
             return RedirectToAction("Index");
         }
 

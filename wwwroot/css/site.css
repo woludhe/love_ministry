@@ -500,6 +500,11 @@ img {
     gap: 1.5rem;
 }
 
+/* Cards no wider than on the Sermons page (3 per row in the 1200px container = 368px), e.g. on the member dashboard */
+.cards-grid-sermons {
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 280px), 368px));
+}
+
 .card {
     background: var(--white);
     border: 1px solid var(--border);
@@ -1021,7 +1026,7 @@ img {
     .form-group label {
         display: block;
         font-weight: 600;
-        font-size: .88rem;
+        font-size: var(--form-label);
         margin-bottom: .4rem;
         color: var(--text);
     }
@@ -1031,7 +1036,7 @@ img {
     padding: .6rem .9rem;
     border: 1.5px solid var(--border);
     border-radius: 8px;
-    font-size: .9rem;
+    font-size: var(--form-input);
     font-family: inherit;
     background: var(--white);
     color: var(--text);
@@ -1072,7 +1077,7 @@ img {
 }
 
 .field-error {
-    font-size: .78rem;
+    font-size: var(--form-hint);
     color: var(--coral);
     margin-top: .25rem;
     display: block;
@@ -1084,7 +1089,7 @@ img {
     padding: .75rem 1rem;
     border-radius: 8px;
     margin-bottom: 1.25rem;
-    font-size: .88rem;
+    font-size: var(--form-text);
 }
 
 .validation-summary-valid {
@@ -1097,6 +1102,116 @@ img {
     font-size: .8rem;
     color: var(--text-s);
     margin-top: .75rem;
+}
+
+/* --- Payment forms: Give page and event Pay page (gv-*) --- */
+
+.gv-hero-verse  { font-style:italic; }
+.gv-hero-verse span { font-style:normal; font-weight:600; margin-left:.25rem; }
+
+/* Body layout */
+.gv-body        { max-width:1000px;margin:0 auto;padding:2rem 1.5rem; }
+.gv-layout      { display:grid;grid-template-columns:320px 1fr;gap:1.5rem;align-items:start; }
+.gv-col         { background:var(--white);border:1px solid var(--border);
+                  border-radius:var(--radius);padding:1.5rem;box-shadow:var(--shadow); }
+
+/* Method list */
+.gv-methods     { display:flex;flex-direction:column;gap:.5rem; }
+.gv-method-btn  { display:flex;align-items:center;gap:.85rem;width:100%;
+                  background:var(--white);border:1.5px solid var(--border);
+                  border-radius:10px;padding:.75rem;cursor:pointer;font-family:inherit;
+                  text-align:left;color:var(--text);transition:all .15s; }
+.gv-method-btn:hover{ border-color:var(--purple); }
+.gv-method-btn.active{ background:var(--purple-l);border-color:var(--purple); }
+.gv-method-badge{ width:46px;height:28px;border-radius:6px;display:flex;flex-shrink:0;
+                  align-items:center;justify-content:center;
+                  font-size:.7rem;font-weight:800;color:white; }
+.gv-method-info { flex:1;display:flex;flex-direction:column;gap:.1rem; }
+.gv-method-name { font-size:.9rem;font-weight:600; }
+.gv-method-currency{ font-size:.75rem;color:var(--text-s); }
+.gv-method-arrow{ color:var(--text-s);font-size:.75rem; }
+.gv-method-btn.active .gv-method-arrow{ color:var(--purple); }
+
+/* Form fields */
+.gv-field       { margin-bottom:1.1rem; }
+.gv-label       { display:block;margin-bottom:.4rem; }   /* type: "Form typography" below */
+.gv-req         { color:var(--coral); }
+.gv-hint        { display:inline-block;margin-top:.25rem; }
+.gv-error       { margin-top:.25rem;display:block; }
+.gv-check-label { display:flex;align-items:center;gap:.5rem;cursor:pointer; }
+.gv-checkbox    { width:16px;height:16px;accent-color:var(--purple); }
+
+/* Quick amounts */
+.gv-amounts     { display:grid;grid-template-columns:repeat(4,1fr);gap:.4rem; }
+.gv-amt-btn     { background:var(--white);border:1.5px solid var(--border);font-family:inherit;
+                  color:var(--text);border-radius:8px;padding:.5rem .3rem;
+                  font-size:.8rem;font-weight:600;cursor:pointer;transition:all .15s;text-align:center; }
+.gv-amt-btn:hover{ border-color:var(--purple);color:var(--purple); }
+.gv-amt-btn.selected{ background:var(--purple);border-color:var(--purple);color:var(--white); }
+
+/* Amount input */
+.gv-amount-input-wrap{ position:relative; }
+.gv-currency-prefix { position:absolute;left:.9rem;top:50%;transform:translateY(-50%);
+                      color:var(--text-s);font-weight:700;font-size:.85rem;pointer-events:none; }
+.gv-amount-input{ padding-left:3.2rem !important; }
+
+/* Giving type */
+.gv-type-grid   { display:grid;grid-template-columns:repeat(3,1fr);gap:.45rem; }
+.gv-type-opt    { display:flex;flex-direction:column;align-items:center;gap:.3rem;
+                  padding:.7rem .4rem;border:1.5px solid var(--border);background:var(--white);
+                  border-radius:10px;cursor:pointer;font-size:.8rem;font-weight:600;
+                  color:var(--text-s);transition:all .15s;text-align:center; }
+.gv-type-opt input{ display:none; }
+.gv-type-opt i  { font-size:1.1rem; }
+.gv-type-opt:hover{ border-color:var(--purple);color:var(--text); }
+.gv-type-opt.active{ border-color:var(--purple);background:var(--purple-l);color:var(--purple); }
+
+/* Instructions */
+.gv-instructions{ background:var(--purple-l);border:1px solid var(--border);
+                  border-radius:10px;padding:1rem;margin-bottom:1rem; }
+.gv-instructions-header{ display:flex;align-items:center;gap:.5rem;
+                          font-size:.85rem;font-weight:700;color:var(--purple);margin-bottom:.6rem; }
+.gv-instructions-text{ font-size:.88rem;color:var(--text);line-height:1.7;white-space:pre-line;margin:0; }
+.gv-instructions-img{ max-width:180px;border-radius:10px;margin-top:.75rem;border:1px solid var(--border); }
+
+/* Submit */
+.gv-submit-btn  { margin-top:.25rem; }
+.gv-submit-btn:disabled{ opacity:.7;cursor:not-allowed; }
+.gv-secure-note { text-align:center;font-size:.78rem;color:var(--text-s);margin-top:.75rem; }
+
+.gv-empty       { text-align:center;padding:4rem 1.5rem;color:var(--text-s); }
+.gv-empty h3    { font-size:1.15rem;color:var(--text);margin:.75rem 0 .4rem; }
+
+/* Event Pay page: form on the left, order summary on the right */
+.gv-layout-summary { grid-template-columns:1fr 320px; }
+.gv-summary     { position:sticky;top:80px; }
+.gv-summary-img { width:100%;max-height:150px;object-fit:cover;border-radius:10px;margin-bottom:1rem; }
+.gv-summary .summary-row { gap:1rem;font-size:.88rem; }
+.gv-summary .summary-row > :first-child { color:var(--text-s);flex-shrink:0; }
+.gv-summary .summary-row > :last-child { text-align:right;overflow-wrap:anywhere; }
+.gv-summary-total { border-top:1.5px solid var(--border);padding-top:.6rem;margin-top:.3rem; }
+.gv-summary-total strong { color:var(--purple);font-size:1.05rem; }
+.gv-summary-total > :first-child { color:var(--text) !important;font-weight:700; }
+/* Choice cards (method or amount) built on a hidden radio */
+.gv-method-btn input[type=radio] { display:none; }
+.gv-method-btn:has(input:checked) { background:var(--purple-l);border-color:var(--purple); }
+.gv-error[hidden] { display:none; }
+.gv-option-amount { font-weight:800;color:var(--purple);white-space:nowrap; }
+.gv-option-note { font-size:.75rem;color:var(--text-s); }
+.gv-behalf      { background:var(--purple-l);border-radius:10px;padding:1rem;margin-top:.75rem; }
+.gv-row         { display:grid;grid-template-columns:1fr 1fr;gap:0 1rem; }
+.gv-phone       { display:flex;gap:.5rem; }
+.gv-phone select { width:auto;flex:none; }
+.gv-phone input  { flex:1;min-width:0; }
+
+@media(max-width:720px){
+    .gv-layout    { grid-template-columns:1fr; }
+    .gv-type-grid { grid-template-columns:repeat(2,1fr); }
+    .gv-amounts   { grid-template-columns:repeat(2,1fr); }
+    .gv-body      { padding:1rem; }
+    .gv-col       { padding:1.1rem; }
+    .gv-row       { grid-template-columns:1fr; }
+    .gv-summary   { position:static;order:-1; }   /* what is being paid for comes first on phones */
 }
 
 /* --- Give Page --- */
@@ -1504,6 +1619,11 @@ input:checked ~ .toggle-track {
         color: var(--purple);
     }
 
+    /* Member sidebar: Dashboard is always bold, selected or not */
+    .sidebar-nav a.sidebar-nav-home {
+        font-weight: 700;
+    }
+
     .sidebar-nav a i {
         width: 16px;
         text-align: center;
@@ -1809,7 +1929,7 @@ a.kpi-card.kpi-link {
 }
 
 /* Dashboard sidebar drawer controls (shown on mobile only) */
-.sidebar-toggle, .sidebar-close, .sidebar-backdrop {
+.sidebar-toggle, .sidebar-close, .sidebar-backdrop, .toggle-shortcuts {
     display: none;
 }
 
@@ -1993,13 +2113,37 @@ a.kpi-card.kpi-link {
     }
 
 /* --- Chat --- */
+/* The chat fills the screen below the sticky navbar (64px); the message list scrolls inside it */
 .chat-page {
+    --chat-offset: 64px;
     display: grid;
-    grid-template-columns: 180px 1fr;
+    grid-template-columns: 200px 1fr;
+    grid-template-rows: minmax(0, 1fr);
     gap: 1.5rem;
     max-width: 1100px;
-    margin: 2rem auto;
-    padding: 0 1.5rem;
+    height: calc(100vh - var(--chat-offset));
+    height: calc(100dvh - var(--chat-offset));
+    min-height: 360px;
+    margin: 0 auto;
+    padding: 1rem 1.5rem;
+}
+
+.chat-title {
+    font-size: 1.05rem;
+    font-weight: 800;
+    margin: .25rem 0 .5rem;
+    display: flex;
+    align-items: center;
+    gap: .5rem;
+}
+
+    .chat-title i {
+        color: var(--purple);
+    }
+
+.member-main .chat-title {
+    font-size: 1.05rem;
+    margin-bottom: .5rem;
 }
 
 .chat-rooms {
@@ -2035,16 +2179,86 @@ a.kpi-card.kpi-link {
     border-radius: var(--radius);
     display: flex;
     flex-direction: column;
-    height: 600px;
+    height: 100%;
+    min-height: 0;
     box-shadow: var(--shadow);
 }
 
 .chat-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: .75rem;
     padding: .75rem 1rem;
     border-bottom: 1px solid var(--border);
     font-weight: 700;
     background: var(--purple-l);
     border-radius: var(--radius) var(--radius) 0 0;
+}
+
+.chat-online {
+    display: inline-flex;
+    align-items: center;
+    gap: .4rem;
+    font-size: .8rem;
+    font-weight: 600;
+    color: var(--text-s);
+    white-space: nowrap;
+}
+
+    .chat-online[hidden] {
+        display: none;
+    }
+
+.chat-online-dot {
+    width: .55rem;
+    height: .55rem;
+    border-radius: 50%;
+    background: var(--green);
+    box-shadow: 0 0 0 3px rgba(16, 185, 129, .2);
+}
+
+/* A room with messages the member hasn't opened yet */
+.room-btn.has-new::after {
+    content: "";
+    width: .5rem;
+    height: .5rem;
+    margin-left: auto;
+    border-radius: 50%;
+    background: var(--coral);
+}
+
+.room-btn.active.has-new::after {
+    background: white;
+}
+
+/* New-message tag on a sidebar link (Live Chat) */
+.nav-count {
+    margin-left: auto;
+    min-width: 1.35rem;
+    height: 1.35rem;
+    padding: 0 .4rem;
+    border-radius: 100px;
+    background: var(--coral);
+    color: white;
+    font-size: .7rem;
+    font-weight: 700;
+    line-height: 1.35rem;
+    text-align: center;
+}
+
+    .nav-count[hidden] {
+        display: none;
+    }
+
+    .nav-count.pulse {
+        animation: nav-count-pulse .6s ease-out;
+    }
+
+@keyframes nav-count-pulse {
+    0% { transform: scale(1); box-shadow: 0 0 0 0 rgba(239, 68, 68, .55); }
+    40% { transform: scale(1.2); }
+    100% { transform: scale(1); box-shadow: 0 0 0 8px rgba(239, 68, 68, 0); }
 }
 
 .chat-messages {
@@ -2086,6 +2300,27 @@ a.kpi-card.kpi-link {
         color: var(--text-s);
     }
 
+/* Own messages sit on the right in the site colour */
+.chat-msg.own {
+    flex-direction: row-reverse;
+}
+
+    .chat-msg.own .msg-bubble {
+        background: var(--purple);
+        color: white;
+        border-radius: 12px 0 12px 12px;
+    }
+
+        .chat-msg.own .msg-bubble strong,
+        .chat-msg.own .msg-bubble small {
+            color: rgba(255, 255, 255, .85);
+        }
+
+.msg-bubble p {
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+
 .system-msg {
     text-align: center;
     font-size: .78rem;
@@ -2098,6 +2333,44 @@ a.kpi-card.kpi-link {
     gap: .5rem;
     padding: .75rem;
     border-top: 1px solid var(--border);
+}
+
+/* Phones: the "Dashboard Menu" bar (about 48px) is also sticky; rooms become a strip above the chat */
+@media (max-width: 768px) {
+    .chat-page {
+        --chat-offset: 112px;
+        grid-template-columns: 1fr;
+        grid-template-rows: auto minmax(0, 1fr);
+        gap: .5rem;
+        padding: .5rem;
+    }
+
+    .chat-title {
+        display: none;
+    }
+
+    .chat-rooms {
+        flex-direction: row;
+        overflow-x: auto;
+        scrollbar-width: none;
+    }
+
+    .room-btn {
+        flex: none;
+        padding: .5rem .8rem;
+    }
+
+    .chat-messages {
+        padding: .75rem;
+    }
+
+    .msg-bubble {
+        max-width: 85%;
+    }
+
+    .chat-input-row {
+        padding: .5rem;
+    }
 }
 
 /* --- Forum: Facebook-style feed (Views/Community/_PostCard.cshtml) --- */
@@ -3042,6 +3315,56 @@ a.kpi-card.kpi-link {
         background: #1e1b4b;
     }
 
+    /* Member layout: the bar holds the menu button plus, on the right, the Live Chat shortcut */
+    .sidebar-toggle-bar {
+        display: flex;
+        align-items: center;
+        position: sticky;
+        top: 64px;
+        z-index: 90;
+        background: #000;
+    }
+
+        .sidebar-toggle-bar .sidebar-toggle {
+            position: static;
+            flex: 1;
+            width: auto;
+        }
+
+    .toggle-shortcuts {
+        display: flex;
+        align-items: center;
+        gap: .5rem;
+        margin-right: .75rem;
+    }
+
+    .toggle-chat:not([hidden]) {
+        display: flex;
+        align-items: center;
+        gap: .4rem;
+        padding: .35rem .6rem;
+        border-radius: 100px;
+        background: rgba(255, 255, 255, .12);
+        color: white;
+        font-size: 1.05rem;
+    }
+
+        .toggle-chat.pulse {
+            animation: nav-count-pulse .6s ease-out;
+        }
+
+    .toggle-chat-count {
+        min-width: 1.25rem;
+        height: 1.25rem;
+        padding: 0 .35rem;
+        border-radius: 100px;
+        background: var(--coral);
+        font-size: .7rem;
+        font-weight: 700;
+        line-height: 1.25rem;
+        text-align: center;
+    }
+
     .sidebar-close {
         display: block;
         margin-left: auto;
@@ -3204,7 +3527,7 @@ a.kpi-card.kpi-link {
 }
 
 @media print {
-    .navbar, .footer, .btn, .sidebar-nav, .pager, .sidebar-toggle {
+    .navbar, .footer, .btn, .sidebar-nav, .pager, .sidebar-toggle, .sidebar-toggle-bar {
         display: none !important;
     }
 
@@ -4422,7 +4745,8 @@ a.kpi-card.kpi-link {
     margin-left: .25rem;
 }
 
-.nav-ico,
+/* Menu icons show only in the phone menu. Scoped to .navbar so it beats Font Awesome's own .fas display rule (loaded after site.css) */
+.navbar .nav-ico,
 .nav-backdrop {
     display: none;
 }
@@ -4498,7 +4822,7 @@ a.kpi-card.kpi-link {
                 color: var(--purple);
             }
 
-    .nav-ico {
+    .navbar .nav-ico {
         display: inline-block;
         width: 1.25rem;
         text-align: center;
@@ -4935,4 +5259,111 @@ input.form-control:disabled {
     color: var(--text-s);
     cursor: not-allowed;
     opacity: 1;
+}
+
+/* ── Form typography ─────────────────────────────────────────
+   One type scale for every form on the site: section titles, labels, fields, paragraphs, help text
+   and errors. Pages use these classes (or plain .form-group markup) instead of their own font sizes;
+   the older per-page names (gv-*, pm-*, ls-field-label) are listed here so they follow the same scale. */
+:root {
+    --form-section: 1rem;     /* title over a group of fields */
+    --form-label: .88rem;     /* field label */
+    --form-input: .95rem;     /* text in inputs, selects, textareas */
+    --form-text: .9rem;       /* paragraphs, checkbox and radio labels */
+    --form-hint: .8rem;       /* help text and field errors */
+}
+
+/* Section titles */
+.form-section-title,
+.gv-section-title,
+.pm-section-title {
+    display: flex;
+    align-items: center;
+    gap: .5rem;
+    font-family: inherit;
+    font-size: var(--form-section);
+    font-weight: 700;
+    color: var(--text);
+    text-transform: none;
+    letter-spacing: normal;
+    margin: 0 0 1rem;
+}
+
+    .form-section-title i,
+    .gv-section-title i,
+    .pm-section-title i {
+        color: var(--purple);
+    }
+
+/* Field labels */
+.form-group label,
+.gv-label,
+.pm-field > label,
+.ls-field-label {
+    font-size: var(--form-label);
+    font-weight: 600;
+    color: var(--text);
+    text-transform: none;
+    letter-spacing: normal;
+}
+
+/* Checkbox / radio labels read like body text */
+.checkbox-group label,
+.gv-check-label,
+.form-check-label {
+    font-size: var(--form-text);
+    font-weight: 500;
+}
+
+/* Fields */
+.form-control {
+    font-size: var(--form-input);
+    line-height: 1.4;
+}
+
+/* Paragraphs inside forms and sign-in cards */
+.form-page form p:not([class]),
+.form-text,
+.auth-card > p {
+    font-size: var(--form-text);
+    line-height: 1.6;
+}
+
+/* Help text under a field */
+.form-hint,
+.gv-hint,
+.pm-hint,
+.form-group small,
+.form-group .meta,
+.option-content small {
+    font-size: var(--form-hint);
+    font-weight: 400;
+    color: var(--text-s);
+    line-height: 1.5;
+}
+
+.form-hint,
+.form-group > small,
+.form-group > .meta {
+    display: block;
+    margin: .3rem 0 0;
+}
+
+/* Errors */
+.field-error,
+.gv-error,
+.field-validation-error {
+    font-size: var(--form-hint);
+    color: var(--coral);
+}
+
+.validation-summary {
+    font-size: var(--form-text);
+}
+
+/* Phones: 16px text in fields so iOS doesn't zoom in when one is tapped */
+@media (max-width: 768px) {
+    .form-control {
+        font-size: 1rem;
+    }
 }

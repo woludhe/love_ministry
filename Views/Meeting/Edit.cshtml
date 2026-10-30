@@ -6,167 +6,149 @@
     var roomCode = ViewBag.RoomCode as string ?? "";
 }
 
-<div style="max-width:640px;margin:2rem auto;padding:0 1rem">
+<section class="page-header">
+  <h1><i class="fas fa-pen-to-square"></i> Edit Meeting</h1>
+  <p>Room code: <span style="font-family:monospace;font-weight:700">@roomCode</span></p>
+</section>
 
-    <div style="margin-bottom:1.5rem">
-        <a asp-action="Index" style="color:rgba(255,255,255,.45);font-size:.85rem;
-           text-decoration:none;display:inline-flex;align-items:center;gap:.4rem">
-            <i class="fas fa-arrow-left"></i> Meetings
-        </a>
-        <h1 style="font-size:1.4rem;font-weight:800;margin:.5rem 0 .25rem">Edit Meeting</h1>
-        <p style="font-size:.85rem;color:rgba(255,255,255,.4)">
-            Room code: <span style="font-family:monospace;color:#a5b4fc">@roomCode</span>
-        </p>
+<div class="form-page">
+  <form asp-action="Edit" asp-route-id="@roomId" method="post">
+    <div asp-validation-summary="ModelOnly" class="validation-summary"></div>
+
+    <div class="form-group">
+      <label asp-for="Title">Meeting Title</label>
+      <input asp-for="Title" class="form-control" required placeholder="e.g. Sunday Prayer Meeting" />
+      <span asp-validation-for="Title" class="field-error"></span>
     </div>
 
-    <form asp-action="Edit" asp-route-id="@roomId" method="post"
-          style="background:#18181f;border:1px solid rgba(255,255,255,.08);
-                 border-radius:16px;padding:1.75rem;display:flex;flex-direction:column;gap:1.1rem">
-        @Html.AntiForgeryToken()
+    <div class="form-row">
+      <div class="form-group">
+        <label asp-for="MeetingType">Meeting Type</label>
+        <select asp-for="MeetingType" class="form-control"
+                asp-items="Html.GetEnumSelectList<ChurchMinistry.Models.MeetingType>()"></select>
+      </div>
+      <div class="form-group">
+        <label asp-for="ScheduledAt">Date & Time</label>
+        <input asp-for="ScheduledAt" class="form-control" type="datetime-local" />
+        <span asp-validation-for="ScheduledAt" class="field-error"></span>
+      </div>
+      <div class="form-group">
+        <label asp-for="DurationMinutes">Duration</label>
+        <select asp-for="DurationMinutes" class="form-control">
+          @foreach (var (minutes, label) in ChurchMinistry.ViewModels.CreateMeetingViewModel.DurationOptions)
+          {
+            <option value="@minutes" selected="@(Model.DurationMinutes == minutes)">@label</option>
+          }
+        </select>
+      </div>
+    </div>
 
-        <div class="mf">
-            <label class="ml">Title <span style="color:#ef4444">*</span></label>
-            <input asp-for="Title" class="mi" required placeholder="e.g. Sunday Prayer Meeting" />
-            <span asp-validation-for="Title" class="me"></span>
-        </div>
+    <div class="form-group">
+      <label asp-for="Description">Description (optional)</label>
+      <textarea asp-for="Description" class="form-control" rows="3"
+                placeholder="What will this meeting cover?"></textarea>
+    </div>
 
-        <div class="mf">
-            <label class="ml">Description</label>
-            <textarea asp-for="Description" class="mi" rows="3"
-                      placeholder="What will this meeting cover?"></textarea>
-        </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label asp-for="MaxParticipants">Max Participants</label>
+        <input asp-for="MaxParticipants" class="form-control" type="number" min="2" max="500" />
+      </div>
+      <div class="form-group">
+        <label asp-for="PassCode">Passcode (optional)</label>
+        <input asp-for="PassCode" class="form-control" placeholder="Leave blank for no passcode" />
+      </div>
+    </div>
 
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:.85rem">
-            <div class="mf">
-                <label class="ml">Meeting Type</label>
-                <select asp-for="MeetingType" class="mi">
-                    @foreach (var t in Enum.GetValues<ChurchMinistry.Models.MeetingType>())
-                    {
-                        <option value="@t">@t</option>
-                    }
-                </select>
-            </div>
-            <div class="mf">
-                <label class="ml">Scheduled Date &amp; Time</label>
-                <input asp-for="ScheduledAt" type="datetime-local" class="mi" />
-                <span asp-validation-for="ScheduledAt" class="me"></span>
-            </div>
-            <div class="mf">
-                <label class="ml">Duration</label>
-                <select asp-for="DurationMinutes" class="mi">
-                    @foreach (var (minutes, label) in ChurchMinistry.ViewModels.CreateMeetingViewModel.DurationOptions)
-                    {
-                        <option value="@minutes" selected="@(Model.DurationMinutes == minutes)">@label</option>
-                    }
-                </select>
-            </div>
-        </div>
+    <div class="form-group">
+      <label>Who can join?</label>
+      <div class="form-options-grid">
+        <label class="option-toggle">
+          <input asp-for="IsPublic" type="radio" value="true" />
+          <div class="option-content">
+            <i class="fas fa-globe"></i>
+            <span>Public</span>
+            <small>Visible to all members</small>
+          </div>
+        </label>
+        <label class="option-toggle">
+          <input asp-for="IsPublic" type="radio" value="false" />
+          <div class="option-content">
+            <i class="fas fa-lock"></i>
+            <span>Private</span>
+            <small>Only invited people &amp; groups</small>
+          </div>
+        </label>
+      </div>
+    </div>
 
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:.85rem">
-            <div class="mf">
-                <label class="ml">Max Participants</label>
-                <input asp-for="MaxParticipants" type="number" class="mi" min="2" max="500" />
-            </div>
-            <div class="mf">
-                <label class="ml">Passcode <span style="font-size:.75rem;color:rgba(255,255,255,.35)">(optional)</span></label>
-                <input asp-for="PassCode" class="mi" placeholder="Leave blank for no passcode" />
-            </div>
+    <div class="form-options-grid">
+      <label class="option-toggle">
+        <input asp-for="WaitingRoomEnabled" type="checkbox" />
+        <div class="option-content">
+          <i class="fas fa-door-open"></i>
+          <span>Waiting Room</span>
+          <small>Admit participants manually</small>
         </div>
+      </label>
+      <label class="option-toggle">
+        <input asp-for="ChatEnabled" type="checkbox" />
+        <div class="option-content">
+          <i class="fas fa-comments"></i>
+          <span>Meeting Chat</span>
+          <small>Allow in-meeting messages</small>
+        </div>
+      </label>
+      <label class="option-toggle">
+        <input asp-for="IsRecurring" type="checkbox"
+               onchange="document.getElementById('recurringOpts').style.display=this.checked?'grid':'none'" />
+        <div class="option-content">
+          <i class="fas fa-rotate"></i>
+          <span>Recurring</span>
+          <small>Repeat daily or weekly</small>
+        </div>
+      </label>
+    </div>
 
-        <div style="display:flex;gap:1.5rem;flex-wrap:wrap;color:whitesmoke;">
-            <label style="display:flex;align-items:center;gap:.5rem;cursor:pointer;font-size:.88rem">
-                <input asp-for="IsPublic" type="radio" value="true"
-                       style="width:16px;height:16px;accent-color:#6366f1" />
-                Public (visible to all members)
-            </label>
-            <label style="display:flex;align-items:center;gap:.5rem;cursor:pointer;font-size:.88rem">
-                <input asp-for="IsPublic" type="radio" value="false"
-                       style="width:16px;height:16px;accent-color:#6366f1" />
-                Private (invited people &amp; groups only)
-            </label>
-            <label style="display:flex;align-items:center;gap:.5rem;cursor:pointer;font-size:.88rem">
-                <input asp-for="WaitingRoomEnabled" type="checkbox"
-                       style="width:16px;height:16px;accent-color:#6366f1" />
-                Enable waiting room
-            </label>
-            <label style="display:flex;align-items:center;gap:.5rem;cursor:pointer;font-size:.88rem">
-                <input asp-for="ChatEnabled" type="checkbox"
-                       style="width:16px;height:16px;accent-color:#6366f1" />
-                Enable chat
-            </label>
-            <label style="display:flex;align-items:center;gap:.5rem;cursor:pointer;font-size:.88rem">
-                <input asp-for="IsRecurring" type="checkbox"
-                       style="width:16px;height:16px;accent-color:#6366f1"
-                       onchange="document.getElementById('recurringOpts').style.display=this.checked?'grid':'none'" />
-                Recurring meeting
-            </label>
-        </div>
+    <div id="recurringOpts" class="form-row" style="display:@(Model.IsRecurring ? "grid" : "none");grid-template-columns:repeat(auto-fit,minmax(150px,1fr))">
+      <div class="form-group">
+        <label asp-for="RecurringFrequency">Repeats</label>
+        <select asp-for="RecurringFrequency" class="form-control"
+                onchange="document.getElementById('recurringDayGroup').style.display=this.value==='Daily'?'none':''">
+          <option value="Daily">Daily</option>
+          <option value="Weekly">Weekly</option>
+        </select>
+      </div>
+      <div class="form-group" id="recurringDayGroup" style="@(Model.RecurringFrequency == "Daily" ? "display:none" : "")">
+        <label asp-for="RecurringDay">Day of Week</label>
+        <select asp-for="RecurringDay" class="form-control">
+          @foreach (var d in new[] { "Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday" })
+          {
+            <option value="@d">@d</option>
+          }
+        </select>
+      </div>
+      <div class="form-group">
+        <label asp-for="RecurringTime">Time</label>
+        <input asp-for="RecurringTime" class="form-control" type="time" />
+      </div>
+      <small class="form-hint" style="grid-column:1/-1;margin-top:-.5rem">
+        A new meeting with its own room code is created for each day or week. Invitations carry over.
+        Changes here apply to this meeting and the ones after it.
+      </small>
+    </div>
 
-        <div id="recurringOpts" style="display:@(Model.IsRecurring ? "grid" : "none");grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:.85rem">
-            <div class="mf">
-                <label class="ml">Repeats</label>
-                <select asp-for="RecurringFrequency" class="mi"
-                        onchange="document.getElementById('recurringDayGroup').style.display=this.value==='Daily'?'none':''">
-                    <option value="Daily">Daily</option>
-                    <option value="Weekly">Weekly</option>
-                </select>
-            </div>
-            <div class="mf" id="recurringDayGroup" style="@(Model.RecurringFrequency == "Daily" ? "display:none" : "")">
-                <label class="ml">Day of Week</label>
-                <select asp-for="RecurringDay" class="mi">
-                    @foreach (var d in new[] { "Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday" })
-                    {
-                        <option value="@d">@d</option>
-                    }
-                </select>
-            </div>
-            <div class="mf">
-                <label class="ml">Time</label>
-                <input asp-for="RecurringTime" type="time" class="mi" />
-            </div>
-            <p style="grid-column:1/-1;margin:0;font-size:.78rem;color:rgba(255,255,255,.45)">
-                A new meeting with its own room code is created for each day or week. Invitations carry over.
-                Changes here apply to this meeting and the ones after it.
-            </p>
-        </div>
-
-        <div style="display:flex;gap:.75rem;justify-content:flex-end;padding-top:.5rem;
-                    border-top:1px solid rgba(255,255,255,.07)">
-            <a asp-action="Index"
-               style="display:inline-flex;align-items:center;gap:.45rem;padding:.6rem 1.2rem;
-                      border-radius:9px;background:rgba(255,255,255,.07);color:rgba(255,255,255,.7);
-                      border:1px solid rgba(255,255,255,.1);font-size:.88rem;font-weight:600;
-                      text-decoration:none">
-                Cancel
-            </a>
-            @if (!Model.IsPublic)
-            {
-                <a asp-action="Invite" asp-route-id="@roomId"
-                   style="display:inline-flex;align-items:center;gap:.45rem;padding:.6rem 1.2rem;
-                          border-radius:9px;background:rgba(99,102,241,.15);color:#a5b4fc;
-                          border:1px solid rgba(99,102,241,.3);font-size:.88rem;font-weight:600;
-                          text-decoration:none">
-                    <i class="fas fa-user-plus"></i> Invite People
-                </a>
-            }
-            <button type="submit"
-                    style="display:inline-flex;align-items:center;gap:.45rem;padding:.6rem 1.25rem;
-                           border-radius:9px;background:#6366f1;color:white;border:none;
-                           font-size:.88rem;font-weight:700;cursor:pointer">
-                <i class="fas fa-save"></i> Save Changes
-            </button>
-        </div>
-    </form>
+    <div style="display:flex;gap:1rem;flex-wrap:wrap;margin-top:1.5rem">
+      <button type="submit" class="btn-meet btn-meet-primary">
+        <i class="fas fa-save"></i> Save Changes
+      </button>
+      @if (!Model.IsPublic)
+      {
+        <a asp-action="Invite" asp-route-id="@roomId" class="btn-meet btn-meet-ghost">
+          <i class="fas fa-user-plus"></i> Invite People
+        </a>
+      }
+      <a asp-action="Index" class="btn-meet btn-meet-ghost">Cancel</a>
+    </div>
+  </form>
 </div>
-
-<style>
-.mf { display:flex;flex-direction:column;gap:.35rem; }
-.ml { font-size:.82rem;font-weight:600;color:rgba(255,255,255,.45); }
-.mi { background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);
-      border-radius:9px;padding:.55rem .85rem;color:rgba(255,255,255,.88);
-      font-size:.88rem;width:100%;transition:border .15s; }
-.mi:focus { outline:none;border-color:rgba(99,102,241,.5);
-            box-shadow:0 0 0 3px rgba(99,102,241,.1); }
-.me { font-size:.75rem;color:#fca5a5; }
-select.mi option { background:#18181f; }
-</style>

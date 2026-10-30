@@ -98,16 +98,10 @@
         </div>
     }
     <div class="section-header"><h2>Recent Sermons</h2><a asp-controller="Media" asp-action="Index" class="btn btn-outline btn-sm">View All</a></div>
-    <div class="cards-grid">
+    <div class="cards-grid cards-grid-sermons">
         @foreach (var s in Model.RecentSermons)
         {
-            <div class="card sermon-card">
-                <div class="card-body">
-                    <h3>@s.Title</h3>
-                    <p class="meta">@s.Speaker · @s.SermonDate.ToString("dd MMM yyyy")</p>
-                    <a asp-controller="Media" asp-action="Watch" asp-route-id="@s.Id" class="btn btn-primary btn-sm">@(!s.IsLive && s.SermonDate > DateTime.UtcNow ? "View" : "Watch")</a>
-                </div>
-            </div>
+            <partial name="_SermonCard" model="s" />
         }
     </div>
     <div class="section-header"><h2>Upcoming Events</h2></div>

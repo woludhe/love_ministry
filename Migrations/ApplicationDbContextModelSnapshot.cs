@@ -1107,8 +1107,14 @@ namespace ChurchMinistry.Migrations
                     b.Property<DateTime?>("BaptismDate")
                         .HasColumnType("datetime(6)");
 
+                    b.Property<DateTime?>("ChatLastSeenAt")
+                        .HasColumnType("datetime(6)");
+
                     b.Property<string>("City")
                         .HasColumnType("longtext");
+
+                    b.Property<DateTime?>("CommunityLastSeenAt")
+                        .HasColumnType("datetime(6)");
 
                     b.Property<string>("Country")
                         .HasColumnType("longtext");

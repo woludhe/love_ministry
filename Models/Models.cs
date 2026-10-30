@@ -55,6 +55,8 @@ namespace ChurchMinistry.Models
         public string? Notes { get; set; }
         public string? EmergencyContact { get; set; }
         public string? EmergencyPhone { get; set; }
+        public DateTime? ChatLastSeenAt { get; set; }   // UTC; Members Chat messages after this count as new
+        public DateTime? CommunityLastSeenAt { get; set; }   // UTC; Community posts after this count as new
 
         // FK
         public string? UserId { get; set; }

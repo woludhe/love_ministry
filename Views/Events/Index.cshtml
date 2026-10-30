@@ -4,6 +4,7 @@
     Layout = "~/Views/Shared/_Layout.cshtml";
     var myRegMap = ViewBag.MyRegMap as Dictionary<int, ChurchMinistry.Models.EventRegistration?>
                    ?? new Dictionary<int, ChurchMinistry.Models.EventRegistration?>();
+    var pastEvents = ViewBag.PastEvents as List<ChurchMinistry.Models.ChurchEvent> ?? new();
 }
 @using ChurchMinistry.Models
 
@@ -14,9 +15,11 @@
 
 <div class="container" style="max-width:1100px;margin:2rem auto;padding:0 1.5rem">
 
+    @* Upcoming: soonest first *@
+    <h2 class="events-section-title"><i class="fas fa-calendar-alt"></i> Upcoming Events</h2>
     @if (!Model.Any())
     {
-        <div style="text-align:center;padding:4rem;color:var(--text-s)">
+        <div style="text-align:center;padding:3rem 1rem;color:var(--text-s)">
             <i class="fas fa-calendar fa-3x" style="color:var(--border);display:block;margin-bottom:1rem"></i>
             <p>No upcoming events. Check back soon!</p>
         </div>
@@ -25,171 +28,31 @@
     <div class="events-list large">
     @foreach (var ev in Model)
     {
-        bool isPaid       = ev.TicketPrice.HasValue && ev.TicketPrice > 0;
-        bool isPast       = ev.StartDate < DateTime.UtcNow;
-        int  confirmed    = ev.Registrations.Count(r =>
-            r.PaymentStatus == PaymentStatus.Free ||
-            r.PaymentStatus == PaymentStatus.Successful ||
-            r.AmountPaid > 0);
-        int? spotsLeft    = ev.MaxCapacity.HasValue
-            ? ev.MaxCapacity.Value - confirmed : (int?)null;
-        bool isSoldOut    = spotsLeft.HasValue && spotsLeft <= 0;
-
-        myRegMap.TryGetValue(ev.Id, out var myReg);
-        bool isRegistered = myReg != null &&
-            myReg.PaymentStatus != PaymentStatus.Failed;
-        bool hasPending   = myReg?.PaymentStatus == PaymentStatus.Pending
-                         && myReg?.AmountPaid < myReg?.TotalAmount;
-
-        <div class="event-card @(isPast ? "event-card-past" : "")">
-            @if (!string.IsNullOrEmpty(ev.ImageUrl))
-            {
-                <div class="event-card-img-wrap">
-                    <img src="@ev.ImageUrl" alt="@ev.Title" class="event-card-img" />
-                    @if (isPast)
-                    { <div class="event-past-overlay">Past Event</div> }
-                </div>
-            }
-
-            <div class="event-card-body">
-                @* {{-- Date badge --}} *@
-                <div class="event-date-badge">
-                    <span class="day">@ev.StartDate.Day</span>
-                    <span class="month">@ev.StartDate.ToString("MMM")</span>
-                    <span class="year">@ev.StartDate.Year</span>
-                </div>
-
-                <div class="event-card-content">
-                    @* {{-- Title & badges --}} *@
-                    <div class="event-card-title-row">
-                        <h2 class="event-card-title">
-                            <a asp-action="Details" asp-route-id="@ev.Id">@ev.Title</a>
-                        </h2>
-                        <div class="event-badge-row">
-                            @if (isPaid)
-                            {
-                                <span class="event-badge event-badge-paid">
-                                    <i class="fas fa-ticket-alt"></i>
-                                    UGX @ev.TicketPrice!.Value.ToString("N0")
-                                </span>
-                            }
-                            else
-                            {
-                                <span class="event-badge event-badge-free">
-                                    <i class="fas fa-check-circle"></i> Free
-                                </span>
-                            }
-                            @if (ev.IsAllDay)
-                            {
-                                <span class="event-badge event-badge-allday">All Day</span>
-                            }
-                            @if (ev.AllowPartialPayment)
-                            {
-                                <span class="event-badge event-badge-partial">
-                                    <i class="fas fa-coins"></i> Partial Pay
-                                </span>
-                            }
-                            @if (isSoldOut)
-                            {
-                                <span class="event-badge event-badge-soldout">Sold Out</span>
-                            }
-                        </div>
-                    </div>
-
-                    @* {{-- Meta --}} *@
-                    <div class="event-card-meta-row">
-                        @if (!ev.IsAllDay)
-                        {
-                            <span>
-                                <i class="fas fa-clock"></i>
-                                @ev.StartDate.ToString("h:mm tt") – @ev.EndDate.ToString("h:mm tt")
-                            </span>
-                        }
-                        @if (!string.IsNullOrEmpty(ev.Location))
-                        {
-                            <span>
-                                <i class="fas fa-map-marker-alt"></i> @ev.Location
-                            </span>
-                        }
-                        @* {{-- Registration count --}} *@
-                        <span class="event-reg-count">
-                            <i class="fas fa-users"></i>
-                            @confirmed @(ev.MaxCapacity.HasValue ? $"/ {ev.MaxCapacity}" : "") registered
-                            @if (spotsLeft.HasValue && !isSoldOut && spotsLeft <= 10)
-                            {
-                                <span class="spots-urgent">· Only @spotsLeft left!</span>
-                            }
-                        </span>
-                    </div>
-
-                    @* {{-- Description snippet --}} *@
-                    @if (!string.IsNullOrEmpty(ev.Description))
-                    {
-                        <p class="event-card-desc">
-                            @(ev.Description.Length > 120
-                                ? ev.Description.Substring(0, 120) + "…"
-                                : ev.Description)
-                        </p>
-                    }
-
-                    @* {{-- Registration status / CTA --}} *@
-                    <div class="event-card-footer">
-                        @if (isRegistered)
-                        {
-                            <div class="event-reg-status">
-                                @if (myReg!.IsFullyPaid || myReg.PaymentStatus == PaymentStatus.Free)
-                                {
-                                    <span class="reg-status-badge reg-confirmed">
-                                        <i class="fas fa-check-circle"></i> You're registered
-                                    </span>
-                                }
-                                else if (hasPending)
-                                {
-                                    <span class="reg-status-badge reg-partial">
-                                        <i class="fas fa-clock"></i>
-                                        Partial - UGX @myReg.AmountPaid.ToString("N0") paid,
-                                        UGX @myReg.BalanceDue.ToString("N0") due
-                                    </span>
-                                    <a asp-action="Pay" asp-route-id="@ev.Id"
-                                       class="btn btn-primary btn-sm">
-                                        <i class="fas fa-credit-card"></i> Pay Balance
-                                    </a>
-                                }
-                            </div>
-                        }
-                        else if (!isPast)
-                        {
-                            <a asp-action="Details" asp-route-id="@ev.Id"
-                               class="btn @(isSoldOut ? "btn-outline" : "btn-primary") btn-sm">
-                                @if (isSoldOut)
-                                { <text><i class="fas fa-times"></i> Sold Out</text> }
-                                else if (isPaid)
-                                { <text><i class="fas fa-ticket-alt"></i> Get Ticket</text> }
-                                else if (ev.RequiresRegistration)
-                                { <text><i class="fas fa-user-plus"></i> Register</text> }
-                                else
-                                { <text><i class="fas fa-info-circle"></i> Details</text> }
-                            </a>
-                        }
-                        else
-                        {
-                            <a asp-action="Details" asp-route-id="@ev.Id"
-                               class="btn btn-outline btn-sm">
-                                <i class="fas fa-info-circle"></i> View Details
-                            </a>
-                        }
-                    </div>
-                </div>
-            </div>
-        </div>
+        <partial name="_EventCard" model="(ev, myRegMap.GetValueOrDefault(ev.Id))" />
     }
     </div>
     <partial name="_Pager" model="(PagerModel)ViewBag.Pager" />
+
+    @* Past: the most recent first, the last few only *@
+    @if (pastEvents.Any())
+    {
+        <h2 class="events-section-title events-section-past"><i class="fas fa-history"></i> Past Events</h2>
+        <div class="events-list large">
+        @foreach (var ev in pastEvents)
+        {
+            <partial name="_EventCard" model="(ev, myRegMap.GetValueOrDefault(ev.Id))" />
+        }
+        </div>
+    }
 </div>
 
 @section Scripts {
 <style>
 .events-list.large    { display:flex; flex-direction:column; gap:1.25rem; }
+.events-section-title { font-size:1.25rem; font-weight:800; margin:0 0 1rem;
+                        display:flex; align-items:center; gap:.5rem; }
+.events-section-title i { color:var(--purple); }
+.events-section-past  { margin-top:2.5rem; padding-top:2rem; border-top:1px solid var(--border); }
 
 .event-card           { background:var(--white); border:1px solid var(--border);
                         border-radius:var(--radius); overflow:hidden;

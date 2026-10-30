@@ -15,23 +15,7 @@
   </form>
   <div class="cards-grid">
     @foreach (var s in Model.Sermons) {
-      <div class="card sermon-card">
-        @if (!string.IsNullOrEmpty(s.ThumbnailUrl)) { <img src="@s.ThumbnailUrl" class="card-thumb" /> }
-        else { <div class="card-thumb-placeholder"><i class="fas fa-play-circle fa-3x"></i></div> }
-        <div class="card-body">
-          @if (!string.IsNullOrEmpty(s.SeriesName)) { <span class="tag">@s.SeriesName</span> }
-          <h3>@s.Title</h3>
-          <p class="meta"><i class="fas fa-user"></i> @s.Speaker &nbsp; <i class="fas fa-calendar"></i> @s.SermonDate.ToString("dd MMM yyyy")</p>
-          @if (!string.IsNullOrEmpty(s.ScriptureReference)) { <p class="scripture"><i class="fas fa-book-open"></i> @s.ScriptureReference</p> }
-          <div class="card-actions">
-            @if (s.IsLive) { <a asp-action="Live" class="btn btn-primary btn-sm"><span class="live-dot"></span> Watch Live</a> }
-            else if (s.SermonDate > DateTime.UtcNow) { <a asp-action="Watch" asp-route-id="@s.Id" class="btn btn-primary btn-sm"><i class="fas fa-eye"></i> View</a> }
-            else if (s.DeliveryMode == "audio" || (s.DeliveryMode == "meeting" && s.RecordingUrl != null)) { <a asp-action="Watch" asp-route-id="@s.Id" class="btn btn-primary btn-sm"><i class="fas fa-headphones"></i> Listen</a> }
-            else { <a asp-action="Watch" asp-route-id="@s.Id" class="btn btn-primary btn-sm"><i class="fas fa-play"></i> Watch</a> }
-          </div>
-          <p class="view-count"><i class="fas fa-eye"></i> @s.ViewCount views</p>
-        </div>
-      </div>
+      <partial name="_SermonCard" model="s" />
     }
   </div>
   @if (Model.TotalPages > 1) {

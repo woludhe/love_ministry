@@ -5,214 +5,209 @@
     var reg     = ViewBag.Registration as ChurchMinistry.Models.EventRegistration;
     decimal bal = ViewBag.BalanceDue  is decimal b ? b : (ev?.TicketPrice ?? 0);
     bool isBehalf = ViewBag.IsBehalf is bool ib && ib;
+    bool partial  = ev?.AllowPartialPayment == true && bal > 0;
+    // Same rule as EventsController.MakePayment: at least the minimum deposit, unless paying off the balance
+    decimal minAmount = ev?.MinPartialAmount is decimal m && m < bal ? m : 1;
 }
 
-<section class="page-header">
-    <h1><i class="fas fa-ticket-alt"></i> Event Payment</h1>
-    <p>Secure your spot for @ev?.Title</p>
-</section>
+<div class="gv-page">
+    <section class="page-header">
+        <h1><i class="fas fa-ticket-alt"></i> Event Payment</h1>
+        <p>Secure your spot for @ev?.Title</p>
+    </section>
 
-<div style="max-width:960px;margin:2rem auto;padding:0 1.5rem;
-     display:grid;grid-template-columns:1fr 320px;gap:2rem">
+    <div class="gv-body">
+        <div class="gv-layout gv-layout-summary">
 
-    <div class="give-form-card">
+            @* ── Left: payment form ── *@
+            <div class="gv-col">
 
-        @* {{-- Behalf toggle --}} *@
-        @if (!isBehalf)
-        {
-            <div class="behalf-toggle-card" id="behalfToggleCard">
-                <label class="behalf-toggle-label">
-                    <input type="checkbox" id="behalfToggle"
-                           onchange="document.getElementById('behalfForm').style.display=this.checked?'block':'none'" />
-                    <div class="behalf-toggle-content">
-                        <i class="fas fa-user-friends" style="font-size:1.2rem;color:var(--purple)"></i>
-                        <div>
-                            <strong>Registering on behalf of someone else?</strong>
-                            <p>Tick to enter their details. You will make the payment for them.</p>
-                        </div>
-                    </div>
-                </label>
-                <div id="behalfForm" style="display:none;margin-top:1rem;
-                     background:var(--purple-l);border-radius:10px;padding:1rem">
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label>Their Full Name</label>
-                            <input id="behalfName" class="form-control" placeholder="John Doe" />
-                        </div>
-                        <div class="form-group">
-                            <label>Their Email</label>
-                            <input id="behalfEmail" type="email" class="form-control"
-                                   placeholder="john@example.com" />
-                        </div>
-                    </div>
-                    <div class="form-group">
-                        <label>Their Phone (optional)</label>
-                        <input id="behalfPhone" class="form-control" placeholder="+256 7XX XXX XXX" />
-                    </div>
-                    <div class="form-group">
-                        <label>Notes (optional)</label>
-                        <input id="behalfNotes" class="form-control"
-                               placeholder="Any additional notes for the organiser" />
-                    </div>
-                </div>
-            </div>
-        }
-
-        @* {{-- Amount selector --}} *@
-        @if (ev?.AllowPartialPayment == true && bal > 0)
-        {
-            <div class="form-group" style="margin-top:1.25rem">
-                <label style="font-weight:700">
-                    Payment Amount
-                    <span class="tag" style="margin-left:.4rem">Partial payment allowed</span>
-                </label>
-                <div class="partial-options">
-                    <label class="partial-option" id="opt-full">
-                        <input type="radio" name="payAmt" value="@bal" checked
-                               onchange="setPayAmount(@bal)" />
-                        <div class="partial-option-inner">
-                            <strong>Pay in Full</strong>
-                            <span>UGX @bal.ToString("N0")</span>
-                        </div>
-                    </label>
-                    @if (ev.MinPartialAmount.HasValue && ev.MinPartialAmount < bal)
-                    {
-                        <label class="partial-option" id="opt-min">
-                            <input type="radio" name="payAmt" value="@ev.MinPartialAmount.Value"
-                                   onchange="setPayAmount(@ev.MinPartialAmount.Value)" />
-                            <div class="partial-option-inner">
-                                <strong>Minimum Deposit</strong>
-                                <span>UGX @ev.MinPartialAmount.Value.ToString("N0")</span>
-                                <small>Balance of UGX @((bal - ev.MinPartialAmount.Value).ToString("N0")) due later</small>
-                            </div>
-                        </label>
-                    }
-                    <label class="partial-option" id="opt-custom">
-                        <input type="radio" name="payAmt" value="custom"
-                               onchange="setPayAmount('custom')" />
-                        <div class="partial-option-inner">
-                            <strong>Custom Amount</strong>
-                            <input type="number" id="customAmt" class="form-control"
-                                   min="@(ev.MinPartialAmount ?? 1000)"
-                                   max="@bal" step="500"
-                                   placeholder="Enter amount"
-                                   style="margin-top:.35rem"
-                                   oninput="updateCustom(this.value)"
-                                   onclick="event.stopPropagation()" />
-                        </div>
-                    </label>
-                </div>
-            </div>
-        }
-        else
-        {
-            <input type="hidden" id="payAmount" value="@bal" />
-            <div class="give-summary" style="margin-top:1rem">
-                <div class="summary-row">
-                    <span>Amount to pay</span>
-                    <strong>UGX @bal.ToString("N0")</strong>
-                </div>
-                @if (reg?.AmountPaid > 0)
+                @if (!isBehalf)
                 {
-                    <div class="summary-row">
-                        <span>Already paid</span>
-                        <strong style="color:var(--green)">UGX @reg.AmountPaid.ToString("N0")</strong>
+                    <div class="gv-field">
+                        <label class="gv-check-label">
+                            <input type="checkbox" id="behalfToggle" class="gv-checkbox"
+                                   onchange="document.getElementById('behalfForm').hidden = !this.checked" />
+                            Paying on behalf of someone else?
+                        </label>
+                        <span class="gv-hint">Tick to enter their details. You make the payment for them.</span>
+                        <div id="behalfForm" class="gv-behalf" hidden>
+                            <div class="gv-row">
+                                <div class="gv-field">
+                                    <label class="gv-label" for="behalfName">Their Full Name</label>
+                                    <input id="behalfName" class="form-control" placeholder="John Doe" />
+                                </div>
+                                <div class="gv-field">
+                                    <label class="gv-label" for="behalfEmail">Their Email</label>
+                                    <input id="behalfEmail" type="email" class="form-control" placeholder="john@example.com" />
+                                </div>
+                            </div>
+                            <div class="gv-field">
+                                <label class="gv-label" for="behalfPhone">Their Phone <span class="gv-hint">(optional)</span></label>
+                                <input id="behalfPhone" type="tel" class="form-control" placeholder="+256 7XX XXX XXX" />
+                            </div>
+                            <div class="gv-field" style="margin-bottom:0">
+                                <label class="gv-label" for="behalfNotes">Notes <span class="gv-hint">(optional)</span></label>
+                                <input id="behalfNotes" class="form-control" placeholder="Any additional notes for the organiser" />
+                            </div>
+                        </div>
                     </div>
                 }
+
+                @* Amount *@
+                <h2 class="gv-section-title">Payment Amount</h2>
+                @if (partial)
+                {
+                    <div class="gv-field">
+                        <div class="gv-methods">
+                            <label class="gv-method-btn">
+                                <input type="radio" name="payAmt" value="full" checked />
+                                <div class="gv-method-info">
+                                    <span class="gv-method-name">Pay in Full</span>
+                                    <span class="gv-option-note">Settles your ticket</span>
+                                </div>
+                                <span class="gv-option-amount">UGX @bal.ToString("N0")</span>
+                            </label>
+                            @if (ev!.MinPartialAmount.HasValue && ev.MinPartialAmount < bal)
+                            {
+                                <label class="gv-method-btn">
+                                    <input type="radio" name="payAmt" value="min" />
+                                    <div class="gv-method-info">
+                                        <span class="gv-method-name">Minimum Deposit</span>
+                                        <span class="gv-option-note">UGX @((bal - ev.MinPartialAmount.Value).ToString("N0")) balance due later</span>
+                                    </div>
+                                    <span class="gv-option-amount">UGX @ev.MinPartialAmount.Value.ToString("N0")</span>
+                                </label>
+                            }
+                            <label class="gv-method-btn">
+                                <input type="radio" name="payAmt" value="custom" />
+                                <div class="gv-method-info">
+                                    <span class="gv-method-name">Custom Amount</span>
+                                    <span class="gv-option-note">Any amount from UGX @minAmount.ToString("N0") to UGX @bal.ToString("N0")</span>
+                                </div>
+                                <i class="fas fa-pen gv-method-arrow"></i>
+                            </label>
+                        </div>
+                    </div>
+                    <div class="gv-field" id="customAmtField" hidden>
+                        <label class="gv-label" for="customAmt">Amount <span class="gv-req">*</span></label>
+                        <div class="gv-amount-input-wrap">
+                            <span class="gv-currency-prefix">UGX</span>
+                            <input type="number" id="customAmt" class="form-control gv-amount-input"
+                                   min="@minAmount" max="@bal" step="any" inputmode="numeric"
+                                   placeholder="Enter amount" />
+                        </div>
+                    </div>
+                }
+                else
+                {
+                    <div class="give-summary">
+                        <div class="summary-row">
+                            <span>Amount to pay</span>
+                            <strong>UGX @bal.ToString("N0")</strong>
+                        </div>
+                        @if (reg?.AmountPaid > 0)
+                        {
+                            <div class="summary-row">
+                                <span>Already paid</span>
+                                <strong style="color:var(--green)">UGX @reg.AmountPaid.ToString("N0")</strong>
+                            </div>
+                        }
+                    </div>
+                }
+
+                @* Payment method *@
+                <h2 class="gv-section-title">Payment Method</h2>
+                <div class="gv-field">
+                    <div class="gv-methods">
+                        <label class="gv-method-btn">
+                            <input type="radio" name="payMethod" value="MTNMobileMoney" checked />
+                            <span class="gv-method-badge" style="background:#fbbf24;color:#000">MTN</span>
+                            <div class="gv-method-info">
+                                <span class="gv-method-name">MTN Mobile Money</span>
+                                <span class="gv-method-currency">Uganda</span>
+                            </div>
+                        </label>
+                        <label class="gv-method-btn">
+                            <input type="radio" name="payMethod" value="AirtelMoney" />
+                            <span class="gv-method-badge" style="background:#ef4444">AIR</span>
+                            <div class="gv-method-info">
+                                <span class="gv-method-name">Airtel Money</span>
+                                <span class="gv-method-currency">Uganda</span>
+                            </div>
+                        </label>
+                        <label class="gv-method-btn">
+                            <input type="radio" name="payMethod" value="MPesa" />
+                            <span class="gv-method-badge" style="background:#10b981">M-P</span>
+                            <div class="gv-method-info">
+                                <span class="gv-method-name">M-Pesa</span>
+                                <span class="gv-method-currency">Kenya</span>
+                            </div>
+                        </label>
+                        <label class="gv-method-btn">
+                            <input type="radio" name="payMethod" value="Card" />
+                            <span class="gv-method-badge" style="background:#1e40af">VISA</span>
+                            <div class="gv-method-info">
+                                <span class="gv-method-name">Card</span>
+                                <span class="gv-method-currency">Visa / Mastercard</span>
+                            </div>
+                        </label>
+                    </div>
+                </div>
+
+                <div class="gv-field" id="phoneGroup">
+                    <label class="gv-label" for="phoneInput">Mobile Money Phone <span class="gv-req">*</span></label>
+                    <div class="gv-phone">
+                        <select id="countryCode" class="form-control" aria-label="Country code">
+                            <option value="+256">🇺🇬 +256</option>
+                            <option value="+254">🇰🇪 +254</option>
+                        </select>
+                        <input type="tel" id="phoneInput" class="form-control"
+                               value="@(ViewBag.Phone?.ToString()?.TrimStart('+').TrimStart('2','5','6') ?? "")"
+                               placeholder="7XX XXX XXX" />
+                    </div>
+                    <span class="gv-hint">The number registered with your mobile money.</span>
+                </div>
+
+                <p class="gv-error" id="payError" role="alert" hidden></p>
+
+                <button type="button" id="payBtn" onclick="pay()" class="btn btn-primary btn-lg btn-full gv-submit-btn">
+                    <i class="fas fa-lock"></i>
+                    <span id="payBtnLabel">Pay UGX @bal.ToString("N0")</span>
+                </button>
+                <p class="gv-secure-note"><i class="fas fa-shield-alt"></i> Secured by Flutterwave</p>
             </div>
-        }
 
-        @* {{-- Payment method --}} *@
-        <div class="form-group" style="margin-top:1.25rem">
-            <label>Payment Method</label>
-            <div class="payment-methods">
-                <label class="method-card selected" id="mtn-card">
-                    <input type="radio" name="payMethod" value="MTNMobileMoney" checked />
-                    <div class="method-inner">
-                        <span class="method-icon mtn-icon">MTN</span>
-                        <span>MTN MoMo</span><small>Uganda</small>
-                    </div>
-                </label>
-                <label class="method-card">
-                    <input type="radio" name="payMethod" value="AirtelMoney" />
-                    <div class="method-inner">
-                        <span class="method-icon airtel-icon">AIR</span>
-                        <span>Airtel Money</span><small>Uganda</small>
-                    </div>
-                </label>
-                <label class="method-card">
-                    <input type="radio" name="payMethod" value="MPesa" />
-                    <div class="method-inner">
-                        <span class="method-icon mpesa-icon">M-P</span>
-                        <span>M-Pesa</span><small>Kenya</small>
-                    </div>
-                </label>
-                <label class="method-card">
-                    <input type="radio" name="payMethod" value="Card" />
-                    <div class="method-inner">
-                        <span class="method-icon visa-icon">VISA</span>
-                        <span>Card</span><small>International</small>
-                    </div>
-                </label>
-            </div>
-        </div>
-
-        <div class="form-group" id="phoneGroup">
-            <label>Mobile Money Phone</label>
-            <div class="phone-input">
-                <select id="countryCode" class="form-control country-code">
-                    <option value="+256">🇺🇬 +256</option>
-                    <option value="+254">🇰🇪 +254</option>
-                </select>
-                <input type="tel" id="phoneInput" class="form-control"
-                       value="@(ViewBag.Phone?.ToString()?.TrimStart('+').TrimStart('2','5','6') ?? "")"
-                       placeholder="7XX XXX XXX" />
-            </div>
-        </div>
-
-        <button id="payBtn" onclick="pay()"
-                class="btn btn-primary btn-lg btn-full" style="margin-top:.5rem">
-            <i class="fas fa-lock"></i>
-            <span id="payBtnLabel">Pay UGX @bal.ToString("N0")</span>
-        </button>
-        <p class="secure-note"><i class="fas fa-shield-alt"></i> Secured by Flutterwave</p>
-    </div>
-
-    @* {{-- Summary sidebar --}} *@
-    <div>
-        <div class="sidebar-card" style="position:sticky;top:80px">
-            <h3 style="font-size:.95rem;font-weight:700;margin-bottom:1rem">Order Summary</h3>
-            @if (!string.IsNullOrEmpty(ev?.ImageUrl))
-            {
-                <img src="@ev.ImageUrl" alt="@ev?.Title"
-                     style="width:100%;border-radius:8px;margin-bottom:1rem;object-fit:cover;max-height:130px" />
-            }
-            <div style="display:flex;flex-direction:column;gap:.5rem;font-size:.88rem">
-                <div class="summary-row"><span style="color:var(--text-s)">Event</span><strong>@ev?.Title</strong></div>
+            @* ── Right: order summary ── *@
+            <div class="gv-col gv-summary">
+                <h2 class="gv-section-title">Order Summary</h2>
+                @if (!string.IsNullOrEmpty(ev?.ImageUrl))
+                {
+                    <img src="@ev.ImageUrl" alt="@ev?.Title" class="gv-summary-img" />
+                }
+                <div class="summary-row"><span>Event</span><strong>@ev?.Title</strong></div>
                 <div class="summary-row">
-                    <span style="color:var(--text-s)">Date</span>
+                    <span>Date</span>
                     <span>@(ev?.IsAllDay == true ? ev.StartDate.ToString("dd MMM yyyy") + " (All Day)" : ev?.StartDate.ToString("dd MMM yyyy · h:mm tt"))</span>
                 </div>
                 @if (!string.IsNullOrEmpty(ev?.Location))
                 {
-                    <div class="summary-row"><span style="color:var(--text-s)">Location</span><span>@ev.Location</span></div>
+                    <div class="summary-row"><span>Location</span><span>@ev.Location</span></div>
                 }
                 @if (reg?.AmountPaid > 0)
                 {
-                    <div class="summary-row"><span style="color:var(--text-s)">Already paid</span>
+                    <div class="summary-row"><span>Already paid</span>
                         <span style="color:var(--green);font-weight:600">UGX @reg.AmountPaid.ToString("N0")</span></div>
                 }
-                <div class="summary-row" style="border-top:1.5px solid var(--border);padding-top:.6rem;margin-top:.3rem">
-                    <strong>Balance due</strong>
-                    <strong style="color:var(--purple);font-size:1.05rem" id="summaryBalance">
-                        UGX @bal.ToString("N0")
-                    </strong>
+                <div class="summary-row"><span>Balance due</span><span>UGX @bal.ToString("N0")</span></div>
+                <div class="summary-row gv-summary-total">
+                    <span>Paying now</span>
+                    <strong id="summaryBalance">UGX @bal.ToString("N0")</strong>
                 </div>
+                <a asp-action="Details" asp-route-id="@ev?.Id" class="btn btn-outline btn-full btn-sm" style="margin-top:1rem">
+                    <i class="fas fa-arrow-left"></i> Back to Event
+                </a>
             </div>
-            <a asp-action="Details" asp-route-id="@ev?.Id"
-               class="btn btn-outline btn-full btn-sm" style="margin-top:1rem">
-                <i class="fas fa-arrow-left"></i> Back to Event
-            </a>
         </div>
     </div>
 </div>
@@ -226,45 +221,62 @@ const EMAIL    = '@ViewBag.Email';
 const NAME     = '@ViewBag.MemberName';
 const TITLE    = '@ev?.Title?.Replace("'", "\\'")';
 const RETURN   = '@Url.Action("PaymentReturn", "Events", null, Context.Request.Scheme)';
-let payAmount  = @bal;
+const BALANCE  = @bal;
+const MIN_AMT  = @minAmount;
+const PRESETS  = { full: BALANCE, min: @(ev?.MinPartialAmount ?? 0) };
+let payAmount  = BALANCE;
+
+const fmt = n => 'UGX ' + Math.round(n).toLocaleString();
+const errorBox = document.getElementById('payError');
+function showError(msg) { errorBox.textContent = msg; errorBox.hidden = !msg; }
 
 function setPayAmount(val) {
-    if (val === 'custom') return;
-    payAmount = parseFloat(val);
-    document.getElementById('summaryBalance').textContent = 'UGX ' + payAmount.toLocaleString();
-    document.getElementById('payBtnLabel').textContent    = 'Pay UGX ' + payAmount.toLocaleString();
+    payAmount = val;
+    document.getElementById('summaryBalance').textContent = payAmount > 0 ? fmt(payAmount) : '—';
+    document.getElementById('payBtnLabel').textContent    = payAmount > 0 ? 'Pay ' + fmt(payAmount) : 'Pay';
 }
 
-function updateCustom(val) {
-    payAmount = parseFloat(val) || 0;
-    document.getElementById('summaryBalance').textContent = 'UGX ' + payAmount.toLocaleString();
-    document.getElementById('payBtnLabel').textContent    = 'Pay UGX ' + payAmount.toLocaleString();
-}
-
-// Method switching
-document.querySelectorAll('[name="payMethod"]').forEach(r => r.addEventListener('change', () => {
-    const v = document.querySelector('[name="payMethod"]:checked')?.value;
-    document.getElementById('phoneGroup').style.display = v === 'Card' ? 'none' : 'block';
-    document.getElementById('countryCode').value = v === 'MPesa' ? '+254' : '+256';
-    document.querySelectorAll('.method-card').forEach(c => c.classList.remove('selected'));
-    r.closest('.method-card').classList.add('selected');
-}));
-
-// Partial option selection highlight
+// Amount options: the custom one opens its own amount box
+const customField = document.getElementById('customAmtField');
+const customInput = document.getElementById('customAmt');
 document.querySelectorAll('[name="payAmt"]').forEach(r => r.addEventListener('change', () => {
-    document.querySelectorAll('.partial-option').forEach(o => o.classList.remove('partial-option-active'));
-    r.closest('.partial-option').classList.add('partial-option-active');
+    showError('');
+    const isCustom = r.value === 'custom';
+    customField.hidden = !isCustom;
+    if (isCustom) { setPayAmount(parseFloat(customInput.value) || 0); customInput.focus(); }
+    else setPayAmount(PRESETS[r.value]);
 }));
+customInput?.addEventListener('input', () => { showError(''); setPayAmount(parseFloat(customInput.value) || 0); });
+
+// Method switching: card payments need no phone number
+document.querySelectorAll('[name="payMethod"]').forEach(r => r.addEventListener('change', () => {
+    document.getElementById('phoneGroup').hidden = r.value === 'Card';
+    document.getElementById('countryCode').value = r.value === 'MPesa' ? '+254' : '+256';
+}));
+
+function resetButton() {
+    const btn = document.getElementById('payBtn');
+    btn.disabled  = false;
+    btn.innerHTML = '<i class="fas fa-lock"></i> <span id="payBtnLabel">Pay ' + fmt(payAmount) + '</span>';
+}
 
 async function pay() {
-    if (!payAmount || payAmount <= 0) { alert('Please select a payment amount.'); return; }
+    showError('');
+    if (document.querySelector('[name="payAmt"]:checked')?.value === 'custom') {
+        if (!payAmount) { showError('Please enter the amount you want to pay.'); customInput.focus(); return; }
+        if (payAmount > BALANCE) { showError('The amount can\'t be more than the balance of ' + fmt(BALANCE) + '.'); customInput.focus(); return; }
+        if (payAmount < MIN_AMT) { showError('The minimum payment is ' + fmt(MIN_AMT) + '.'); customInput.focus(); return; }
+    }
+    if (!payAmount || payAmount <= 0) { showError('Please select a payment amount.'); return; }
 
     const method  = document.querySelector('[name="payMethod"]:checked')?.value ?? 'MTNMobileMoney';
     const cc      = document.getElementById('countryCode').value.replace('+','');
-    const phone   = cc + document.getElementById('phoneInput').value.replace(/^0/,'');
+    const phone   = cc + document.getElementById('phoneInput').value.replace(/\s/g,'').replace(/^0/,'');
 
     if (method !== 'Card' && !document.getElementById('phoneInput').value.trim()) {
-        alert('Please enter your mobile money phone number.'); return;
+        showError('Please enter your mobile money phone number.');
+        document.getElementById('phoneInput').focus();
+        return;
     }
 
     // Get tx_ref from server
@@ -275,12 +287,17 @@ async function pay() {
     fd.append('phoneNumber',    phone);
 
     const btn = document.getElementById('payBtn');
-    btn.disabled     = true;
-    btn.innerHTML    = '<i class="fas fa-spinner fa-spin"></i> Preparing…';
+    btn.disabled  = true;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Preparing…';
 
-    const res  = await fetch('/Events/MakePayment', { method:'POST', body: fd });
-    const data = await res.json();
-    if (!data.success) { alert(data.message); btn.disabled = false; btn.innerHTML = '<i class="fas fa-lock"></i> Pay'; return; }
+    let data;
+    try {
+        const res = await fetch('/Events/MakePayment', { method:'POST', body: fd });
+        data = await res.json();
+    } catch {
+        data = { success: false, message: 'Could not reach the server. Please try again.' };
+    }
+    if (!data.success) { showError(data.message); resetButton(); return; }
 
     // Behalf data
     const isBehalf = document.getElementById('behalfToggle')?.checked;
@@ -303,30 +320,12 @@ async function pay() {
             if (d.status === 'successful' || d.status === 'completed') {
                 window.location.href = `${RETURN}?status=${d.status}&tx_ref=${data.txRef}&transaction_id=${d.transaction_id}`;
             } else {
-                btn.disabled  = false;
-                btn.innerHTML = '<i class="fas fa-lock"></i> Pay UGX ' + payAmount.toLocaleString();
-                alert('Payment not completed. Please try again.');
+                resetButton();
+                showError('Payment not completed. Please try again.');
             }
         },
-        onclose: () => { btn.disabled = false; btn.innerHTML = '<i class="fas fa-lock"></i> Pay UGX ' + payAmount.toLocaleString(); }
+        onclose: resetButton
     });
 }
 </script>
-<style>
-.behalf-toggle-content { display:flex; align-items:flex-start; gap:.85rem; }
-.behalf-toggle-content input { display:none; }
-.behalf-toggle-content strong { display:block; font-size:.9rem; font-weight:700; }
-.behalf-toggle-content p { font-size:.82rem; color:var(--text-s); margin:.1rem 0 0; }
-
-.partial-options      { display:flex; flex-direction:column; gap:.5rem; }
-.partial-option       { border:1.5px solid var(--border); border-radius:10px;
-                        padding:.85rem; cursor:pointer; transition:all .15s; }
-.partial-option:has(input:checked),
-.partial-option-active { border-color:var(--purple); background:var(--purple-l); }
-.partial-option input  { display:none; }
-.partial-option-inner  { display:flex; flex-direction:column; gap:.15rem; }
-.partial-option-inner strong { font-size:.9rem; font-weight:700; }
-.partial-option-inner span   { font-size:.95rem; font-weight:800; color:var(--purple); }
-.partial-option-inner small  { font-size:.75rem; color:var(--text-s); }
-</style>
 }

@@ -36,15 +36,28 @@ namespace ChurchMinistry.Controllers
         }
 
         // ── Public Events List ──────────────────────────────────
+        private const int RecentPastEvents = 6;   // past events listed under the upcoming ones
+
         public async Task<IActionResult> Index(int page = 1)
         {
+            var now = DateTime.UtcNow;
             var pager = new PagerModel(page, "events");
+            // Upcoming (not yet ended, so one in progress stays here): soonest first
             var events = await _db.ChurchEvents
                 .Include(e => e.Registrations)
-                .Where(e => e.IsPublic)
+                .Where(e => e.IsPublic && e.EndDate >= now)
                 .OrderBy(e => e.StartDate)
                 .ToPageAsync(pager);
             ViewBag.Pager = pager;
+
+            // Past: the most recent ones, newest first
+            var pastEvents = await _db.ChurchEvents
+                .Include(e => e.Registrations)
+                .Where(e => e.IsPublic && e.EndDate < now)
+                .OrderByDescending(e => e.StartDate)
+                .Take(RecentPastEvents)
+                .ToListAsync();
+            ViewBag.PastEvents = pastEvents;
 
             // Build per-event registration status for current member
             Member? member = null;
@@ -57,7 +70,7 @@ namespace ChurchMinistry.Controllers
                 var myRegs = await _db.EventRegistrations
                     .Where(r => r.MemberId == member.Id)
                     .ToListAsync();
-                foreach (var ev in events)
+                foreach (var ev in events.Concat(pastEvents))
                     myRegMap[ev.Id] = myRegs.FirstOrDefault(r => r.EventId == ev.Id);
             }
 
