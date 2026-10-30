@@ -29,8 +29,13 @@ namespace ChurchMinistry.ViewComponents
             return View(await GetModelAsync());
         }
 
-        // Called directly from _Layout.cshtml via @inject
-        public async Task<CurrentMemberViewModel> GetModelAsync()
+        // Called directly from layouts and _NavBar.cshtml via @inject. Registered as scoped, so the
+        // result is kept for the rest of the request rather than queried again by each caller.
+        private CurrentMemberViewModel? _model;
+
+        public async Task<CurrentMemberViewModel> GetModelAsync() => _model ??= await LoadModelAsync();
+
+        private async Task<CurrentMemberViewModel> LoadModelAsync()
         {
             var claimsPrincipal = _httpContextAccessor.HttpContext?.User;
 

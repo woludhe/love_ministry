@@ -1,13 +1,15 @@
 @* Main site menu, shared by _Layout, _MemberDashboard_Layout and _AdminDashboard_Layout.
    On phones the links fold into a drop-down panel, but the notification bell stays in the top bar. *@
+@inject ChurchMinistry.ViewComponents.CurrentMemberViewComponent MemberVc
 @{
-    var controller = ViewContext.RouteData.Values["controller"]?.ToString();
+    var controller =ViewContext.RouteData.Values["controller"]?.ToString();
     var action = ViewContext.RouteData.Values["action"]?.ToString();
     // On the Live page, Give opens in a new tab so viewers stay in the service
     var onLivePage = controller == "Media" && action == "Live";
     var giveTarget = onLivePage ? "_blank" : null;
     var giveRel = onLivePage ? "noopener" : null;
     var signedIn = User.Identity?.IsAuthenticated == true;
+    var hasMemberProfile = signedIn && (await MemberVc.GetModelAsync()).MemberId != null;
 
     string? Active(string c, string? a = null) =>
         controller == c && (a == null || action == a) ? "active" : null;
@@ -41,9 +43,13 @@
             @if (signedIn)
             {
                 <li class="nav-user">
-                    <a asp-controller="Members" asp-action="Dashboard" class="@Active("Members", "Dashboard")">
-                        <i class="fas fa-user-circle nav-ico"></i> Dashboard
-                    </a>
+                    @* Only accounts with a member profile have a member dashboard (e.g. the admin login has none) *@
+                    @if (hasMemberProfile)
+                    {
+                        <a asp-controller="Members" asp-action="Dashboard" class="@Active("Members", "Dashboard")">
+                            <i class="fas fa-user-circle nav-ico"></i> Dashboard
+                        </a>
+                    }
                     @if (User.IsInRole("Admin") || User.IsInRole("Pastor"))
                     {
                         <a asp-controller="Admin" asp-action="Index" class="admin-link">

@@ -697,7 +697,11 @@ namespace ChurchMinistry.Controllers
         public async Task<IActionResult> Dashboard()
         {
             var member = await GetCurrentMemberAsync();
-            if (member == null) return RedirectToAction("Login", "Account");
+            if (member == null)
+                // e.g. the admin login, which has no member profile: its home is the admin dashboard
+                return User.IsInRole("Admin") || User.IsInRole("Pastor")
+                    ? RedirectToAction("Index", "Admin")
+                    : RedirectToAction("Login", "Account");
 
             var now = DateTime.UtcNow;
             var monthStart = new DateTime(now.Year, now.Month, 1, 0, 0, 0, DateTimeKind.Utc);
