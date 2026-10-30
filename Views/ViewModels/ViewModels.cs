@@ -200,6 +200,18 @@ namespace ChurchMinistry.ViewModels
         public bool IsTopParticipant { get; set; }
     }
 
+    // My Daily: the dashboard as a newspaper, plus the day's devotion and community testimonies
+    public class MyDailyViewModel : MemberDashboardViewModel
+    {
+        public Devotional? Devotion { get; set; }        // today's, else the latest up to today
+        public bool DevotionRead { get; set; }
+        public List<TestimonyItem> Testimonies { get; set; } = new();
+    }
+
+    // A Community testimony on My Daily, with its reaction and comment counts and first photo (if any)
+    public record TestimonyItem(int Id, string Title, string Content, string Author,
+        DateTime CreatedAt, int Amens, int Likes, int Replies, string? PhotoUrl);
+
     // ─── Giving ───
     public class GivingViewModel
     {
@@ -247,6 +259,7 @@ namespace ChurchMinistry.ViewModels
         [Required] public string Content { get; set; } = "";
         public ForumCategory Category { get; set; }
         public bool IsPastorQuestion { get; set; }
+        public List<IFormFile>? Images { get; set; }
     }
 
     // One post card on the community feed / post page (Views/Community/_PostCard.cshtml)

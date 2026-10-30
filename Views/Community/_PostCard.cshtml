@@ -45,6 +45,20 @@
         @if (isLong) { <button type="button" class="fb-see-more js-see-more">See more</button> }
     </div>
 
+    @if (p.Images.Any())
+    {
+        var photos = p.Images.OrderBy(i => i.SortOrder).ToList();
+        @* 1 photo full width, 2 side by side, 3 = one large + two, 4 = two by two; click opens the viewer (community.js) *@
+        <div class="fb-photos fb-photos-@photos.Count">
+            @foreach (var img in photos)
+            {
+                <button type="button" class="fb-photo js-photo" data-src="@img.Url" aria-label="View photo">
+                    <img src="@img.Url" alt="" loading="lazy" />
+                </button>
+            }
+        </div>
+    }
+
     <div class="fb-stats">
         <span class="js-amen-summary" hidden="@(Model.AmenCount == 0)">🙏 <span class="js-amen-count">@Model.AmenCount</span> Amen</span>
         <span class="js-like-summary" hidden="@(Model.LikeCount == 0)">👍 <span class="js-like-count">@Model.LikeCount</span> <span class="js-like-word">@(Model.LikeCount == 1 ? "Like" : "Likes")</span></span>

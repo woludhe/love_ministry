@@ -100,6 +100,11 @@ app.MapControllerRoute(
     "sermonAttendance",
     "Admin/SermonAttendance/{id}",
     new { controller = "Admin", action = "SermonAttendance" });
+// Old "Meeting Approval Required" notifications link here; the page is MeetingApprovals/Index
+app.MapControllerRoute(
+    "meetingApprovalsLegacy",
+    "Admin/MeetingApprovals",
+    new { controller = "MeetingApprovals", action = "Index" });
 app.MapControllerRoute(
     "eventPaymentCallback",
     "Events/PaymentCallback",

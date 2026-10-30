@@ -37,7 +37,14 @@
         <h1>Building Lives,<br>Transforming <span class="highlight">Communities</span></h1>
         <p>Join our family of believers. Experience the love of God through worship, fellowship and service.</p>
         <div class="hero-actions">
-            <a asp-controller="Account" asp-action="Register" class="btn btn-primary">Join Our Family</a>
+            @if (User.Identity?.IsAuthenticated == true)
+            {
+                <a asp-controller="Members" asp-action="Dashboard" class="btn btn-primary"><i class="fas fa-gauge"></i> My Dashboard</a>
+            }
+            else
+            {
+                <a asp-controller="Account" asp-action="Register" class="btn btn-primary">Join Our Family</a>
+            }
             <a asp-controller="Media" asp-action="Live" class="btn btn-outline hero-outline-btn">
                 <span class="live-dot"></span> Watch Live
             </a>

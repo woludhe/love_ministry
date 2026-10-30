@@ -4,13 +4,12 @@
 }
 <div style="padding: 2rem;">
     <h1>
-        Welcome back, @Model.Member.FirstName! 👋
+        Welcome back, @Model.Member.FirstName!
         @if (Model.IsTopParticipant)
         {
             <span class="top-badge" title="One of the 10 most active members in the last 30 days"><i class="fas fa-medal"></i> Top Participant</span>
         }
     </h1>
-    <partial name="_ProfileCompletion" model="(Model.ProfilePercent, new List<string>(), true)" />
     @if (Model.LiveSermon != null || Model.LiveMeetings.Any())
     {
         <div class="dash-live">
@@ -53,6 +52,15 @@
             }
         </div>
     }
+    <partial name="_ProfileCompletion" model="(Model.ProfilePercent, new List<string>(), true)" />
+    <a asp-controller="Members" asp-action="MyDaily" class="my-daily-link">
+        <span class="my-daily-icon"><i class="fas fa-newspaper"></i></span>
+        <span class="my-daily-text">
+            <strong>My Daily</strong>
+            <span>Today's news, devotion, testimonies &amp; more</span>
+        </span>
+        <span class="btn btn-primary btn-sm">Read today's edition</span>
+    </a>
     <div class="kpi-grid">
         <div class="kpi-card kpi-purple">
             <div class="kpi-icon"><i class="fas fa-calendar-check"></i></div>

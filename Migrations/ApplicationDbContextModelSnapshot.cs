@@ -491,6 +491,30 @@ namespace ChurchMinistry.Migrations
                     b.ToTable("ForumPosts");
                 });
 
+            modelBuilder.Entity("ChurchMinistry.Models.ForumPostImage", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    b.Property<int>("ForumPostId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Url")
+                        .IsRequired()
+                        .HasMaxLength(300)
+                        .HasColumnType("varchar(300)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ForumPostId");
+
+                    b.ToTable("ForumPostImages");
+                });
+
             modelBuilder.Entity("ChurchMinistry.Models.ForumReaction", b =>
                 {
                     b.Property<int>("Id")
@@ -2040,6 +2064,17 @@ namespace ChurchMinistry.Migrations
                     b.Navigation("Member");
                 });
 
+            modelBuilder.Entity("ChurchMinistry.Models.ForumPostImage", b =>
+                {
+                    b.HasOne("ChurchMinistry.Models.ForumPost", "ForumPost")
+                        .WithMany("Images")
+                        .HasForeignKey("ForumPostId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("ForumPost");
+                });
+
             modelBuilder.Entity("ChurchMinistry.Models.ForumReaction", b =>
                 {
                     b.HasOne("ChurchMinistry.Models.ForumPost", "ForumPost")
@@ -2429,6 +2464,8 @@ namespace ChurchMinistry.Migrations
 
             modelBuilder.Entity("ChurchMinistry.Models.ForumPost", b =>
                 {
+                    b.Navigation("Images");
+
                     b.Navigation("Reactions");
 
                     b.Navigation("Replies");

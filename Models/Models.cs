@@ -276,6 +276,18 @@ namespace ChurchMinistry.Models
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
         public ICollection<ForumReply> Replies { get; set; } = new List<ForumReply>();
         public ICollection<ForumReaction> Reactions { get; set; } = new List<ForumReaction>();
+        public ICollection<ForumPostImage> Images { get; set; } = new List<ForumPostImage>();
+    }
+
+    // A photo attached to a community post (up to MaxPerPost, shown in SortOrder)
+    public class ForumPostImage
+    {
+        public const int MaxPerPost = 4;
+        public int Id { get; set; }
+        public int ForumPostId { get; set; }
+        public ForumPost ForumPost { get; set; } = null!;
+        [Required, MaxLength(300)] public string Url { get; set; } = "";
+        public int SortOrder { get; set; }
     }
 
     public class ForumReply

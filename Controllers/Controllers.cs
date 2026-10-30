@@ -695,15 +695,75 @@ namespace ChurchMinistry.Controllers
             return user == null ? null : await _db.Members.FirstOrDefaultAsync(m => m.UserId == user.Id);
         }
 
+        // Logins without a member profile (e.g. the admin) have the admin dashboard as their home
+        private IActionResult NoMemberRedirect() =>
+            User.IsInRole("Admin") || User.IsInRole("Pastor")
+                ? RedirectToAction("Index", "Admin")
+                : RedirectToAction("Login", "Account");
+
         public async Task<IActionResult> Dashboard()
         {
             var member = await GetCurrentMemberAsync();
-            if (member == null)
-                // e.g. the admin login, which has no member profile: its home is the admin dashboard
-                return User.IsInRole("Admin") || User.IsInRole("Pastor")
-                    ? RedirectToAction("Index", "Admin")
-                    : RedirectToAction("Login", "Account");
+            if (member == null) return NoMemberRedirect();
 
+            var vm = new MemberDashboardViewModel();
+            await FillDashboardAsync(vm, member);
+            return View(vm);
+        }
+
+        // My Daily: the dashboard as a newspaper, plus the day's devotion and community testimonies
+        public async Task<IActionResult> MyDaily()
+        {
+            var member = await GetCurrentMemberAsync();
+            if (member == null) return NoMemberRedirect();
+
+            var vm = new MyDailyViewModel();
+            await FillDashboardAsync(vm, member);
+
+            // Today's devotion, else the latest one up to today (as on the Devotions page)
+            var today = DateTime.Today;
+            vm.Devotion = await _db.Devotionals.AsNoTracking()
+                .Where(d => d.Date <= today).OrderByDescending(d => d.Date).FirstOrDefaultAsync();
+            if (vm.Devotion != null)
+                vm.DevotionRead = await _db.DevotionalReads
+                    .AnyAsync(r => r.DevotionalId == vm.Devotion.Id && r.MemberId == member.Id);
+
+            vm.Testimonies = await TopTestimoniesAsync(3);
+            return View(vm);
+        }
+
+        // The most Amen'd / liked testimonies of the last 60 days, topped up with the latest ones
+        private async Task<List<TestimonyItem>> TopTestimoniesAsync(int count)
+        {
+            var testimonies = _db.ForumPosts.AsNoTracking()
+                .Where(p => p.IsApproved
+                         && (p.Category == ForumCategory.Testimony || p.Category == ForumCategory.PrayerAnswered));
+            var since = DateTime.UtcNow.AddDays(-60);
+
+            var top = await testimonies
+                .Where(p => p.CreatedAt >= since && p.Reactions.Any())
+                .OrderByDescending(p => p.Reactions.Count()).ThenByDescending(p => p.CreatedAt)
+                .Take(count).Select(TestimonyProjection).ToListAsync();
+            if (top.Count < count)
+            {
+                var taken = top.Select(t => t.Id).ToList();
+                top.AddRange(await testimonies.Where(p => !taken.Contains(p.Id))
+                    .OrderByDescending(p => p.CreatedAt)
+                    .Take(count - top.Count).Select(TestimonyProjection).ToListAsync());
+            }
+            return top;
+        }
+
+        private static readonly System.Linq.Expressions.Expression<Func<ForumPost, TestimonyItem>> TestimonyProjection =
+            p => new TestimonyItem(p.Id, p.Title, p.Content, p.Member.FirstName + " " + p.Member.LastName, p.CreatedAt,
+                p.Reactions.Count(r => r.Kind == ForumReactionKind.Amen),
+                p.Reactions.Count(r => r.Kind == ForumReactionKind.Like),
+                p.Replies.Count(),
+                p.Images.OrderBy(i => i.SortOrder).Select(i => i.Url).FirstOrDefault());
+
+        // Everything the dashboard shows; My Daily builds on the same data
+        private async Task FillDashboardAsync(MemberDashboardViewModel vm, Member member)
+        {
             var now = DateTime.UtcNow;
             var monthStart = new DateTime(now.Year, now.Month, 1, 0, 0, 0, DateTimeKind.Utc);
             var today = DateTime.Today;   // devotions go by the server's local date
@@ -720,28 +780,26 @@ namespace ChurchMinistry.Controllers
                 .Where(s => s.MemberId == member.Id && s.JoinedAt >= monthStart)
                 .Select(s => s.SermonId).Distinct().CountAsync();
 
-            var vm = new MemberDashboardViewModel
-            {
-                Member = member,
-                PhysicalAttendanceThisMonth = physical,
-                VirtualAttendanceThisMonth = virtualCheckIns + sermonsAttended,
-                AttendanceThisMonth = physical + virtualCheckIns + sermonsAttended,
-                TotalGivingThisYear = await _db.Givings
-                    .Where(g => g.MemberId == member.Id && g.GivingDate.Year == now.Year && g.PaymentStatus == PaymentStatus.Successful)
-                    .SumAsync(g => g.Amount),
-                PrayerRequestsCount = await _db.PrayerRequests.CountAsync(p => p.MemberId == member.Id),
-                DevotionsTotal = await _db.Devotionals.CountAsync(d => d.Date <= today),
-                DevotionsUnread = await _db.Devotionals.CountAsync(d => d.Date <= today
-                                      && !d.Reads.Any(r => r.MemberId == member.Id)),
-                RecentSermons = await _db.Sermons.Where(s => s.IsPublished)
-                    .OrderByDescending(s => s.SermonDate).Take(3).ToListAsync(),
-                UpcomingEvents = await _db.ChurchEvents.Where(e => e.StartDate >= now && e.IsPublic)
-                    .OrderBy(e => e.StartDate).Take(3).ToListAsync(),
-                Notifications = await _db.Notifications
-                    .Where(n => n.MemberId == member.Id && !n.IsRead)
-                    .OrderByDescending(n => n.CreatedAt).Take(10).ToListAsync(),
-                LiveSermon = await _db.Sermons.FirstOrDefaultAsync(s => s.IsLive && s.IsPublished)
-            };
+            vm.Member = member;
+            vm.PhysicalAttendanceThisMonth = physical;
+            vm.VirtualAttendanceThisMonth = virtualCheckIns + sermonsAttended;
+            vm.AttendanceThisMonth = physical + virtualCheckIns + sermonsAttended;
+            vm.TotalGivingThisYear = await _db.Givings
+                .Where(g => g.MemberId == member.Id && g.GivingDate.Year == now.Year && g.PaymentStatus == PaymentStatus.Successful)
+                .SumAsync(g => g.Amount);
+            vm.PrayerRequestsCount = await _db.PrayerRequests.CountAsync(p => p.MemberId == member.Id);
+            vm.DevotionsTotal = await _db.Devotionals.CountAsync(d => d.Date <= today);
+            vm.DevotionsUnread = await _db.Devotionals.CountAsync(d => d.Date <= today
+                                    && !d.Reads.Any(r => r.MemberId == member.Id));
+            vm.RecentSermons = await _db.Sermons.Where(s => s.IsPublished)
+                .OrderByDescending(s => s.SermonDate).Take(3).ToListAsync();
+            vm.UpcomingEvents = await _db.ChurchEvents.Where(e => e.StartDate >= now && e.IsPublic)
+                .OrderBy(e => e.StartDate).Take(3).ToListAsync();
+            vm.Notifications = await _db.Notifications
+                .Where(n => n.MemberId == member.Id && !n.IsRead)
+                .OrderByDescending(n => n.CreatedAt).Take(10).ToListAsync();
+            vm.LiveSermon = await _db.Sermons.FirstOrDefaultAsync(s => s.IsLive && s.IsPublished);
+
             // Live meetings — public ones, plus private ones this member is invited to directly,
             // through one of their groups or by email (same rules as the Meetings page) —
             // except the live sermon's own room (already linked above)
@@ -761,7 +819,6 @@ namespace ChurchMinistry.Controllers
 
             vm.ProfilePercent = ProfileCompletion.For(member).Percent;
             vm.IsTopParticipant = (await _activity.GetTopParticipantsAsync()).Any(t => t.MemberId == member.Id);
-            return View(vm);
         }
 
         [HttpGet("profile")]
@@ -1317,11 +1374,12 @@ namespace ChurchMinistry.Controllers
         private readonly UserManager<ApplicationUser> _userManager;
         private readonly IActivityService _activity;
         private readonly IHubContext<ChatHub> _chatHub;
+        private readonly IWebHostEnvironment _env;
 
         public CommunityController(ApplicationDbContext db, UserManager<ApplicationUser> um, IActivityService activity,
-            IHubContext<ChatHub> chatHub)
+            IHubContext<ChatHub> chatHub, IWebHostEnvironment env)
         {
-            _db = db; _userManager = um; _activity = activity; _chatHub = chatHub;
+            _db = db; _userManager = um; _activity = activity; _chatHub = chatHub; _env = env;
         }
 
         private async Task<Member?> GetMemberAsync() =>
@@ -1334,7 +1392,8 @@ namespace ChurchMinistry.Controllers
         {
             var pager = new PagerModel(page, "posts");
             var q = _db.ForumPosts.Include(p => p.Member)
-                .Include(p => p.Replies).ThenInclude(r => r.Member).AsQueryable();
+                .Include(p => p.Replies).ThenInclude(r => r.Member)
+                .Include(p => p.Images).AsQueryable();
             if (category.HasValue) q = q.Where(p => p.Category == category.Value);
             List<ForumPost> posts = await q.OrderByDescending(p => p.IsPinned).ThenByDescending(p => p.CreatedAt)
                 .ToPageAsync(pager);
@@ -1353,7 +1412,7 @@ namespace ChurchMinistry.Controllers
         public async Task<IActionResult> Post(int id)
         {
             var post = await _db.ForumPosts.Include(p => p.Member)
-                .Include(p => p.Replies).ThenInclude(r => r.Member)
+                .Include(p => p.Replies).ThenInclude(r => r.Member).Include(p => p.Images)
                 .FirstOrDefaultAsync(p => p.Id == id);
             if (post == null) return NotFound();
             post.ViewCount++;
@@ -1406,11 +1465,21 @@ namespace ChurchMinistry.Controllers
             return Json(new { count, on = mine == null });
         }
 
-        [HttpGet] public IActionResult NewPost() => View(new ForumPostViewModel());
+        // ?category=Testimony (My Daily's "Share your testimony") preselects the category
+        [HttpGet] public IActionResult NewPost(ForumCategory? category) =>
+            View(new ForumPostViewModel { Category = category ?? ForumCategory.General });
 
+        // Up to ForumPostImage.MaxPerPost photos of up to 20 MB each, plus the text
         [HttpPost, ValidateAntiForgeryToken]
+        [RequestSizeLimit(ForumPostImage.MaxPerPost * PostImages.MaxUploadBytes + 1024 * 1024)]
+        [RequestFormLimits(MultipartBodyLengthLimit = ForumPostImage.MaxPerPost * PostImages.MaxUploadBytes + 1024 * 1024)]
         public async Task<IActionResult> NewPost(ForumPostViewModel vm)
         {
+            var files = vm.Images?.Where(f => f.Length > 0).ToList() ?? new();
+            if (files.Count > ForumPostImage.MaxPerPost)
+                ModelState.AddModelError(nameof(vm.Images), $"You can add up to {ForumPostImage.MaxPerPost} photos.");
+            else if (files.Any(f => f.Length > PostImages.MaxUploadBytes))
+                ModelState.AddModelError(nameof(vm.Images), "Each photo must be 20 MB or smaller.");
             if (!ModelState.IsValid) return View(vm);
             var member = await GetMemberAsync();
             if (member == null) return Unauthorized();
@@ -1423,6 +1492,20 @@ namespace ChurchMinistry.Controllers
                 Category = vm.Category,
                 IsPastorQuestion = vm.IsPastorQuestion
             };
+            var saved = new List<string>();
+            foreach (var file in files)
+            {
+                var url = await PostImages.SaveAsync(file, _env.WebRootPath);
+                if (url == null)
+                {
+                    // Not a readable image: undo the photos already saved and let the member try again
+                    foreach (var u in saved) System.IO.File.Delete(Path.Combine(_env.WebRootPath, u.TrimStart('/')));
+                    ModelState.AddModelError(nameof(vm.Images), $"\"{file.FileName}\" isn't a photo we can read. Use a JPG, PNG, GIF or WebP image.");
+                    return View(vm);
+                }
+                saved.Add(url);
+                post.Images.Add(new ForumPostImage { Url = url, SortOrder = saved.Count - 1 });
+            }
             _db.ForumPosts.Add(post);
             await _db.SaveChangesAsync();
             await _activity.LogAsync(member.Id, MemberActivityType.ForumPost, post.Title, post.Id);

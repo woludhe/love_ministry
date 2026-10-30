@@ -1626,4 +1626,41 @@ namespace ChurchMinistry.Services
             }
         }
     }
+
+    // Photos attached to community posts: kept whole (no crop), shrunk to fit MaxSide, re-encoded as JPEG
+    public static class PostImages
+    {
+        public const int MaxSide = 1600;   // pixels, longest side
+        public const long MaxUploadBytes = 20 * 1024 * 1024;
+
+        // Returns the image's /uploads URL, or null if the file isn't an image we can read
+        public static async Task<string?> SaveAsync(IFormFile file, string webRootPath)
+        {
+            if (file.Length == 0 || file.Length > MaxUploadBytes) return null;
+            try
+            {
+                using var image = await SixLabors.ImageSharp.Image.LoadAsync(file.OpenReadStream());
+                image.Mutate(x => x
+                    .AutoOrient()
+                    .Resize(new SixLabors.ImageSharp.Processing.ResizeOptions
+                    {
+                        Size = new SixLabors.ImageSharp.Size(MaxSide, MaxSide),
+                        Mode = SixLabors.ImageSharp.Processing.ResizeMode.Max   // never enlarged, never cropped
+                    })
+                    .BackgroundColor(SixLabors.ImageSharp.Color.White));
+                image.Metadata.ExifProfile = null;   // drops GPS location and camera details
+                image.Metadata.XmpProfile = null;
+
+                var fileName = $"{Guid.NewGuid()}.jpg";
+                await SixLabors.ImageSharp.ImageExtensions.SaveAsJpegAsync(image, Path.Combine(webRootPath, "uploads", fileName),
+                    new SixLabors.ImageSharp.Formats.Jpeg.JpegEncoder { Quality = 82 });
+                return $"/uploads/{fileName}";
+            }
+            catch (Exception ex) when (ex is SixLabors.ImageSharp.UnknownImageFormatException
+                                          or SixLabors.ImageSharp.InvalidImageContentException)
+            {
+                return null;
+            }
+        }
+    }
 }

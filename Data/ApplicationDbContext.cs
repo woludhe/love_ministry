@@ -19,6 +19,7 @@ namespace ChurchMinistry.Data
         public DbSet<ForumPost> ForumPosts => Set<ForumPost>();
         public DbSet<ForumReply> ForumReplies => Set<ForumReply>();
         public DbSet<ForumReaction> ForumReactions => Set<ForumReaction>();
+        public DbSet<ForumPostImage> ForumPostImages => Set<ForumPostImage>();
         public DbSet<ChatMessage> ChatMessages => Set<ChatMessage>();
         public DbSet<PrayerRequest> PrayerRequests => Set<PrayerRequest>();
         public DbSet<PrayerInteraction> PrayerInteractions => Set<PrayerInteraction>();
@@ -108,6 +109,12 @@ namespace ChurchMinistry.Data
                 e.Property(f => f.Category).HasConversion<string>();
                 e.HasOne(f => f.Member).WithMany()
                     .HasForeignKey(f => f.MemberId).OnDelete(DeleteBehavior.Cascade);
+            });
+
+            builder.Entity<ForumPostImage>(e =>
+            {
+                e.HasOne(i => i.ForumPost).WithMany(p => p.Images)
+                    .HasForeignKey(i => i.ForumPostId).OnDelete(DeleteBehavior.Cascade);
             });
 
             builder.Entity<ForumReply>(e =>

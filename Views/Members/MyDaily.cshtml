@@ -1,0 +1,595 @@
+@model ChurchMinistry.ViewModels.MyDailyViewModel
+@{
+    ViewData["Title"] = "My Daily"; Layout = "~/Views/Shared/_MemberDashboard_Layout.cshtml";
+    var today = DateTime.Now;
+    var lead = Model.RecentSermons.FirstOrDefault();
+    var moreSermons = Model.RecentSermons.Skip(1).ToList();
+}
+@functions {
+    // First words of a text, cut at a word, for story summaries
+    static string Excerpt(string? text, int max)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return "";
+        text = System.Text.RegularExpressions.Regex.Replace(text, @"\s+", " ").Trim();
+        if (text.Length <= max) return text;
+        var cut = text.LastIndexOf(' ', max);
+        return text[..(cut > max / 2 ? cut : max)].TrimEnd(',', '.', ';', ':') + "…";
+    }
+}
+@* My Daily: the member dashboard as a newspaper, with the day's devotion, testimonies and a partnership appeal *@
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,700;0,900;1,700&family=Noto+Serif:ital,wght@0,400;0,600;1,400&display=swap" rel="stylesheet">
+
+<div class="np-wrap">
+<a asp-controller="Members" asp-action="Dashboard" class="np-back"><i class="fas fa-arrow-left"></i> Back to dashboard</a>
+<article class="np">
+
+    @* ── Masthead ── *@
+    <header class="np-masthead">
+        <div class="np-ears">
+            <div class="np-ear">
+                <strong>Members' Edition</strong>
+                <span>Vol. @today.Year · Day @today.DayOfYear</span>
+            </div>
+            <div class="np-ear np-ear-right">
+                <strong>Welcome, @Model.Member.FirstName</strong>
+                @if (Model.IsTopParticipant)
+                {
+                    <span title="One of the 10 most active members in the last 30 days"><i class="fas fa-medal"></i> Top Participant</span>
+                }
+                else
+                {
+                    <span>Free to all members</span>
+                }
+            </div>
+        </div>
+        <h1 class="np-title">Love Fellowship Ministries</h1>
+        <div class="np-dateline">
+            <span>Daily News &amp; Updates</span>
+            <span class="np-dateline-date">@today.ToString("dddd, d MMMM yyyy")</span>
+        </div>
+    </header>
+
+    @* ── Breaking: live now ── *@
+    @if (Model.LiveSermon != null || Model.LiveMeetings.Any())
+    {
+        <section class="np-breaking" aria-label="Live now">
+            <span class="np-breaking-tag"><span class="live-dot"></span> Live Now</span>
+            <div class="np-breaking-items">
+                @if (Model.LiveSermon != null)
+                {
+                    <a asp-controller="Media" asp-action="Live">
+                        <strong>@Model.LiveSermon.Title</strong>
+                        @if (!string.IsNullOrEmpty(Model.LiveSermon.Speaker)) { <span>· @Model.LiveSermon.Speaker</span> }
+                        <em>Watch live &rarr;</em>
+                    </a>
+                }
+                @foreach (var room in Model.LiveMeetings)
+                {
+                    <a asp-controller="Meeting" asp-action="Room" asp-route-code="@room.RoomCode">
+                        <strong>@room.Title</strong>
+                        <span>· @(room.IsPublic ? "Meeting" : "Private meeting, you're invited")</span>
+                        <em>Join &rarr;</em>
+                    </a>
+                }
+            </div>
+        </section>
+    }
+
+    <div class="np-front">
+
+        @* ── Lead story: the latest sermon ── *@
+        <section class="np-lead">
+            <div class="np-kicker">Sermons</div>
+            @if (lead == null)
+            {
+                <h2 class="np-headline">No sermons published yet</h2>
+                <p class="np-body">New messages from the pulpit will appear here. <a asp-controller="Media" asp-action="Index">Visit the sermon library &rarr;</a></p>
+            }
+            else
+            {
+                var leadUrl = lead.IsLive ? Url.Action("Live", "Media") : Url.Action("Watch", "Media", new { id = lead.Id });
+                <h2 class="np-headline"><a href="@leadUrl">@lead.Title</a></h2>
+                <p class="np-byline">
+                    @if (!string.IsNullOrEmpty(lead.Speaker)) { <span>By @lead.Speaker</span> }
+                    <span>@lead.SermonDate.ToString("d MMMM yyyy")</span>
+                    @if (!string.IsNullOrEmpty(lead.SeriesName)) { <span>Series: @lead.SeriesName</span> }
+                </p>
+                @if (!string.IsNullOrEmpty(lead.ThumbnailUrl))
+                {
+                    <figure class="np-photo">
+                        <a href="@leadUrl"><img src="@lead.ThumbnailUrl" alt="@lead.Title" /></a>
+                        @if (!string.IsNullOrEmpty(lead.ScriptureReference))
+                        {
+                            <figcaption>Scripture: @lead.ScriptureReference</figcaption>
+                        }
+                    </figure>
+                }
+                <p class="np-body np-dropcap">
+                    @(string.IsNullOrWhiteSpace(lead.Description)
+                        ? $"{(string.IsNullOrEmpty(lead.Speaker) ? "This week's message" : lead.Speaker + "'s latest message")} is now available to {(lead.DeliveryMode == "audio" ? "listen to" : "watch")} in the sermon library."
+                        : Excerpt(lead.Description, 420))
+                </p>
+                <a href="@leadUrl" class="np-more">
+                    @(lead.IsLive ? "Watch live" : lead.SermonDate > DateTime.UtcNow ? "Read more" : lead.DeliveryMode == "audio" ? "Listen now" : "Watch now") &rarr;
+                </a>
+            }
+        </section>
+
+        @* ── Side column: stats and announcements ── *@
+        <aside class="np-side">
+            <section class="np-box">
+                <h3 class="np-box-title">By the Numbers</h3>
+                <a asp-controller="Members" asp-action="Attendance" class="np-stat">
+                    <span class="np-stat-value">@Model.AttendanceThisMonth</span>
+                    <span class="np-stat-label">services attended this month
+                        <small>@Model.PhysicalAttendanceThisMonth in person · @Model.VirtualAttendanceThisMonth online</small></span>
+                </a>
+                <a asp-controller="Devotionals" asp-action="Index" asp-route-unread="@(Model.DevotionsUnread > 0 ? "true" : null)" class="np-stat">
+                    <span class="np-stat-value">@Model.DevotionsUnread</span>
+                    <span class="np-stat-label">devotions unread
+                        <small>@(Model.DevotionsTotal == 0 ? "None published yet" : Model.DevotionsUnread == 0 ? "All caught up" : $"of {Model.DevotionsTotal} published")</small></span>
+                </a>
+                <a asp-controller="Prayer" asp-action="MyRequests" class="np-stat">
+                    <span class="np-stat-value">@Model.PrayerRequestsCount</span>
+                    <span class="np-stat-label">prayer requests
+                        <small>Yours, submitted to the church</small></span>
+                </a>
+            </section>
+
+            <section class="np-box">
+                <h3 class="np-box-title">Announcements</h3>
+                @if (!Model.Notifications.Any())
+                {
+                    <p class="np-empty">No new announcements. You're all caught up.</p>
+                }
+                @foreach (var n in Model.Notifications)
+                {
+                    <div class="np-notice">
+                        <h4>
+                            @if (!string.IsNullOrEmpty(n.Link)) { <a href="@n.Link">@n.Title</a> }
+                            else { @n.Title }
+                        </h4>
+                        <p>@Excerpt(n.Message, 160)</p>
+                        <small>@n.CreatedAt.ToLocalTime().ToString("d MMM, h:mm tt")</small>
+                    </div>
+                }
+            </section>
+
+            @if (Model.ProfilePercent < 100)
+            {
+                <section class="np-box np-classified">
+                    <h3 class="np-box-title">Notice</h3>
+                    <p>Your member profile is <strong>@Model.ProfilePercent% complete</strong>.
+                        <a asp-controller="Members" asp-action="Profile">Complete your profile &rarr;</a></p>
+                </section>
+            }
+        </aside>
+    </div>
+
+    @* ── Daily devotional ── *@
+    <section class="np-section">
+        <h3 class="np-section-title"><span>Daily Devotional</span></h3>
+        @if (Model.Devotion == null)
+        {
+            <p class="np-empty">No devotion published yet.</p>
+        }
+        else
+        {
+            var d = Model.Devotion;
+            var devoUrl = Url.Action("Read", "Devotionals", new { id = d.Id });
+            <div class="np-devo">
+                <div>
+                    <div class="np-kicker">
+                        @(d.Date == DateTime.Today ? "Today's devotion" : d.Date.ToString("dddd, d MMMM"))
+                        <span class="np-devo-flag @(Model.DevotionRead ? "is-read" : "")">@(Model.DevotionRead ? "Read" : "Unread")</span>
+                    </div>
+                    <h2 class="np-headline np-headline-sm"><a href="@devoUrl">@d.Title</a></h2>
+                    @if (!string.IsNullOrEmpty(d.CreatedBy)) { <p class="np-byline"><span>By @d.CreatedBy</span></p> }
+                    <p class="np-body np-dropcap">@Excerpt(d.Content, 320)</p>
+                    <a href="@devoUrl" class="np-more">Read the full devotion &rarr;</a>
+                </div>
+                <aside class="np-devo-side">
+                    <blockquote class="np-pullquote">
+                        <i class="fas fa-book-open"></i>
+                        @d.Scripture
+                    </blockquote>
+                    @if (!string.IsNullOrWhiteSpace(d.Prayer))
+                    {
+                        <div class="np-prayer">
+                            <h4>Prayer</h4>
+                            <p>@Excerpt(d.Prayer, 240)</p>
+                        </div>
+                    }
+                </aside>
+            </div>
+        }
+    </section>
+
+    @* ── Below the fold: more sermons ── *@
+    @if (moreSermons.Any())
+    {
+        <section class="np-section">
+            <h3 class="np-section-title"><span>More from the Pulpit</span></h3>
+            <div class="np-columns">
+                @foreach (var s in moreSermons)
+                {
+                    var url = s.IsLive ? Url.Action("Live", "Media") : Url.Action("Watch", "Media", new { id = s.Id });
+                    <article class="np-story">
+                        @if (!string.IsNullOrEmpty(s.ThumbnailUrl))
+                        {
+                            <a href="@url" class="np-story-photo"><img src="@s.ThumbnailUrl" alt="@s.Title" /></a>
+                        }
+                        <h4 class="np-story-head"><a href="@url">@s.Title</a></h4>
+                        <p class="np-byline">
+                            @if (!string.IsNullOrEmpty(s.Speaker)) { <span>By @s.Speaker</span> }
+                            <span>@s.SermonDate.ToString("d MMM yyyy")</span>
+                        </p>
+                        @if (!string.IsNullOrWhiteSpace(s.Description))
+                        {
+                            <p class="np-body">@Excerpt(s.Description, 180)</p>
+                        }
+                        else if (!string.IsNullOrEmpty(s.ScriptureReference))
+                        {
+                            <p class="np-body"><em>Scripture: @s.ScriptureReference</em></p>
+                        }
+                        <a href="@url" class="np-more">@(s.IsLive ? "Watch live" : s.DeliveryMode == "audio" ? "Listen" : "Watch") &rarr;</a>
+                    </article>
+                }
+            </div>
+            <a asp-controller="Media" asp-action="Index" class="np-section-link">All sermons &rarr;</a>
+        </section>
+    }
+
+    @* ── Testimonies from the Community: most Amen'd / liked recently, else the latest ── *@
+    <section class="np-section">
+        <h3 class="np-section-title"><span>Testimonies</span></h3>
+        @if (!Model.Testimonies.Any())
+        {
+            <p class="np-empty">No testimonies shared yet. Has God done something for you? Tell the church family.</p>
+        }
+        else
+        {
+            <div class="np-columns">
+                @foreach (var t in Model.Testimonies)
+                {
+                    var postUrl = Url.Action("Post", "Community", new { id = t.Id });
+                    <article class="np-story">
+                        @if (t.PhotoUrl != null)
+                        {
+                            <a href="@postUrl" class="np-story-photo"><img src="@t.PhotoUrl" alt="@t.Title" loading="lazy" /></a>
+                        }
+                        <h4 class="np-story-head"><a href="@postUrl">@t.Title</a></h4>
+                        <p class="np-byline">
+                            <span>By @t.Author</span>
+                            <span>@t.CreatedAt.ToLocalTime().ToString("d MMM yyyy")</span>
+                        </p>
+                        <p class="np-body np-quote">&ldquo;@Excerpt(t.Content, 200)&rdquo;</p>
+                        <p class="np-reactions">
+                            <span title="Amens"><i class="fas fa-hands-praying"></i> @t.Amens</span>
+                            <span title="Likes"><i class="fas fa-thumbs-up"></i> @t.Likes</span>
+                            <span title="Comments"><i class="fas fa-comment"></i> @t.Replies</span>
+                        </p>
+                        <a href="@postUrl" class="np-more">Read testimony &rarr;</a>
+                    </article>
+                }
+            </div>
+        }
+        <a asp-controller="Community" asp-action="NewPost" asp-route-category="Testimony" class="np-section-link">Share your testimony &rarr;</a>
+    </section>
+
+    @* ── Coming up: events ── *@
+    <section class="np-section">
+        <h3 class="np-section-title"><span>Coming Up</span></h3>
+        @if (!Model.UpcomingEvents.Any())
+        {
+            <p class="np-empty">No upcoming events announced yet.</p>
+        }
+        else
+        {
+            <div class="np-columns">
+                @foreach (var ev in Model.UpcomingEvents)
+                {
+                    <article class="np-event">
+                        <a asp-controller="Events" asp-action="Details" asp-route-id="@ev.Id" class="np-event-date">
+                            <span class="np-event-day">@ev.StartDate.Day</span>
+                            <span class="np-event-month">@ev.StartDate.ToString("MMM yyyy")</span>
+                        </a>
+                        <div>
+                            <h4 class="np-story-head"><a asp-controller="Events" asp-action="Details" asp-route-id="@ev.Id">@ev.Title</a></h4>
+                            <p class="np-byline">
+                                <span>@(ev.IsAllDay ? "All day" : ev.StartDate.ToString("dddd, h:mm tt"))</span>
+                                @if (!string.IsNullOrEmpty(ev.Location)) { <span>@ev.Location</span> }
+                            </p>
+                            @if (!string.IsNullOrWhiteSpace(ev.Description))
+                            {
+                                <p class="np-body">@Excerpt(ev.Description, 120)</p>
+                            }
+                        </div>
+                    </article>
+                }
+            </div>
+        }
+        <a asp-controller="Events" asp-action="Index" class="np-section-link">All events &rarr;</a>
+    </section>
+
+    @* ── Partnership appeal, set like a newspaper advertisement ── *@
+    <section class="np-ad" aria-label="Partner with the ministry">
+        <div class="np-ad-label">A word from the ministry</div>
+        <h3 class="np-ad-head">Partner With Us</h3>
+        <p class="np-ad-lead">Be part of what God is doing through Love Fellowship Ministries.</p>
+        <p class="np-ad-body">
+            Your partnership keeps the Word going out: Sunday services and live streams, outreach to the
+            community, missions, and caring for families in need. Every seed sown, great or small,
+            helps carry the Gospel further.
+        </p>
+        <p class="np-ad-verse">&ldquo;Each of you should give what you have decided in your heart to give,
+            not reluctantly or under compulsion, for God loves a cheerful giver.&rdquo; <span>2 Corinthians 9:7</span></p>
+        <a asp-controller="Giving" asp-action="Give" asp-route-type="Partnership" class="np-ad-btn">
+            <i class="fas fa-handshake"></i> Become a Partner
+        </a>
+    </section>
+
+    <footer class="np-foot">
+        Love Fellowship Ministries · Members' Edition · @today.ToString("d MMMM yyyy")
+    </footer>
+</article>
+</div>
+
+<style>
+/* ── Newspaper front page (member dashboard) ── */
+.np-wrap {
+    --np-paper: #faf7f0;
+    --np-ink: #1c1917;
+    --np-ink-s: #57534e;
+    --np-rule: #1c1917;
+    --np-hair: #d6d3d1;
+    --np-accent: #7f1d1d;
+    padding: 1.5rem;
+}
+.np {
+    max-width: 1080px;
+    margin: 0 auto;
+    background: var(--np-paper);
+    color: var(--np-ink);
+    padding: 1.75rem 2rem 1.25rem;
+    box-shadow: 0 1px 2px rgba(0,0,0,.08), 0 10px 30px -12px rgba(0,0,0,.25);
+    /* Body text: Droid Serif where installed, else Noto Serif (its successor on Google Fonts) */
+    font-family: 'Droid Serif', 'Noto Serif', Georgia, serif;
+}
+.np a { color: inherit; }
+.np a:hover { color: var(--np-accent); }
+
+/* Masthead */
+.np-ears { display: flex; justify-content: space-between; gap: 1rem; }
+.np-ear {
+    display: flex; flex-direction: column; gap: .1rem;
+    border: 1px solid var(--np-rule); padding: .35rem .6rem;
+    font-size: .72rem; text-transform: uppercase; letter-spacing: .06em; line-height: 1.35;
+    min-width: 0;
+}
+.np-ear strong { font-weight: 600; }
+.np-ear span { color: var(--np-ink-s); }
+.np-ear-right { text-align: right; }
+.np .np-title {
+    font-family: 'Playfair Display', Georgia, serif;
+    font-weight: 900;
+    font-size: clamp(2rem, 6vw, 4.2rem);
+    line-height: 1.05;
+    letter-spacing: -.01em;
+    text-align: center;
+    margin: .5rem 0 .6rem;
+    color: var(--np-ink);
+}
+.np-dateline {
+    display: flex; justify-content: space-between; align-items: center; gap: 1rem; flex-wrap: wrap;
+    border-top: 3px double var(--np-rule); border-bottom: 3px double var(--np-rule);
+    padding: .35rem .25rem;
+    font-size: .8rem; text-transform: uppercase; letter-spacing: .12em; font-weight: 600;
+}
+.np-dateline-date { font-style: italic; text-transform: none; letter-spacing: .02em; font-weight: 400; }
+
+/* Breaking strip */
+.np-breaking {
+    display: flex; align-items: stretch; margin-top: 1rem;
+    border: 2px solid var(--np-accent);
+}
+.np-breaking-tag {
+    display: flex; align-items: center; gap: .45rem; flex: none;
+    background: var(--np-accent); color: #fff;
+    font-family: 'Playfair Display', Georgia, serif; font-weight: 900;
+    text-transform: uppercase; letter-spacing: .06em; font-size: .85rem; padding: .5rem .85rem;
+}
+.np-breaking-items { display: flex; flex-direction: column; justify-content: center; padding: .4rem .85rem; gap: .2rem; min-width: 0; }
+.np-breaking-items a { font-size: .92rem; }
+.np-breaking-items em { color: var(--np-accent); margin-left: .35rem; white-space: nowrap; }
+
+/* Front page grid */
+.np-front {
+    display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+    gap: 0 1.75rem; margin-top: 1.25rem;
+}
+.np-side { border-left: 1px solid var(--np-hair); padding-left: 1.75rem; display: flex; flex-direction: column; gap: 1.25rem; }
+
+.np-kicker {
+    font-size: .72rem; font-weight: 600; text-transform: uppercase; letter-spacing: .14em;
+    color: var(--np-accent); margin-bottom: .3rem;
+}
+.np .np-headline {
+    font-family: 'Playfair Display', Georgia, serif; font-weight: 900;
+    font-size: clamp(1.6rem, 3.6vw, 2.5rem); line-height: 1.1; margin: 0 0 .5rem;
+}
+.np .np-headline a, .np .np-story-head a { text-decoration: none; }
+.np .np-headline a:hover, .np .np-story-head a:hover { text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 4px; }
+.np-byline {
+    display: flex; flex-wrap: wrap; gap: .25rem .9rem; margin: 0 0 .75rem;
+    font-size: .74rem; text-transform: uppercase; letter-spacing: .08em; color: var(--np-ink-s);
+}
+.np-photo { margin: 0 0 .85rem; }
+/* Lead photo: the whole poster, letterboxed on black in a fixed frame */
+.np-photo a { display: block; background: #000; aspect-ratio: 16 / 9; max-height: 400px; overflow: hidden; }
+.np-photo img { width: 100%; height: 100%; object-fit: contain; display: block; filter: saturate(.85) contrast(1.05); }
+.np-photo figcaption {
+    font-size: .74rem; font-style: italic; color: var(--np-ink-s);
+    border-bottom: 1px solid var(--np-hair); padding: .3rem 0;
+}
+.np-body { font-size: .95rem; line-height: 1.7; margin: 0 0 .6rem; text-align: justify; hyphens: auto; }
+.np-dropcap::first-letter {
+    float: left; font-family: 'Playfair Display', Georgia, serif; font-weight: 900;
+    font-size: 3.4rem; line-height: .85; padding: .3rem .45rem 0 0; color: var(--np-accent);
+}
+.np-more {
+    display: inline-block; font-size: .78rem; font-weight: 600; text-transform: uppercase;
+    letter-spacing: .1em; color: var(--np-accent) !important; text-decoration: none;
+}
+.np-more:hover { text-decoration: underline; }
+
+/* Side boxes */
+.np-box-title {
+    font-family: 'Playfair Display', Georgia, serif; font-weight: 900; font-size: 1.05rem;
+    text-transform: uppercase; letter-spacing: .06em;
+    border-top: 3px solid var(--np-rule); border-bottom: 1px solid var(--np-rule);
+    padding: .3rem 0; margin: 0 0 .5rem;
+}
+.np-stat {
+    display: flex; align-items: baseline; gap: .75rem; text-decoration: none;
+    padding: .55rem 0; border-bottom: 1px dotted var(--np-hair);
+}
+.np-stat:last-child { border-bottom: none; }
+.np-stat-value {
+    font-family: 'Playfair Display', Georgia, serif; font-weight: 900; font-size: 2rem;
+    line-height: 1; min-width: 2.6rem; text-align: right;
+}
+.np-stat-label { font-size: .88rem; line-height: 1.35; }
+.np-stat-label small { display: block; font-size: .74rem; color: var(--np-ink-s); font-style: italic; }
+.np-stat:hover .np-stat-value { color: var(--np-accent); }
+
+.np-notice { padding: .5rem 0; border-bottom: 1px dotted var(--np-hair); }
+.np-notice:last-child { border-bottom: none; }
+.np-notice h4 { font-family: 'Playfair Display', Georgia, serif; font-weight: 700; font-size: 1rem; line-height: 1.25; margin: 0 0 .2rem; }
+.np-notice h4 a { text-decoration: underline; text-decoration-color: var(--np-hair); text-underline-offset: 3px; }
+.np-notice p { font-size: .85rem; line-height: 1.55; margin: 0 0 .15rem; }
+.np-notice small { font-size: .72rem; color: var(--np-ink-s); font-style: italic; }
+.np-empty { font-size: .88rem; font-style: italic; color: var(--np-ink-s); margin: .25rem 0; }
+.np-classified { border: 1px solid var(--np-rule); padding: 0 .75rem .6rem; }
+.np-classified p { font-size: .88rem; margin: 0; line-height: 1.55; }
+.np-classified a { color: var(--np-accent); font-weight: 600; }
+
+/* Sections below the fold */
+.np-section { margin-top: 1.5rem; }
+.np-section-title {
+    display: flex; align-items: center; gap: .75rem; margin: 0 0 1rem;
+    font-family: 'Playfair Display', Georgia, serif; font-weight: 900; font-size: 1.2rem;
+    text-transform: uppercase; letter-spacing: .08em;
+}
+.np-section-title::before, .np-section-title::after { content: ""; flex: 1; border-top: 3px double var(--np-rule); }
+.np-columns { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.np-columns > * { padding: 0 1.25rem; border-left: 1px solid var(--np-hair); }
+.np-columns > *:first-child { padding-left: 0; border-left: none; }
+.np-columns > *:last-child { padding-right: 0; }
+.np-story-photo img { width: 100%; aspect-ratio: 16 / 9; object-fit: cover; display: block; margin-bottom: .6rem; filter: saturate(.85) contrast(1.05); }
+.np .np-story-head { font-family: 'Playfair Display', Georgia, serif; font-weight: 700; font-size: 1.15rem; line-height: 1.2; margin: 0 0 .35rem; }
+.np-section-link {
+    display: block; text-align: right; margin-top: .75rem; font-size: .78rem; font-weight: 600;
+    text-transform: uppercase; letter-spacing: .1em; color: var(--np-accent) !important; text-decoration: none;
+}
+.np-section-link:hover { text-decoration: underline; }
+
+.np-event { display: flex; gap: .85rem; align-items: flex-start; }
+.np-event-date {
+    flex: none; display: flex; flex-direction: column; align-items: center; text-decoration: none;
+    border: 1px solid var(--np-rule); padding: .3rem .5rem; min-width: 3.6rem;
+}
+.np-event-day { font-family: 'Playfair Display', Georgia, serif; font-weight: 900; font-size: 1.6rem; line-height: 1; }
+.np-event-month { font-size: .62rem; text-transform: uppercase; letter-spacing: .08em; margin-top: .15rem; }
+
+.np-foot {
+    margin-top: 1.5rem; padding-top: .5rem; border-top: 3px double var(--np-rule);
+    text-align: center; font-size: .72rem; text-transform: uppercase; letter-spacing: .12em; color: var(--np-ink-s);
+}
+
+.np-back {
+    display: block; max-width: 1080px; margin: 0 auto .6rem;
+    font-size: .85rem; font-weight: 600; color: var(--text-s);
+}
+.np-back:hover { color: var(--purple); }
+
+/* Daily devotional */
+.np-devo { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: 0 1.75rem; }
+.np .np-headline-sm { font-size: clamp(1.4rem, 2.8vw, 1.9rem); }
+.np-devo-flag {
+    display: inline-block; margin-left: .5rem; padding: 0 .4rem; border: 1px solid currentColor;
+    font-size: .64rem; letter-spacing: .1em; vertical-align: 1px;
+}
+.np-devo-flag.is-read { color: var(--np-ink-s); }
+.np-devo-side { border-left: 1px solid var(--np-hair); padding-left: 1.75rem; }
+.np-pullquote {
+    margin: 0 0 1rem; padding: .75rem 0;
+    border-top: 3px solid var(--np-rule); border-bottom: 1px solid var(--np-rule);
+    font-family: 'Playfair Display', Georgia, serif; font-style: italic; font-weight: 700;
+    font-size: 1.15rem; line-height: 1.4; text-align: center;
+}
+.np-pullquote i { display: block; font-size: .95rem; color: var(--np-accent); margin-bottom: .35rem; font-style: normal; }
+.np-prayer { background: #f1ece0; padding: .75rem 1rem; border-left: 3px solid var(--np-accent); }
+.np-prayer h4 {
+    font-size: .72rem; font-weight: 600; text-transform: uppercase; letter-spacing: .14em;
+    color: var(--np-accent); margin: 0 0 .3rem;
+}
+.np-prayer p { font-size: .9rem; font-style: italic; line-height: 1.6; margin: 0; }
+
+/* Testimonies */
+.np-quote { font-style: italic; }
+.np-reactions { display: flex; gap: 1rem; margin: 0 0 .5rem; font-size: .78rem; color: var(--np-ink-s); }
+.np-reactions i { color: var(--np-accent); margin-right: .2rem; }
+
+/* Partnership advertisement */
+.np-ad {
+    margin-top: 1.75rem; padding: 1.25rem 1.5rem 1.4rem;
+    border: 4px double var(--np-rule); background: #f3eee2; text-align: center;
+}
+.np-ad-label {
+    font-size: .64rem; text-transform: uppercase; letter-spacing: .18em; color: var(--np-ink-s); margin-bottom: .25rem;
+}
+.np .np-ad-head {
+    font-family: 'Playfair Display', Georgia, serif; font-weight: 900; font-size: clamp(1.6rem, 4vw, 2.4rem);
+    text-transform: uppercase; letter-spacing: .04em; line-height: 1.1; margin: 0 0 .35rem;
+}
+.np-ad-lead { font-family: 'Playfair Display', Georgia, serif; font-style: italic; font-size: 1.1rem; margin: 0 0 .6rem; }
+.np-ad-body { font-size: .92rem; line-height: 1.7; max-width: 640px; margin: 0 auto .6rem; }
+.np-ad-verse { font-size: .85rem; font-style: italic; color: var(--np-ink-s); max-width: 600px; margin: 0 auto 1rem; }
+.np-ad-verse span { font-style: normal; font-weight: 600; white-space: nowrap; }
+.np a.np-ad-btn {
+    display: inline-flex; align-items: center; gap: .5rem;
+    background: var(--np-accent); color: #fff; padding: .65rem 1.5rem;
+    font-size: .82rem; font-weight: 700; text-transform: uppercase; letter-spacing: .1em; text-decoration: none;
+    border: 2px solid var(--np-accent); transition: background .15s, color .15s;
+}
+.np a.np-ad-btn:hover { background: transparent; color: var(--np-accent); }
+
+/* Tablets: stories in two columns */
+@@media (max-width: 1000px) {
+    .np-columns { grid-template-columns: repeat(2, minmax(0, 1fr)); row-gap: 1.25rem; }
+    .np-columns > *:nth-child(odd) { padding-left: 0; border-left: none; }
+    .np-columns > *:nth-child(even) { padding-right: 0; }
+}
+
+/* Phones: one column, rules between stories */
+@@media (max-width: 700px) {
+    .np-wrap { padding: .75rem; }
+    .np { padding: 1rem 1rem .75rem; }
+    .np-ears { font-size: .65rem; }
+    .np-ear { padding: .25rem .4rem; }
+    .np-dateline { justify-content: center; text-align: center; font-size: .7rem; }
+    .np-front { grid-template-columns: 1fr; }
+    .np-side { border-left: none; padding-left: 0; margin-top: 1.25rem; }
+    .np-columns { grid-template-columns: 1fr; }
+    .np-columns > * { padding: 0 0 1rem; border-left: none; border-bottom: 1px solid var(--np-hair); margin-bottom: 1rem; }
+    .np-columns > *:last-child { border-bottom: none; margin-bottom: 0; padding-bottom: 0; }
+    .np-body { text-align: left; }
+    .np-breaking { flex-direction: column; }
+    .np-devo { grid-template-columns: 1fr; }
+    .np-devo-side { border-left: none; padding-left: 0; margin-top: 1rem; }
+    .np-ad { padding: 1rem; }
+}
+</style>

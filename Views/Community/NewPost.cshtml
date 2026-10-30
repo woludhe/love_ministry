@@ -9,16 +9,71 @@
     {
         Layout = "~/Views/Shared/_Layout.cshtml";
     }
+    var maxPhotos = ChurchMinistry.Models.ForumPostImage.MaxPerPost;
 }
 <section class="page-header"><h1>Create New Post</h1></section>
 <div class="form-page">
-    <form asp-action="NewPost" method="post">
+    <form asp-action="NewPost" method="post" enctype="multipart/form-data">
         <div asp-validation-summary="All" class="validation-summary"></div>
         <div class="form-group"><label asp-for="Title"></label><input asp-for="Title" class="form-control" placeholder="Post title..." /><span asp-validation-for="Title" class="field-error"></span></div>
         <div class="form-group"><label asp-for="Category"></label><select asp-for="Category" class="form-control" asp-items="Enum.GetValues<ChurchMinistry.Models.ForumCategory>().Select(c => new Microsoft.AspNetCore.Mvc.Rendering.SelectListItem(ChurchMinistry.Models.ForumCategories.Label(c), c.ToString()))"></select></div>
         <div class="form-group"><label asp-for="Content">Content</label><textarea asp-for="Content" class="form-control" rows="8" placeholder="Share your thoughts..."></textarea><span asp-validation-for="Content" class="field-error"></span></div>
+        <div class="form-group">
+            <label for="postImages">Photos <span class="form-hint">(optional, up to @maxPhotos)</span></label>
+            <input type="file" id="postImages" name="Images" accept="image/*" multiple class="post-photo-input" />
+            <div class="post-photo-picker" id="postPhotoPicker" data-max="@maxPhotos">
+                <label for="postImages" class="post-photo-add" id="postPhotoAdd">
+                    <i class="fas fa-image"></i>
+                    <span>Add photos</span>
+                </label>
+            </div>
+            <span asp-validation-for="Images" class="field-error"></span>
+        </div>
         <div class="form-group checkbox-group"><label><input asp-for="IsPastorQuestion" type="checkbox" /> This is a question for the Pastor</label></div>
         <button type="submit" class="btn btn-primary">Publish Post</button>
         <a asp-action="Index" class="btn btn-outline">Cancel</a>
     </form>
 </div>
+
+@section Scripts {
+<script>
+// Photos: picks add to the list (up to data-max), each preview has a remove button,
+// and the file input always holds exactly the photos shown
+(() => {
+    const input = document.getElementById('postImages');
+    const picker = document.getElementById('postPhotoPicker');
+    const add = document.getElementById('postPhotoAdd');
+    const max = Number(picker.dataset.max);
+    let files = [];
+
+    function render() {
+        picker.querySelectorAll('.post-photo-thumb').forEach(t => { URL.revokeObjectURL(t.dataset.url); t.remove(); });
+        files.forEach((f, i) => {
+            const url = URL.createObjectURL(f);
+            const thumb = document.createElement('div');
+            thumb.className = 'post-photo-thumb';
+            thumb.dataset.url = url;
+            thumb.innerHTML = `<img alt="" /><button type="button" aria-label="Remove photo"><i class="fas fa-times"></i></button>`;
+            thumb.querySelector('img').src = url;
+            thumb.querySelector('button').addEventListener('click', () => { files.splice(i, 1); sync(); });
+            picker.insertBefore(thumb, add);
+        });
+        add.hidden = files.length >= max;
+    }
+
+    function sync() {
+        const dt = new DataTransfer();
+        files.forEach(f => dt.items.add(f));
+        input.files = dt.files;
+        render();
+    }
+
+    input.addEventListener('change', () => {
+        const picked = [...input.files].filter(f => f.type.startsWith('image/'));
+        // A new pick adds to the photos already chosen (the browser would otherwise replace them)
+        files = [...files, ...picked].slice(0, max);
+        sync();
+    });
+})();
+</script>
+}

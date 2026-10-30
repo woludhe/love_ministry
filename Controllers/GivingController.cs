@@ -336,7 +336,7 @@ namespace ChurchMinistry.Controllers
                 reminder.IsActive  = false;
                 reminder.StoppedAt = DateTime.UtcNow;
                 await _db.SaveChangesAsync();
-                TempData["Success"] = "Giving reminder stopped.";
+                TempData["Success"] = "Giving pledge stopped.";
             }
             return RedirectToAction("Reminders");
         }

@@ -69,13 +69,13 @@
                     }
                 </div>
                 <nav class="sidebar-nav">
-                    <a asp-controller="Members" asp-action="Dashboard" class="sidebar-nav-home @Active(At("Members", "Dashboard"))"><i class="fas fa-home"></i> Dashboard</a>
+                    <a asp-controller="Members" asp-action="Dashboard" class="sidebar-nav-home @Active(At("Members", "Dashboard", "MyDaily"))"><i class="fas fa-home"></i> Dashboard</a>
                     <a asp-controller="Devotionals" asp-action="Index" class="@Active(At("Devotionals"))"><i class="fas fa-book-bible"></i> Devotions</a>
                     <a asp-controller="Members" asp-action="Profile" class="@Active(At("Members", "Profile", "EditProfile") || At("Account", "ChangePassword"))"><i class="fas fa-user"></i> My Profile</a>
                     <a asp-controller="Members" asp-action="MyQrCode" class="@Active(At("Members", "MyQrCode"))"><i class="fas fa-qrcode"></i> My QR Code</a>
                     <a asp-controller="Members" asp-action="Attendance" class="@Active(At("Members", "Attendance"))"><i class="fas fa-calendar-check"></i> Attendance</a>
                     <a asp-controller="Giving" asp-action="Give" class="@Active(At("Giving") && action != "Reminders")"><i class="fas fa-hand-holding-heart"></i> Give</a>
-                    <a asp-controller="Giving" asp-action="Reminders" class="@Active(At("Giving", "Reminders"))"><i class="fas fa-bell"></i> Giving Reminders</a>
+                    <a asp-controller="Giving" asp-action="Reminders" class="@Active(At("Giving", "Reminders"))"><i class="fas fa-bell"></i> Giving Pledges</a>
                     <a asp-controller="Prayer" asp-action="Submit" class="@Active(At("Prayer", "Submit"))"><i class="fas fa-hands-praying"></i> Prayer Request</a>
                     <a asp-controller="Community" asp-action="Index" class="@Active(At("Community") && action != "Chat")"><i class="fas fa-comments"></i> Community @await Component.InvokeAsync("NavUnread", new { place = "community" })</a>
                     <a asp-controller="Community" asp-action="Chat" class="@Active(At("Community", "Chat"))"><i class="fas fa-comment-dots"></i> Live Chat @await Component.InvokeAsync("NavUnread", new { place = "chat" })</a>
@@ -110,12 +110,11 @@
                     <li><a asp-controller="Newsletter" asp-action="Index">Newsletter</a></li>
                 </ul>
             </div>
-            <div class="footer-col">
-                <h4>Service Times</h4>
+            @* Service Times column hidden; to show it again, restore:
+            <div class="footer-col"><h4>Service Times</h4>
                 <p><strong>Sunday Service</strong><br>8:00 AM & 10:30 AM</p>
                 <p><strong>Midweek Bible Study</strong><br>Wednesday 6:30 PM</p>
-                <p><strong>Prayer Meeting</strong><br>Friday 6:00 PM</p>
-            </div>
+                <p><strong>Prayer Meeting</strong><br>Friday 6:00 PM</p></div> *@
             <div class="footer-col">
                 <h4>Contact</h4>
                 <p><i class="fas fa-map-marker-alt"></i> @Config["Church:Address"]</p>

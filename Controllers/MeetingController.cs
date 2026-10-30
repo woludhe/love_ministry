@@ -273,7 +273,7 @@ namespace ChurchMinistry.Controllers
                 await _notifications.CreateAsync(adminId,
                     "Meeting Approval Required",
                     $"{member?.FullName ?? "A member"} scheduled \"{room.Title}\" and needs approval.",
-                    "/Admin/MeetingApprovals");
+                    "/MeetingApprovals");
 
             TempData["Info"] = "Your meeting has been submitted and is awaiting admin approval. You will be notified once approved.";
             return RedirectToAction("Index");

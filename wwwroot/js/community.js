@@ -56,6 +56,47 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
+  // Post photos: click opens a full-screen viewer; arrows / ← → step through that post's photos, Esc closes
+  const viewer = document.createElement('div');
+  viewer.className = 'fb-viewer';
+  viewer.hidden = true;
+  viewer.innerHTML = `
+    <button type="button" class="fb-viewer-close" aria-label="Close"><i class="fas fa-times"></i></button>
+    <button type="button" class="fb-viewer-prev" aria-label="Previous photo"><i class="fas fa-chevron-left"></i></button>
+    <img alt="" />
+    <button type="button" class="fb-viewer-next" aria-label="Next photo"><i class="fas fa-chevron-right"></i></button>
+    <div class="fb-viewer-count"></div>`;
+  document.body.appendChild(viewer);
+  let photos = [], at = 0;
+
+  const show = i => {
+    at = (i + photos.length) % photos.length;
+    viewer.querySelector('img').src = photos[at];
+    viewer.querySelector('.fb-viewer-count').textContent = photos.length > 1 ? `${at + 1} / ${photos.length}` : '';
+    viewer.querySelectorAll('.fb-viewer-prev, .fb-viewer-next').forEach(b => b.hidden = photos.length < 2);
+  };
+  const close = () => { viewer.hidden = true; document.body.style.overflow = ''; };
+
+  document.addEventListener('click', e => {
+    const photo = e.target.closest('.js-photo');
+    if (!photo) return;
+    photos = [...photo.closest('.fb-photos').querySelectorAll('.js-photo')].map(b => b.dataset.src);
+    show(photos.indexOf(photo.dataset.src));
+    viewer.hidden = false;
+    document.body.style.overflow = 'hidden';
+  });
+  viewer.addEventListener('click', e => {
+    if (e.target.closest('.fb-viewer-prev')) show(at - 1);
+    else if (e.target.closest('.fb-viewer-next')) show(at + 1);
+    else if (e.target.tagName !== 'IMG') close();
+  });
+  document.addEventListener('keydown', e => {
+    if (viewer.hidden) return;
+    if (e.key === 'Escape') close();
+    if (e.key === 'ArrowLeft' && photos.length > 1) show(at - 1);
+    if (e.key === 'ArrowRight' && photos.length > 1) show(at + 1);
+  });
+
   // Comment boxes grow with their text; Enter posts, Shift+Enter makes a new line
   document.querySelectorAll('.fb-comment-form textarea').forEach(t => {
     const grow = () => { t.style.height = 'auto'; t.style.height = t.scrollHeight + 'px'; };
