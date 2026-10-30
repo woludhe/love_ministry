@@ -164,3 +164,12 @@ document.addEventListener('DOMContentLoaded', () => {
     setTimeout(() => { toast.style.opacity = '0'; toast.style.transition = 'opacity .5s'; setTimeout(() => toast.remove(), 500); }, 3500);
   };
 });
+
+// Date / time fields: a click anywhere in the field opens the picker, not just on the small icon
+// (browsers without showPicker keep their normal behaviour)
+document.addEventListener('click', e => {
+    const input = e.target.closest?.('input.form-control');
+    if (!input || input.disabled || input.readOnly || typeof input.showPicker !== 'function') return;
+    if (!['date', 'datetime-local', 'month', 'week', 'time'].includes(input.type)) return;
+    try { input.showPicker(); } catch { /* already open, or not allowed here */ }
+});

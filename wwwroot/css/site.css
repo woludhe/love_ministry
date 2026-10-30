@@ -4770,3 +4770,137 @@ a.kpi-card.kpi-link {
         gap: 0;
     }
 }
+
+/* ── Dropdowns and date/time fields ──────────────────────────
+   One look for every <select> and date/time input that uses .form-control (and the dark .mi
+   fields on the meeting form): a drawn chevron / calendar / clock icon instead of each browser's
+   own, the same hover and disabled states as text fields. Element+class selectors so a page's
+   own padding or background shorthand can't wipe the icon. */
+select.form-control,
+select.mi {
+    -webkit-appearance: none;
+    appearance: none;
+    padding-right: 2.4rem;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%236b7280' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 6l4 4 4-4'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right .8rem center;
+    background-size: 1rem;
+    line-height: 1.35;
+    text-overflow: ellipsis;
+    cursor: pointer;
+}
+
+select.mi {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%23ffffffb3' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 6l4 4 4-4'/%3E%3C/svg%3E");
+}
+
+/* A list box (multiple / size) keeps the native scrolling list, no chevron */
+select.form-control[multiple],
+select.form-control[size]:not([size="1"]) {
+    padding-right: .9rem;
+    background-image: none;
+    cursor: default;
+}
+
+select.form-control::-ms-expand {
+    display: none;
+}
+
+select.form-control option {
+    color: var(--text);
+    background: var(--white);
+}
+
+select.form-control option:disabled {
+    color: var(--text-s);
+}
+
+/* Date, date-time, time and month fields */
+input.form-control[type="date"],
+input.form-control[type="datetime-local"],
+input.form-control[type="month"],
+input.form-control[type="week"],
+input.form-control[type="time"] {
+    position: relative;
+    min-width: 0;
+    line-height: 1.35;
+    color-scheme: light;
+    cursor: pointer;
+    font-variant-numeric: tabular-nums;
+}
+
+/* Chrome / Edge / Safari: swap the browser's tiny icon for ours. The indicator stays clickable. */
+input.form-control[type="date"]::-webkit-calendar-picker-indicator,
+input.form-control[type="datetime-local"]::-webkit-calendar-picker-indicator,
+input.form-control[type="month"]::-webkit-calendar-picker-indicator,
+input.form-control[type="week"]::-webkit-calendar-picker-indicator {
+    width: 1.1rem;
+    height: 1.1rem;
+    padding: .2rem;
+    margin-left: .4rem;
+    border-radius: 6px;
+    cursor: pointer;
+    opacity: .75;
+    background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%236366f1' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='3' y='4.5' width='18' height='17' rx='2.5'/%3E%3Cpath d='M3 9.5h18M8 2.5v4M16 2.5v4'/%3E%3C/svg%3E") center / 1.1rem no-repeat;
+    transition: opacity .15s, background-color .15s;
+}
+
+input.form-control[type="time"]::-webkit-calendar-picker-indicator {
+    width: 1.1rem;
+    height: 1.1rem;
+    padding: .2rem;
+    margin-left: .4rem;
+    border-radius: 6px;
+    cursor: pointer;
+    opacity: .75;
+    background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%236366f1' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='9'/%3E%3Cpath d='M12 7v5l3 2'/%3E%3C/svg%3E") center / 1.1rem no-repeat;
+    transition: opacity .15s, background-color .15s;
+}
+
+input.form-control::-webkit-calendar-picker-indicator:hover {
+    opacity: 1;
+    background-color: var(--purple-l);
+}
+
+/* The parts of the date (dd / mm / yyyy) */
+input.form-control::-webkit-datetime-edit {
+    padding: 0;
+}
+
+input.form-control::-webkit-datetime-edit-fields-wrapper {
+    padding: 0;
+}
+
+input.form-control::-webkit-datetime-edit-text {
+    color: var(--text-s);
+    padding: 0 .1rem;
+}
+
+input.form-control::-webkit-datetime-edit-day-field:focus,
+input.form-control::-webkit-datetime-edit-month-field:focus,
+input.form-control::-webkit-datetime-edit-year-field:focus,
+input.form-control::-webkit-datetime-edit-hour-field:focus,
+input.form-control::-webkit-datetime-edit-minute-field:focus,
+input.form-control::-webkit-datetime-edit-ampm-field:focus {
+    background: var(--purple-l);
+    color: var(--purple);
+    border-radius: 4px;
+}
+
+/* Hover and disabled, for dropdowns and date fields alike */
+select.form-control:hover:not(:disabled):not(:focus),
+input.form-control[type="date"]:hover:not(:disabled):not(:focus),
+input.form-control[type="datetime-local"]:hover:not(:disabled):not(:focus),
+input.form-control[type="month"]:hover:not(:disabled):not(:focus),
+input.form-control[type="week"]:hover:not(:disabled):not(:focus),
+input.form-control[type="time"]:hover:not(:disabled):not(:focus) {
+    border-color: #c7cbd3;
+}
+
+select.form-control:disabled,
+input.form-control:disabled {
+    background-color: #f3f4f6;
+    color: var(--text-s);
+    cursor: not-allowed;
+    opacity: 1;
+}
