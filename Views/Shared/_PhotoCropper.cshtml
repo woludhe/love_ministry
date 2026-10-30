@@ -1,0 +1,120 @@
+@*
+    Crop window for profile photos. Render it in a page's Scripts section and give the
+    file input onchange="openPhotoCropper(this)" and the preview <img> id="photoPreview".
+    The chosen square is shrunk to at most 512px and sent as a JPEG in place of the
+    original file; the server shrinks it again (ProfilePhotos in Services/Services.cs),
+    which also covers a browser where the cropper can't load.
+*@
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.2/cropper.min.css" />
+<script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.2/cropper.min.js"></script>
+
+<div class="crop-overlay" id="cropOverlay" style="display:none" role="dialog" aria-modal="true" aria-labelledby="cropTitle">
+    <div class="crop-card">
+        <h3 id="cropTitle">Crop your photo</h3>
+        <p class="crop-hint">Drag to move, pinch or scroll to zoom.</p>
+        <div class="crop-area"><img id="cropImage" alt="" /></div>
+        <div class="crop-tools">
+            <button type="button" class="btn btn-outline btn-sm" onclick="cropZoom(-0.1)" title="Zoom out" aria-label="Zoom out"><i class="fas fa-magnifying-glass-minus"></i></button>
+            <button type="button" class="btn btn-outline btn-sm" onclick="cropZoom(0.1)" title="Zoom in" aria-label="Zoom in"><i class="fas fa-magnifying-glass-plus"></i></button>
+            <button type="button" class="btn btn-outline btn-sm" onclick="cropRotate()" title="Rotate" aria-label="Rotate"><i class="fas fa-rotate-right"></i></button>
+        </div>
+        <div class="crop-btns">
+            <button type="button" class="btn btn-outline" onclick="closePhotoCropper(false)">Cancel</button>
+            <button type="button" class="btn btn-primary" id="cropUseBtn" onclick="closePhotoCropper(true)">
+                <i class="fas fa-check"></i> Use photo
+            </button>
+        </div>
+    </div>
+</div>
+
+<style>
+    .crop-overlay { position:fixed; inset:0; z-index:1000; background:rgba(0,0,0,.7); backdrop-filter:blur(4px);
+                    display:flex; align-items:center; justify-content:center; padding:1rem; }
+    .crop-card    { background:var(--white, #fff); color:inherit; border-radius:16px; padding:1.25rem;
+                    width:100%; max-width:440px; max-height:100%; overflow:auto;
+                    box-shadow:0 20px 60px rgba(0,0,0,.4); }
+    .crop-card h3 { font-size:1.1rem; margin:0 0 .2rem; }
+    .crop-hint    { font-size:.82rem; opacity:.7; margin:0 0 .75rem; }
+    .crop-area    { height:min(60vh, 360px); background:#111; border-radius:10px; overflow:hidden; }
+    .crop-area img { display:block; max-width:100%; }
+    /* Photos are shown as circles across the site: show the circle that will be seen */
+    .crop-area .cropper-view-box, .crop-area .cropper-face { border-radius:50%; }
+    .crop-area .cropper-view-box { outline:2px solid rgba(255,255,255,.85); }
+    .crop-tools   { display:flex; justify-content:center; gap:.5rem; margin:.75rem 0; }
+    .crop-btns    { display:flex; justify-content:flex-end; gap:.6rem; }
+</style>
+
+<script>
+    (() => {
+        const MAX = 512;           // pixels per side, matches ProfilePhotos.MaxSize
+        let input = null, cropper = null, objectUrl = null;
+        const overlay = document.getElementById('cropOverlay');
+        const img = document.getElementById('cropImage');
+
+        function showPreview(src) {
+            const p = document.getElementById('photoPreview');
+            if (p) p.src = src;
+        }
+
+        window.openPhotoCropper = function (el) {
+            const file = el.files && el.files[0];
+            if (!file) return;
+            input = el;
+            if (objectUrl) URL.revokeObjectURL(objectUrl);
+            objectUrl = URL.createObjectURL(file);
+            // No cropper (script blocked or failed): just preview; the server crops the centre
+            if (typeof Cropper === 'undefined') { showPreview(objectUrl); return; }
+
+            overlay.style.display = 'flex';
+            img.src = objectUrl;
+            cropper?.destroy();
+            cropper = new Cropper(img, {
+                aspectRatio: 1, viewMode: 1, dragMode: 'move', autoCropArea: 0.9,
+                background: false, guides: false, center: false, toggleDragModeOnDblclick: false
+            });
+        };
+
+        window.cropZoom = d => cropper?.zoom(d);
+        window.cropRotate = () => cropper?.rotate(90);
+
+        window.closePhotoCropper = function (use) {
+            if (!cropper) return;
+            if (!use) {
+                input.value = '';   // nothing chosen: keep the current photo
+                done();
+                return;
+            }
+            const side = Math.min(MAX, Math.round(cropper.getData(true).width) || MAX);
+            const canvas = cropper.getCroppedCanvas({
+                width: side, height: side, fillColor: '#fff',
+                imageSmoothingEnabled: true, imageSmoothingQuality: 'high'
+            });
+            const btn = document.getElementById('cropUseBtn');
+            btn.disabled = true;
+            canvas.toBlob(blob => {
+                btn.disabled = false;
+                if (blob) {
+                    // Send the small cropped JPEG instead of the original file
+                    try {
+                        const dt = new DataTransfer();
+                        dt.items.add(new File([blob], 'profile.jpg', { type: 'image/jpeg' }));
+                        input.files = dt.files;
+                    } catch { /* older browser: the original is sent and cropped to its centre */ }
+                    showPreview(canvas.toDataURL('image/jpeg', 0.85));
+                }
+                done();
+            }, 'image/jpeg', 0.85);
+        };
+
+        function done() {
+            cropper?.destroy();
+            cropper = null;
+            overlay.style.display = 'none';
+            img.removeAttribute('src');
+        }
+
+        document.addEventListener('keydown', e => {
+            if (e.key === 'Escape' && overlay.style.display === 'flex') window.closePhotoCropper(false);
+        });
+    })();
+</script>

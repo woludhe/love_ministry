@@ -838,11 +838,17 @@ namespace ChurchMinistry.Controllers
 
             if (vm.ProfilePhotoFile != null)
             {
-                var fileName = $"{Guid.NewGuid()}{Path.GetExtension(vm.ProfilePhotoFile.FileName)}";
-                var path = Path.Combine(_env.WebRootPath, "uploads", fileName);
-                using var stream = new FileStream(path, FileMode.Create);
-                await vm.ProfilePhotoFile.CopyToAsync(stream);
-                member.ProfilePhoto = $"/uploads/{fileName}";
+                // Saved as a small square JPEG so photos load quickly everywhere they're shown
+                var photo = await ProfilePhotos.SaveAsync(vm.ProfilePhotoFile, _env.WebRootPath);
+                if (photo == null)
+                {
+                    ModelState.AddModelError(nameof(vm.ProfilePhotoFile),
+                        "That file couldn't be used as a photo. Please choose a JPG, PNG or WEBP picture under 20 MB.");
+                    vm.ExistingPhoto = member.ProfilePhoto;
+                    vm.Groups = await GroupsOfAsync(member.Id);
+                    return View("EditProfile", vm);
+                }
+                member.ProfilePhoto = photo;
             }
 
             member.FirstName = vm.FirstName; member.LastName = vm.LastName;

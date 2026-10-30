@@ -6,6 +6,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Memory;
 using MimeKit;
 using QRCoder;
+using SixLabors.ImageSharp.Processing;   // Mutate() for profile photos (ImageSharp types are fully qualified: System.Drawing is used here too)
 using System.Drawing;
 using System.Drawing.Imaging;
 using System.Net.Http.Headers;
@@ -1579,5 +1580,48 @@ namespace ChurchMinistry.Services
 
         private static string Compact(string s) =>
             new string(s.ToLowerInvariant().Where(char.IsLetterOrDigit).ToArray());
+    }
+
+    // ─── Profile photos ───
+    // Saves an uploaded profile photo as a small square JPEG. The page crops it first
+    // (Views/Shared/_PhotoCropper.cshtml); a photo sent without cropping is cut to its
+    // centre. Re-encoding also means only real images are stored, and drops the camera's
+    // EXIF data (which can include where the photo was taken).
+    public static class ProfilePhotos
+    {
+        public const int MaxSize = 512;   // pixels per side
+        public const long MaxUploadBytes = 20 * 1024 * 1024;
+
+        // Returns the photo's /uploads URL, or null if the file isn't an image we can read
+        public static async Task<string?> SaveAsync(IFormFile file, string webRootPath)
+        {
+            if (file.Length == 0 || file.Length > MaxUploadBytes) return null;
+            try
+            {
+                using var image = await SixLabors.ImageSharp.Image.LoadAsync(file.OpenReadStream());
+                // Square, and never enlarged: a small photo stays its own size
+                var side = Math.Min(MaxSize, Math.Min(image.Width, image.Height));
+                image.Mutate(x => x
+                    .AutoOrient()   // phone photos are often stored sideways with a rotate flag
+                    .Resize(new SixLabors.ImageSharp.Processing.ResizeOptions
+                    {
+                        Size = new SixLabors.ImageSharp.Size(side, side),
+                        Mode = SixLabors.ImageSharp.Processing.ResizeMode.Crop
+                    })
+                    .BackgroundColor(SixLabors.ImageSharp.Color.White));   // transparent PNGs
+                image.Metadata.ExifProfile = null;
+                image.Metadata.XmpProfile = null;
+
+                var fileName = $"{Guid.NewGuid()}.jpg";
+                await SixLabors.ImageSharp.ImageExtensions.SaveAsJpegAsync(image, Path.Combine(webRootPath, "uploads", fileName),
+                    new SixLabors.ImageSharp.Formats.Jpeg.JpegEncoder { Quality = 82 });
+                return $"/uploads/{fileName}";
+            }
+            catch (Exception ex) when (ex is SixLabors.ImageSharp.UnknownImageFormatException
+                                          or SixLabors.ImageSharp.InvalidImageContentException)
+            {
+                return null;
+            }
+        }
     }
 }

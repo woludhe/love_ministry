@@ -20,7 +20,7 @@
                 <img src="@(Model.ExistingPhoto ?? "/images/avatar-default.png")" id="photoPreview" class="profile-photo-preview" />
                 <label class="btn btn-outline btn-sm">
                     <i class="fas fa-camera"></i> Change Photo
-                    <input type="file" asp-for="ProfilePhotoFile" accept="image/*" hidden onchange="previewPhoto(this)" />
+                    <input type="file" asp-for="ProfilePhotoFile" accept="image/*" hidden onchange="openPhotoCropper(this)" />
                 </label>
             </div>
             <partial name="_GroupIcons" model="Model.Groups" />
@@ -59,13 +59,5 @@
     </div>
 </div>
 @section Scripts {
-    <script>
-        function previewPhoto(i) {
-            if (i.files && i.files[0]) {
-                const r = new FileReader();
-                r.onload = e => document.getElementById('photoPreview').src = e.target.result;
-                r.readAsDataURL(i.files[0]);
-            }
-        }
-    </script>
+    <partial name="_PhotoCropper" />
 }
