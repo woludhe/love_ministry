@@ -1,5 +1,5 @@
 // ============================================================
-//  Community feed: Amen, comment box, "View all comments", "See more"
+//  Community feed: Amen / Like, comment box, "View all comments", "See more"
 //  Used by Views/Community/Index.cshtml and Post.cshtml (cards from _PostCard.cshtml)
 // ============================================================
 
@@ -7,25 +7,28 @@ document.addEventListener('DOMContentLoaded', () => {
   const token = document.querySelector('input[name="__RequestVerificationToken"]')?.value ?? '';
 
   document.addEventListener('click', async e => {
-    // Amen: toggle, then show the server's count
-    const amen = e.target.closest('.js-amen');
-    if (amen) {
-      const card = amen.closest('.fb-post');
-      amen.disabled = true;
+    // Amen / Like: toggle, then show the server's count
+    const react = e.target.closest('.js-react');
+    if (react) {
+      const card = react.closest('.fb-post');
+      const kind = react.dataset.kind;   // "amen" or "like"
+      react.disabled = true;
       try {
-        const res = await fetch('/Community/Amen', {
+        const res = await fetch(kind === 'like' ? '/Community/Like' : '/Community/Amen', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'RequestVerificationToken': token },
-          body: JSON.stringify(Number(amen.dataset.id))
+          body: JSON.stringify(Number(react.dataset.id))
         });
         if (!res.ok) throw new Error(res.status);
         const d = await res.json();
-        amen.classList.toggle('is-on', d.amened);
-        amen.setAttribute('aria-pressed', d.amened);
-        card.querySelector('.js-amen-count').textContent = d.count;
-        card.querySelector('.js-amen-summary').hidden = d.count === 0;
+        react.classList.toggle('is-on', d.on);
+        react.setAttribute('aria-pressed', d.on);
+        card.querySelector(`.js-${kind}-count`).textContent = d.count;
+        card.querySelector(`.js-${kind}-summary`).hidden = d.count === 0;
+        const word = card.querySelector(`.js-${kind}-word`);
+        if (word) word.textContent = d.count === 1 ? 'Like' : 'Likes';
       } catch { /* leave the button as it was */ }
-      amen.disabled = false;
+      react.disabled = false;
       return;
     }
 

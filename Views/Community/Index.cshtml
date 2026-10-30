@@ -11,6 +11,8 @@
     var posts = (List<ForumPost>)(ViewBag.Posts ?? new List<ForumPost>());
     var amenCounts = (Dictionary<int, int>)(ViewBag.AmenCounts ?? new Dictionary<int, int>());
     var myAmens = (HashSet<int>)(ViewBag.MyAmens ?? new HashSet<int>());
+    var likeCounts = (Dictionary<int, int>)(ViewBag.LikeCounts ?? new Dictionary<int, int>());
+    var myLikes = (HashSet<int>)(ViewBag.MyLikes ?? new HashSet<int>());
     var me = ViewBag.Me as Member;
     var selected = Context.Request.Query["category"].ToString();
     var returnUrl = Context.Request.Path + Context.Request.QueryString;
@@ -46,6 +48,8 @@
                 Post = post,
                 AmenCount = amenCounts.GetValueOrDefault(post.Id),
                 Amened = myAmens.Contains(post.Id),
+                LikeCount = likeCounts.GetValueOrDefault(post.Id),
+                Liked = myLikes.Contains(post.Id),
                 Me = me,
                 ReturnUrl = returnUrl
             };

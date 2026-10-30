@@ -503,6 +503,11 @@ namespace ChurchMinistry.Migrations
                     b.Property<int>("ForumPostId")
                         .HasColumnType("int");
 
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(10)
+                        .HasColumnType("varchar(10)");
+
                     b.Property<int>("MemberId")
                         .HasColumnType("int");
 
@@ -510,7 +515,7 @@ namespace ChurchMinistry.Migrations
 
                     b.HasIndex("MemberId");
 
-                    b.HasIndex("ForumPostId", "MemberId")
+                    b.HasIndex("ForumPostId", "MemberId", "Kind")
                         .IsUnique();
 
                     b.ToTable("ForumReactions");

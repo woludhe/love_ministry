@@ -1350,38 +1350,48 @@ namespace ChurchMinistry.Controllers
             return View(post);
         }
 
-        // Amen counts for these posts, which of them the viewer said Amen to, and the viewer
+        // Amen and Like counts for these posts, which of them the viewer reacted to, and the viewer
         private async Task SetAmenDataAsync(List<int> postIds)
         {
             var me = await GetMemberAsync();
             ViewBag.Me = me;
-            ViewBag.AmenCounts = await _db.ForumReactions
+            var counts = await _db.ForumReactions
                 .Where(r => postIds.Contains(r.ForumPostId))
-                .GroupBy(r => r.ForumPostId)
-                .Select(g => new { g.Key, Count = g.Count() })
-                .ToDictionaryAsync(x => x.Key, x => x.Count);
-            ViewBag.MyAmens = me == null ? new HashSet<int>()
-                : (await _db.ForumReactions
-                    .Where(r => r.MemberId == me.Id && postIds.Contains(r.ForumPostId))
-                    .Select(r => r.ForumPostId).ToListAsync()).ToHashSet();
+                .GroupBy(r => new { r.ForumPostId, r.Kind })
+                .Select(g => new { g.Key.ForumPostId, g.Key.Kind, Count = g.Count() })
+                .ToListAsync();
+            var myId = me?.Id ?? 0;
+            var mine = await _db.ForumReactions
+                .Where(r => r.MemberId == myId && postIds.Contains(r.ForumPostId))
+                .Select(r => new { r.ForumPostId, r.Kind }).ToListAsync();
+
+            ViewBag.AmenCounts = counts.Where(c => c.Kind == ForumReactionKind.Amen).ToDictionary(c => c.ForumPostId, c => c.Count);
+            ViewBag.LikeCounts = counts.Where(c => c.Kind == ForumReactionKind.Like).ToDictionary(c => c.ForumPostId, c => c.Count);
+            ViewBag.MyAmens = mine.Where(r => r.Kind == ForumReactionKind.Amen).Select(r => r.ForumPostId).ToHashSet();
+            ViewBag.MyLikes = mine.Where(r => r.Kind == ForumReactionKind.Like).Select(r => r.ForumPostId).ToHashSet();
         }
 
-        // Toggle the viewer's Amen on a post
+        // Toggle the viewer's Amen / Like on a post
         [HttpPost, ValidateAntiForgeryToken]
-        public async Task<IActionResult> Amen([FromBody] int id)
+        public Task<IActionResult> Amen([FromBody] int id) => ToggleReactionAsync(id, ForumReactionKind.Amen);
+
+        [HttpPost, ValidateAntiForgeryToken]
+        public Task<IActionResult> Like([FromBody] int id) => ToggleReactionAsync(id, ForumReactionKind.Like);
+
+        private async Task<IActionResult> ToggleReactionAsync(int id, ForumReactionKind kind)
         {
             var member = await GetMemberAsync();
             if (member == null) return Unauthorized();
             if (!await _db.ForumPosts.AnyAsync(p => p.Id == id)) return NotFound();
 
-            var mine = await _db.ForumReactions.FirstOrDefaultAsync(r => r.ForumPostId == id && r.MemberId == member.Id);
-            if (mine == null) _db.ForumReactions.Add(new ForumReaction { ForumPostId = id, MemberId = member.Id });
+            var mine = await _db.ForumReactions.FirstOrDefaultAsync(r => r.ForumPostId == id && r.MemberId == member.Id && r.Kind == kind);
+            if (mine == null) _db.ForumReactions.Add(new ForumReaction { ForumPostId = id, MemberId = member.Id, Kind = kind });
             else _db.ForumReactions.Remove(mine);
             try { await _db.SaveChangesAsync(); }
             catch (DbUpdateException) { /* a double click raced the unique index; the count below is still right */ }
 
-            var count = await _db.ForumReactions.CountAsync(r => r.ForumPostId == id);
-            return Json(new { count, amened = mine == null });
+            var count = await _db.ForumReactions.CountAsync(r => r.ForumPostId == id && r.Kind == kind);
+            return Json(new { count, on = mine == null });
         }
 
         [HttpGet] public IActionResult NewPost() => View(new ForumPostViewModel());

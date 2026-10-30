@@ -12,12 +12,16 @@
     }
     var amenCounts = (Dictionary<int, int>)(ViewBag.AmenCounts ?? new Dictionary<int, int>());
     var myAmens = (HashSet<int>)(ViewBag.MyAmens ?? new HashSet<int>());
+    var likeCounts = (Dictionary<int, int>)(ViewBag.LikeCounts ?? new Dictionary<int, int>());
+    var myLikes = (HashSet<int>)(ViewBag.MyLikes ?? new HashSet<int>());
     var card = new ForumPostCardViewModel
     {
         Post = Model,
         ShowAllReplies = true,
         AmenCount = amenCounts.GetValueOrDefault(Model.Id),
         Amened = myAmens.Contains(Model.Id),
+        LikeCount = likeCounts.GetValueOrDefault(Model.Id),
+        Liked = myLikes.Contains(Model.Id),
         Me = ViewBag.Me as ChurchMinistry.Models.Member,
         ReturnUrl = Url.Action("Post", new { id = Model.Id }) ?? ""
     };

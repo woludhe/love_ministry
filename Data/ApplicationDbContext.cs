@@ -124,7 +124,8 @@ namespace ChurchMinistry.Data
                     .HasForeignKey(r => r.ForumPostId).OnDelete(DeleteBehavior.Cascade);
                 e.HasOne(r => r.Member).WithMany()
                     .HasForeignKey(r => r.MemberId).OnDelete(DeleteBehavior.Cascade);
-                e.HasIndex(r => new { r.ForumPostId, r.MemberId }).IsUnique();
+                e.Property(r => r.Kind).HasConversion<string>().HasMaxLength(10);
+                e.HasIndex(r => new { r.ForumPostId, r.MemberId, r.Kind }).IsUnique();
             });
 
             // Prayer

@@ -288,7 +288,7 @@ namespace ChurchMinistry.Models
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     }
 
-    // A member's "Amen" on a community post — one per member per post, can be taken back
+    // A member's "Amen" or "Like" on a community post — one of each per member per post, can be taken back
     public class ForumReaction
     {
         public int Id { get; set; }
@@ -296,8 +296,11 @@ namespace ChurchMinistry.Models
         public ForumPost ForumPost { get; set; } = null!;
         public int MemberId { get; set; }
         public Member Member { get; set; } = null!;
+        public ForumReactionKind Kind { get; set; } = ForumReactionKind.Amen;
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     }
+
+    public enum ForumReactionKind { Amen, Like }
 
     public enum ForumCategory { General, Testimony, BibleStudy, Questions, Announcements, PrayerAnswered }
 

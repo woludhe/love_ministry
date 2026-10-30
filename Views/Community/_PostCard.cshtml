@@ -1,7 +1,7 @@
 @model ChurchMinistry.ViewModels.ForumPostCardViewModel
 @using ChurchMinistry.Models
 @*
-    One community post as a Facebook-style card: author, tags, text, Amen / comment counts,
+    One community post as a Facebook-style card: author, tags, text, Amen / Like / comment counts,
     responses and a comment box. Used by the feed (newest replies only) and the post page (all).
 *@
 @{
@@ -47,14 +47,18 @@
 
     <div class="fb-stats">
         <span class="js-amen-summary" hidden="@(Model.AmenCount == 0)">🙏 <span class="js-amen-count">@Model.AmenCount</span> Amen</span>
+        <span class="js-like-summary" hidden="@(Model.LikeCount == 0)">👍 <span class="js-like-count">@Model.LikeCount</span> <span class="js-like-word">@(Model.LikeCount == 1 ? "Like" : "Likes")</span></span>
         <span class="fb-stats-right">
             @replies.Count @(replies.Count == 1 ? "comment" : "comments") · @p.ViewCount @(p.ViewCount == 1 ? "view" : "views")
         </span>
     </div>
 
     <div class="fb-actions">
-        <button type="button" class="fb-action js-amen @(Model.Amened ? "is-on" : "")" data-id="@p.Id" aria-pressed="@(Model.Amened ? "true" : "false")">
+        <button type="button" class="fb-action js-react @(Model.Amened ? "is-on" : "")" data-id="@p.Id" data-kind="amen" aria-pressed="@(Model.Amened ? "true" : "false")">
             <span aria-hidden="true">🙏</span> Amen
+        </button>
+        <button type="button" class="fb-action js-react @(Model.Liked ? "is-on" : "")" data-id="@p.Id" data-kind="like" aria-pressed="@(Model.Liked ? "true" : "false")">
+            <span aria-hidden="true">👍</span> Like
         </button>
         <button type="button" class="fb-action js-comment" data-target="comment-@p.Id">
             <i class="far fa-comment"></i> Comment

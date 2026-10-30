@@ -258,6 +258,8 @@ namespace ChurchMinistry.ViewModels
         public bool ShowAllReplies { get; set; }
         public int AmenCount { get; set; }
         public bool Amened { get; set; }
+        public int LikeCount { get; set; }
+        public bool Liked { get; set; }
         public Member? Me { get; set; }
         public string ReturnUrl { get; set; } = "";   // where a comment posted from this card returns to
     }
