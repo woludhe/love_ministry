@@ -92,6 +92,18 @@ namespace ChurchMinistry.Models
     public enum RoomStatus  { Scheduled, Live, Ended, Cancelled }
     public enum ApprovalStatus { Pending, Approved, Rejected }
 
+    // Picture shown for a meeting participant. A host with no member profile is the admin (or a
+    // pastor) login, which appears with the site logo rather than the blank default avatar.
+    public static class MeetingAvatar
+    {
+        public const string Default = "/images/avatar-default.png";
+        public const string SiteLogo = "/images/logo-avatar.png";
+        public const string AdminName = "Admin";   // display name of the admin login, not its email
+
+        public static string For(int? memberId, string? memberPhoto, bool isHost) =>
+            memberId != null ? memberPhoto ?? Default : isHost ? SiteLogo : Default;
+    }
+
     public class MeetingParticipant
     {
         public int Id { get; set; }

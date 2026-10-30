@@ -52,7 +52,7 @@ namespace ChurchMinistry.Controllers
             => User.IsInRole("Admin") || User.IsInRole("Pastor");
 
         // ── Lobby ───────────────────────────────────────────────
-        public async Task<IActionResult> Index(int scheduledPage = 1, int pastPage = 1)
+        public async Task<IActionResult> Index(int scheduledPage = 1)
         {
             var now = DateTime.UtcNow;
 
@@ -121,14 +121,13 @@ namespace ChurchMinistry.Controllers
                 .Where(r => r.Status == RoomStatus.Ended && r.IsPublic && r.IsApproved);
 
             var scheduledPager = new PagerModel(scheduledPage, "meetings", "scheduledPage");
-            var pastPager = new PagerModel(pastPage, "meetings", "pastPage");
             var vm = new MeetingLobbyViewModel
             {
                 LiveMeetings = await liveQ.OrderByDescending(r => r.StartedAt).ToListAsync(),
                 ScheduledMeetings = await scheduledQ.OrderBy(r => r.ScheduledAt).ToPageAsync(scheduledPager),
-                PastMeetings = await pastQ.OrderByDescending(r => r.EndedAt).ToPageAsync(pastPager),
-                ScheduledPager = scheduledPager,
-                PastPager = pastPager
+                // The latest few only: the full history is in the Meetings Register (Admin / Pastor)
+                PastMeetings = await pastQ.OrderByDescending(r => r.EndedAt).Take(MeetingLobbyViewModel.RecentMeetings).ToListAsync(),
+                ScheduledPager = scheduledPager
             };
 
             // Sermons streamed through a meeting room; the live (else latest) one per room
@@ -729,7 +728,9 @@ namespace ChurchMinistry.Controllers
             }
 
             var user = await _userManager.GetUserAsync(User);
-            var displayName = member?.FullName ?? user?.UserName ?? "Guest";
+            // The admin login has no member profile: it shows as "Admin" with the site logo, not its email
+            var isAdminLogin = member == null && User.IsInRole("Admin");
+            var displayName = member?.FullName ?? (isAdminLogin ? MeetingAvatar.AdminName : user?.UserName) ?? "Guest";
 
             // Sermon streamed through this room (for verse overlays + attendance tracking)
             var linkedSermon = await _db.Sermons
@@ -746,6 +747,7 @@ namespace ChurchMinistry.Controllers
             {
                 Room = room,
                 DisplayName = displayName,
+                DisplayPhoto = MeetingAvatar.For(member?.Id, member?.ProfilePhoto, isHost || IsAdminOrPastor()),
                 IsHost = isHost,
                 CurrentMemberId = member?.Id
             });
@@ -804,8 +806,8 @@ namespace ChurchMinistry.Controllers
                     p.IsInWaitingRoom,
                     p.ConnectionId,
                     photo = p.Member != null
-                        ? p.Member.ProfilePhoto ?? "/images/avatar-default.png"
-                        : "/images/avatar-default.png"
+                        ? p.Member.ProfilePhoto ?? MeetingAvatar.Default
+                        : p.IsHost ? MeetingAvatar.SiteLogo : MeetingAvatar.Default
                 }).ToListAsync();
 
             return Json(list);

@@ -41,6 +41,7 @@ namespace ChurchMinistry.ViewModels
     {
         public MeetingRoom Room { get; set; } = null!;
         public string DisplayName { get; set; } = "";
+        public string DisplayPhoto { get; set; } = MeetingAvatar.Default;   // own tile's picture
         public bool IsHost { get; set; }
         public int? CurrentMemberId { get; set; }
     }
@@ -57,7 +58,7 @@ namespace ChurchMinistry.ViewModels
         public List<MeetingRoom> LiveMeetings { get; set; } = new();
         public List<MeetingRoom> PastMeetings { get; set; } = new();
         public PagerModel ScheduledPager { get; set; } = new(1);
-        public PagerModel PastPager { get; set; } = new(1);
+        public const int RecentMeetings = 6;   // ended meetings shown under "Recent Meetings"
         // Linked sermon per room code
         public Dictionary<string, MeetingLinkedSermon> LinkedSermons { get; set; } = new();
     }

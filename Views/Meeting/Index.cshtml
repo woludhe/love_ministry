@@ -414,7 +414,16 @@
     @if (Model.PastMeetings.Any())
     {
         <section class="lobby-section">
-            <div class="section-label">Recent Meetings</div>
+            <div class="section-label-row">
+                <div class="section-label">Recent Meetings</div>
+                @* The full history, with attendance, is in the admin Meetings Register *@
+                @if (isPrivileged)
+                {
+                    <a asp-controller="MeetingRegister" asp-action="Index" class="section-label-link">
+                        <i class="fas fa-book"></i> Meetings Register <i class="fas fa-arrow-right"></i>
+                    </a>
+                }
+            </div>
             <div class="meet-cards">
                 @foreach (var room in Model.PastMeetings)
                 {
@@ -449,7 +458,6 @@
                     </div>
                 }
             </div>
-            <partial name="_Pager" model="Model.PastPager" />
         </section>
     }
 

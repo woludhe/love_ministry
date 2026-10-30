@@ -57,6 +57,11 @@ namespace ChurchMinistry.Hubs
                              || room.HostUserId   == user?.Id;
             var isEffectiveHost = isHostMember || isAdminPastor;
 
+            // The name comes from the server where we know it: a member's own name, and "Admin"
+            // (not the email) for the admin login, which has no member profile
+            if (member != null) displayName = member.FullName;
+            else if (Context.User!.IsInRole("Admin")) displayName = MeetingAvatar.AdminName;
+
             // Upsert participant
             var participant = room.Participants
                 .FirstOrDefault(p => p.ConnectionId == Context.ConnectionId
@@ -92,6 +97,7 @@ namespace ChurchMinistry.Hubs
                 // meanwhile and set LeftAt on this row, so LeftAt is always written (an unchanged
                 // null wouldn't be) or the person would count as having left.
                 participant.ConnectionId = Context.ConnectionId;
+                participant.DisplayName  = displayName;
                 participant.LeftAt       = null;
                 _db.Entry(participant).Property(p => p.LeftAt).IsModified = true;
                 // Fix IsHost if they re-joined and their role wasn't set correctly before
@@ -188,7 +194,7 @@ namespace ChurchMinistry.Hubs
             {
                 memberId = participant.MemberId,
                 isHost   = participant.IsHost,
-                photo    = participant.Member?.ProfilePhoto ?? "/images/avatar-default.png"
+                photo    = MeetingAvatar.For(participant.MemberId, participant.Member?.ProfilePhoto, participant.IsHost)
             });
             var token = _liveKit.CreateJoinToken(_liveKit.RoomName(roomCode), Context.ConnectionId,
                 participant.DisplayName, metadata, canPublish: true);
@@ -221,8 +227,8 @@ namespace ChurchMinistry.Hubs
                     p.IsVideoOff,
                     p.IsHandRaised,
                     p.Member != null
-                        ? p.Member.ProfilePhoto ?? "/images/avatar-default.png"
-                        : "/images/avatar-default.png"))
+                        ? p.Member.ProfilePhoto ?? MeetingAvatar.Default
+                        : p.IsHost ? MeetingAvatar.SiteLogo : MeetingAvatar.Default))
                 .ToListAsync();
         }
 
@@ -239,7 +245,7 @@ namespace ChurchMinistry.Hubs
                 memberId      = participant.MemberId,
                 isMuted       = participant.IsMuted,
                 isVideoOff    = participant.IsVideoOff,
-                photo         = photo ?? "/images/avatar-default.png"
+                photo         = photo ?? MeetingAvatar.For(participant.MemberId, null, participant.IsHost)
             };
             await Clients.GroupExcept(roomCode, cid).SendAsync("PeerJoined", joined);
             await Clients.Group(ViewersGroup(roomCode)).SendAsync("PeerJoined", joined);
@@ -314,7 +320,7 @@ namespace ChurchMinistry.Hubs
             _db.MeetingMessages.Add(msg);
             await _db.SaveChangesAsync();
 
-            var photo = p.MemberId == null ? null
+            var photo = p.MemberId == null ? (p.IsHost ? MeetingAvatar.SiteLogo : null)
                 : await _db.Members.Where(m => m.Id == p.MemberId).Select(m => m.ProfilePhoto).FirstOrDefaultAsync();
             var item = new SermonChat.Item(msg.SenderName, msg.Message, msg.Type, msg.SentAt,
                 photo, SermonChat.FromMeeting, null, msg.MemberId);
@@ -631,7 +637,7 @@ namespace ChurchMinistry.Hubs
                 .Select(p => new {
                     connectionId  = p.ConnectionId ?? "",
                     displayName   = p.DisplayName,
-                    photo         = p.Member?.ProfilePhoto ?? "/images/avatar-default.png",
+                    photo         = MeetingAvatar.For(p.MemberId, p.Member?.ProfilePhoto, p.IsHost),
                     isHost        = p.IsHost,
                     isAdminPastor = p.IsHost   // IsHost covers host + admin for client purposes
                 }).ToList();

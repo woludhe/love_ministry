@@ -3446,6 +3446,38 @@ a.kpi-card.kpi-link {
     gap: .4rem;
 }
 
+/* A section label with a link on the right (e.g. Recent Meetings → Meetings Register) */
+.section-label-row {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: .5rem 1rem;
+    flex-wrap: wrap;
+    margin-bottom: 1rem;
+}
+
+    .section-label-row .section-label {
+        margin-bottom: 0;
+    }
+
+.section-label-link {
+    display: inline-flex;
+    align-items: center;
+    gap: .4rem;
+    font-size: .85rem;
+    font-weight: 600;
+    color: var(--purple);
+}
+
+    .section-label-link .fa-arrow-right {
+        font-size: .75rem;
+        transition: transform .15s;
+    }
+
+    .section-label-link:hover .fa-arrow-right {
+        transform: translateX(3px);
+    }
+
 .live-label {
     color: #ef4444;
 }

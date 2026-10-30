@@ -346,13 +346,12 @@
   <div class="meet-title">
     <span class="meet-badge">@Model.Room.MeetingType</span>
     <h1>@Model.Room.Title</h1>
-    @if (Model.Room.Status == ChurchMinistry.Models.RoomStatus.Live)
-    {
-      <div class="live-indicator">
-        <span class="live-dot-pulse"></span>
-        <span class="live-text">LIVE</span>
-      </div>
-    }
+    @* LIVE only while this room is streamed to the Live page as a live sermon; updated by SermonLiveChanged *@
+    <div class="live-indicator" id="liveBadge" title="Being streamed live on the Live page"
+         style="@(ViewBag.SermonIsLive as bool? == true ? "" : "display:none")">
+      <span class="live-dot-pulse"></span>
+      <span class="live-text">LIVE</span>
+    </div>
     @if (isHost)
     {
       <div class="rec-indicator" id="recBadge" style="display:none" title="The meeting's audio is being recorded for the sermon">
@@ -478,6 +477,7 @@
 <div id="meetData"
      data-room-code="@Model.Room.RoomCode"
      data-display-name="@Model.DisplayName"
+     data-display-photo="@Model.DisplayPhoto"
      data-is-host="@isHost.ToString().ToLower()"
      data-is-admin="@isAdminPastor.ToString().ToLower()"
      data-member-id="@(Model.CurrentMemberId?.ToString() ?? "")"
@@ -498,6 +498,7 @@ const LK         = LivekitClient;
 const data       = document.getElementById('meetData').dataset;
 const ROOM_CODE  = data.roomCode;
 const DISPLAY    = data.displayName;
+const MY_PHOTO   = data.displayPhoto || '/images/avatar-default.png';
 const IS_HOST    = data.isHost   === 'true';
 const IS_ADMIN   = data.isAdmin  === 'true';
 const WAITING_ON = data.waitingRoom === 'true';
@@ -590,7 +591,7 @@ function addLocalTile() {
   const tile=document.createElement('div');
   tile.className=`video-tile local-tile ${isCamOff?'video-off':'video-on'}`; tile.id='tile-local';
   tile.innerHTML=`<video autoplay muted playsinline id="localVideo"></video>
-    <div class="tile-avatar"><img src="/images/avatar-default.png" alt="${escHtml(DISPLAY)}"/><span>${escHtml(DISPLAY)}</span></div>
+    <div class="tile-avatar"><img src="${escHtml(MY_PHOTO)}" alt="${escHtml(DISPLAY)}"/><span>${escHtml(DISPLAY)}</span></div>
     <div class="tile-name"><i class="fas fa-user"></i> ${escHtml(DISPLAY)} (You)</div>
     <div class="tile-badges" id="localBadges"></div>`;
   grid.appendChild(tile);
@@ -889,6 +890,9 @@ document.addEventListener('click',()=>{if(rec.ctx?.state==='suspended')rec.ctx.r
 
 // The admin started or stopped the sermon's live stream
 conn.on('SermonLiveChanged',async(sermonId,live)=>{
+  // Sent only to this room, so any of its sermons going live or stopping sets the LIVE tag
+  // (a stop of the previous sermon always arrives before the new one's start)
+  document.getElementById('liveBadge').style.display=live?'':'none';
   if(sermonId!==SERMON_ID) return;
   sermonLive=live;
   if(live) await maybeRecord();
