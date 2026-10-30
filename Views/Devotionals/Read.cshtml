@@ -1,0 +1,208 @@
+@model ChurchMinistry.ViewModels.DevotionalReadViewModel
+@{
+    var d = Model.Devotional;
+    ViewData["Title"] = d?.Title ?? "Devotions"; Layout = "~/Views/Shared/_MemberDashboard_Layout.cshtml";
+    var today = DateTime.Today;
+}
+
+<div class="devo-page">
+    @if (d == null)
+    {
+        <div class="devo-main">
+            <p class="devo-none"><i class="fas fa-book-bible"></i> No devotions yet. Check back soon.</p>
+        </div>
+    }
+    else
+    {
+        <article class="devo-main">
+            <p class="devo-date">
+                @(d.Date == today ? "Today · " : "")@d.Date.ToString("dddd, d MMMM yyyy")
+                @if (d.Date > today)
+                {
+                    <span class="status-badge">Scheduled — members can't see this yet</span>
+                }
+            </p>
+            <h1 class="devo-title">@d.Title</h1>
+
+            <blockquote class="devo-scripture">@d.Scripture</blockquote>
+
+            <div class="devo-content">
+                @foreach (var p in d.Paragraphs)
+                {
+                    <p>@p</p>
+                }
+            </div>
+
+            @if (!string.IsNullOrWhiteSpace(d.Prayer))
+            {
+                <section class="devo-prayer">
+                    <h2><i class="fas fa-hands-praying"></i> Prayer</h2>
+                    <p>@d.Prayer</p>
+                </section>
+            }
+
+            @if (d.StudyList.Any())
+            {
+                <section class="devo-study">
+                    <h2><i class="fas fa-book-open"></i> Scriptural Study</h2>
+                    <ul>
+                        @foreach (var s in d.StudyList)
+                        {
+                            <li>@s</li>
+                        }
+                    </ul>
+                </section>
+            }
+
+            <section class="devo-notes">
+                <h2><i class="fas fa-pen"></i> My notes <span class="devo-notes-private">only you can see these</span></h2>
+                <form id="noteForm" onsubmit="return false">
+                    @Html.AntiForgeryToken()
+                    <textarea id="noteText" class="form-control" rows="6" maxlength="4000"
+                              placeholder="Write what God is saying to you through today's word…">@Model.Note</textarea>
+                </form>
+                <span class="devo-notes-status" id="noteStatus" aria-live="polite"></span>
+            </section>
+        </article>
+    }
+
+    <aside class="devo-side" aria-label="Devotions">
+        <div class="devo-side-head">
+            <h2>Devotions @if (Model.UnreadCount > 0) { <span class="devo-unread-count">@Model.UnreadCount unread</span> }</h2>
+            @if (d != null)
+            {
+                <form method="get" asp-action="Read" asp-route-id="@d.Id" class="devo-filter">
+                    <label>
+                        <input type="checkbox" name="unread" value="true" checked="@Model.UnreadOnly" onchange="this.form.submit()" />
+                        Unread only
+                    </label>
+                    <noscript><button type="submit" class="btn btn-outline btn-xs">Apply</button></noscript>
+                </form>
+            }
+        </div>
+        @if (Model.Others.Count == 0)
+        {
+            <p class="devo-side-empty">@(Model.UnreadOnly ? "All caught up — no unread devotions." : "None yet.")</p>
+        }
+        else
+        {
+            <ul class="devo-list">
+                @foreach (var o in Model.Others)
+                {
+                    <li>
+                        <a asp-action="Read" asp-route-id="@o.Id" asp-route-unread="@(Model.UnreadOnly ? "true" : null)"
+                           class="@(o.IsRead ? "" : "unread") @(o.Id == d?.Id ? "current" : "")"
+                           aria-current="@(o.Id == d?.Id ? "page" : null)">
+                            <span class="devo-list-date">@(o.Date == today ? "Today" : o.Date.ToString("d MMM yyyy"))</span>
+                            <span class="devo-list-title">@o.Title</span>
+                            @if (!o.IsRead)
+                            {
+                                <span class="visually-hidden">(unread)</span>
+                            }
+                        </a>
+                    </li>
+                }
+            </ul>
+            <partial name="_Pager" model="Model.Pager" />
+        }
+    </aside>
+</div>
+
+<style>
+    .devo-page { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 2rem; padding: 2rem; align-items: start; }
+    .devo-main { min-width: 0; max-width: 760px; }
+    .devo-none { color: var(--text-s); font-size: 1.05rem; }
+    .devo-date { color: var(--purple); font-weight: 600; font-size: .85rem; text-transform: uppercase; letter-spacing: .04em; margin-bottom: .35rem; }
+    .devo-date .status-badge { text-transform: none; letter-spacing: 0; margin-left: .5rem; }
+    .devo-title { font-size: 1.9rem; line-height: 1.25; margin-bottom: 1.25rem; }
+    .devo-scripture { margin: 0 0 1.5rem; padding: 1rem 1.25rem; border-left: 4px solid var(--purple);
+                      background: rgba(99,102,241,.07); border-radius: 0 10px 10px 0;
+                      font-size: 1.08rem; font-style: italic; line-height: 1.6; white-space: pre-line; }
+    .devo-content p { font-size: 1.05rem; line-height: 1.8; margin-bottom: 1.1rem; white-space: pre-line; }
+    .devo-main h2 { font-size: 1.05rem; margin-bottom: .6rem; }
+    .devo-main h2 i { color: var(--purple); margin-right: .3rem; }
+    .devo-prayer { margin: 1.75rem 0; padding: 1.1rem 1.25rem; background: var(--bg); border: 1px solid var(--border); border-radius: 12px; }
+    .devo-prayer p { line-height: 1.75; white-space: pre-line; margin: 0; }
+    .devo-study ul { margin: 0 0 1.75rem 1.2rem; line-height: 1.9; }
+    .devo-notes { margin-top: 2rem; padding-top: 1.5rem; border-top: 1px solid var(--border); }
+    .devo-notes-private { font-size: .75rem; font-weight: 400; color: var(--text-s); margin-left: .4rem; }
+    .devo-notes textarea { resize: vertical; line-height: 1.6; }
+    .devo-notes-status { display: block; min-height: 1.2em; margin-top: .35rem; font-size: .8rem; color: var(--text-s); }
+
+    .devo-side { position: sticky; top: 1rem; background: var(--white); border: 1px solid var(--border); border-radius: 12px; padding: 1rem 0 .5rem; }
+    .devo-side-head { display: flex; align-items: center; justify-content: space-between; gap: .5rem; flex-wrap: wrap;
+                      padding: 0 1rem .6rem; border-bottom: 1px solid var(--border); }
+    .devo-side h2 { font-size: 1rem; margin: 0; }
+    .devo-unread-count { font-size: .72rem; font-weight: 600; color: var(--purple); background: rgba(99,102,241,.1);
+                         border-radius: 100px; padding: .1rem .5rem; margin-left: .3rem; vertical-align: middle; }
+    .devo-filter label { display: flex; align-items: center; gap: .35rem; font-size: .82rem; color: var(--text-s); cursor: pointer; margin: 0; }
+    .devo-side-empty { color: var(--text-s); padding: .75rem 1rem; }
+    .devo-list { list-style: none; margin: 0; padding: 0; max-height: 70vh; overflow-y: auto; }
+    .devo-list a { display: grid; grid-template-columns: 92px minmax(0, 1fr); gap: .5rem; padding: .6rem 1rem;
+                   color: var(--text-s); text-decoration: none; border-bottom: 1px solid var(--border);
+                   font-size: .88rem; font-weight: 400; }
+    .devo-list a:hover { background: var(--bg); }
+    .devo-list-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    /* Unread, like an inbox: bold, dark, with a dot */
+    .devo-list a.unread { color: var(--text); font-weight: 700; }
+    .devo-list a.unread .devo-list-date::before { content: ""; display: inline-block; width: 7px; height: 7px;
+                   border-radius: 50%; background: var(--purple); margin-right: .4rem; vertical-align: middle; }
+    .devo-list a.current { background: rgba(99,102,241,.1); box-shadow: inset 3px 0 0 var(--purple); }
+    .devo-side .pager { padding: .5rem 1rem 0; flex-direction: column; gap: .4rem; }
+    .visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+    @@media (max-width: 900px) {
+        .devo-page { grid-template-columns: minmax(0, 1fr); padding: 1.25rem 1rem; gap: 1.5rem; }
+        .devo-side { position: static; }
+        .devo-list { max-height: none; }
+        .devo-title { font-size: 1.5rem; }
+    }
+</style>
+
+@section Scripts {
+    @if (d != null)
+    {
+        <script>
+            // Notes save themselves a moment after typing stops
+            (() => {
+                const box = document.getElementById('noteText');
+                const status = document.getElementById('noteStatus');
+                const token = document.querySelector('#noteForm input[name="__RequestVerificationToken"]').value;
+                const url = '@Url.Action("SaveNote", new { id = d?.Id })';
+                let timer = null, saved = box.value;
+
+                async function save() {
+                    if (box.value === saved) return;
+                    const text = box.value;
+                    status.textContent = 'Saving…';
+                    try {
+                        const res = await fetch(url, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'RequestVerificationToken': token },
+                            body: new URLSearchParams({ text, __RequestVerificationToken: token })
+                        });
+                        if (!res.ok) throw new Error(res.status);
+                        saved = text;
+                        status.textContent = text ? 'Saved' : 'Note removed';
+                    } catch {
+                        status.textContent = 'Couldn\'t save — check your connection; it will try again.';
+                        clearTimeout(timer); timer = setTimeout(save, 5000);
+                    }
+                }
+                box.addEventListener('input', () => {
+                    status.textContent = '';
+                    clearTimeout(timer); timer = setTimeout(save, 1200);
+                });
+                box.addEventListener('blur', save);
+                // Leaving the page before the timer fired: send what's typed on the way out
+                window.addEventListener('pagehide', () => {
+                    if (box.value === saved) return;
+                    const form = new FormData();
+                    form.append('text', box.value);
+                    form.append('__RequestVerificationToken', token);
+                    navigator.sendBeacon(url, form);
+                });
+            })();
+        </script>
+    }
+}

@@ -61,6 +61,7 @@
                 </div>
                 <nav class="sidebar-nav">
                     <a asp-controller="Members" asp-action="Dashboard" class="active"><i class="fas fa-home"></i> Dashboard</a>
+                    <a asp-controller="Devotionals" asp-action="Index"><i class="fas fa-book-bible"></i> Devotions</a>
                     <a asp-controller="Members" asp-action="Profile"><i class="fas fa-user"></i> My Profile</a>
                     <a asp-controller="Members" asp-action="MyQrCode"><i class="fas fa-qrcode"></i> My QR Code</a>
                     <a asp-controller="Members" asp-action="Attendance"><i class="fas fa-calendar-check"></i> Attendance</a>
@@ -124,6 +125,7 @@
 
     <script src="~/js/site.js" asp-append-version="true"></script>
     @await RenderSectionAsync("Scripts", required: false)
+    @await Component.InvokeAsync("TodaysDevotion")
     @if (User.Identity?.IsAuthenticated == true)
     {
         <link rel="stylesheet" href="~/css/notification.css" asp-append-version="true" />

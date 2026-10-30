@@ -1,0 +1,46 @@
+@model ChurchMinistry.Models.Devotional
+@* Rendered by TodaysDevotionViewComponent only when the member hasn't read today's devotion *@
+<div class="devo-pop-overlay" id="devoPop" role="dialog" aria-modal="true" aria-labelledby="devoPopHeading">
+    <div class="devo-pop">
+        <button type="button" class="devo-pop-close" aria-label="Close" onclick="devoPopLater()"><i class="fas fa-times"></i></button>
+        <p class="devo-pop-kicker" id="devoPopHeading"><i class="fas fa-book-bible"></i> Today's Devotion</p>
+        <h2 class="devo-pop-title">@Model.Title</h2>
+        <p class="devo-pop-scripture">@Model.Scripture</p>
+        <p class="devo-pop-summary">@Model.Summary()</p>
+        <div class="devo-pop-btns">
+            <button type="button" class="btn btn-outline" onclick="devoPopLater()">Later</button>
+            <a href="@Url.Action("Read", "Devotionals", new { id = Model.Id })" class="btn btn-primary">
+                <i class="fas fa-book-open"></i> Read
+            </a>
+        </div>
+    </div>
+</div>
+
+<style>
+    .devo-pop-overlay { position: fixed; inset: 0; z-index: 2000; display: flex; align-items: center; justify-content: center;
+                        padding: 1rem; background: rgba(15,23,42,.55); backdrop-filter: blur(3px); }
+    .devo-pop { position: relative; width: 100%; max-width: 460px; max-height: 90vh; overflow: auto; padding: 1.75rem 1.5rem 1.4rem;
+                background: #fff; color: #111827; border-radius: 18px; box-shadow: 0 24px 70px rgba(0,0,0,.35);
+                animation: devoPopIn .25s ease-out; }
+    .devo-pop-close { position: absolute; top: .7rem; right: .7rem; width: 34px; height: 34px; border: none; border-radius: 50%;
+                      background: #f3f4f6; color: #6b7280; cursor: pointer; }
+    .devo-pop-close:hover { background: #e5e7eb; }
+    .devo-pop-kicker { color: #6366f1; font-weight: 700; font-size: .8rem; text-transform: uppercase; letter-spacing: .06em; margin: 0 0 .5rem; }
+    .devo-pop-title { font-size: 1.35rem; line-height: 1.3; margin: 0 2rem .8rem 0; }
+    .devo-pop-scripture { margin: 0 0 .8rem; padding: .6rem .9rem; border-left: 3px solid #6366f1; background: rgba(99,102,241,.07);
+                          border-radius: 0 8px 8px 0; font-style: italic; line-height: 1.55; }
+    .devo-pop-summary { color: #4b5563; line-height: 1.65; margin: 0 0 1.25rem; }
+    .devo-pop-btns { display: flex; justify-content: flex-end; gap: .6rem; }
+    @@keyframes devoPopIn { from { opacity: 0; transform: translateY(12px) scale(.98); } to { opacity: 1; transform: none; } }
+    @@media (prefers-reduced-motion: reduce) { .devo-pop { animation: none; } }
+</style>
+
+<script>
+    // "Later": hide today's pop-up until tomorrow (the cookie holds today's devotion id)
+    function devoPopLater() {
+        const end = new Date(); end.setHours(23, 59, 59, 999);
+        document.cookie = '@ChurchMinistry.ViewComponents.TodaysDevotionViewComponent.LaterCookie=@Model.Id; expires=' + end.toUTCString() + '; path=/; SameSite=Lax';
+        document.getElementById('devoPop')?.remove();
+    }
+    document.addEventListener('keydown', e => { if (e.key === 'Escape' && document.getElementById('devoPop')) devoPopLater(); });
+</script>

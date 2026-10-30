@@ -81,6 +81,7 @@
                             <i class="fas fa-music"></i> Audio Library
                         </a>
                     </details>
+                    <a asp-controller="Devotionals" asp-action="Manage"><i class="fas fa-book-bible"></i> Devotionals</a>
                     <a asp-controller="Admin" asp-action="Events"><i class="fas fa-calendar"></i> Events</a>
                     @{
                         var navController = ViewContext.RouteData.Values["controller"]?.ToString();
@@ -186,6 +187,7 @@
 
     <script src="~/js/site.js" asp-append-version="true"></script>
     @await RenderSectionAsync("Scripts", required: false)
+    @await Component.InvokeAsync("TodaysDevotion")
     @if (User.Identity?.IsAuthenticated == true)
     {
         <link rel="stylesheet" href="~/css/notification.css" asp-append-version="true" />

@@ -513,6 +513,65 @@ namespace ChurchMinistry.Models
     public enum MemberActivityType
     {
         Login, WatchLive, WatchSermon, PrayerRequest, PrayedFor, MeetingJoined,
-        ForumPost, ForumReply, CommunityChat, Giving, EventRegistration, ProfileUpdated
+        ForumPost, ForumReply, CommunityChat, Giving, EventRegistration, ProfileUpdated,
+        DevotionalRead
+    }
+
+    // ─────────────────────────────────────────────
+    // Daily devotionals (written by a pastor, one per date; members read and keep notes)
+    // ─────────────────────────────────────────────
+    public class Devotional
+    {
+        public int Id { get; set; }
+        [Required, MaxLength(200)] public string Title { get; set; } = "";
+        public DateTime Date { get; set; }                       // a calendar date; members see it from this day on
+        [Required, MaxLength(500)] public string Scripture { get; set; } = "";
+        [Required] public string Content { get; set; } = "";    // plain text, blank lines between paragraphs
+        public string? Prayer { get; set; }
+        public string? StudyScriptures { get; set; }             // one scripture per line
+        [MaxLength(150)] public string? CreatedBy { get; set; }
+        public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+        public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
+        public ICollection<DevotionalRead> Reads { get; set; } = new List<DevotionalRead>();
+
+        [NotMapped]
+        public IEnumerable<string> StudyList => (StudyScriptures ?? "")
+            .Split('\n').Select(s => s.Trim()).Where(s => s.Length > 0);
+
+        // Paragraphs of the content: a blank line starts a new one
+        [NotMapped]
+        public IEnumerable<string> Paragraphs => Content.Replace("\r\n", "\n")
+            .Split("\n\n").Select(p => p.Trim()).Where(p => p.Length > 0);
+
+        // The start of the content, cut at a word, for the "Today's Devotion" pop-up
+        public string Summary(int length = 200)
+        {
+            var text = string.Join(' ', Content.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
+            if (text.Length <= length) return text;
+            var cut = text.LastIndexOf(' ', length);
+            return text[..(cut > length / 2 ? cut : length)].TrimEnd(',', '.', ';', ':') + "…";
+        }
+    }
+
+    public class DevotionalRead
+    {
+        public int Id { get; set; }
+        public int DevotionalId { get; set; }
+        public Devotional Devotional { get; set; } = null!;
+        public int MemberId { get; set; }
+        public Member Member { get; set; } = null!;
+        public DateTime ReadAt { get; set; } = DateTime.UtcNow;
+    }
+
+    // A member's own notes on a devotion; only that member sees them
+    public class DevotionalNote
+    {
+        public int Id { get; set; }
+        public int DevotionalId { get; set; }
+        public Devotional Devotional { get; set; } = null!;
+        public int MemberId { get; set; }
+        public Member Member { get; set; } = null!;
+        [MaxLength(4000)] public string Text { get; set; } = "";
+        public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
     }
 }

@@ -701,6 +701,7 @@ namespace ChurchMinistry.Controllers
 
             var now = DateTime.UtcNow;
             var monthStart = new DateTime(now.Year, now.Month, 1, 0, 0, 0, DateTimeKind.Utc);
+            var today = DateTime.Today;   // devotions go by the server's local date
 
             // Physical: checked in at a service. Virtual: online check-ins plus each
             // sermon watched live or joined through a meeting (once per sermon)
@@ -724,6 +725,9 @@ namespace ChurchMinistry.Controllers
                     .Where(g => g.MemberId == member.Id && g.GivingDate.Year == now.Year && g.PaymentStatus == PaymentStatus.Successful)
                     .SumAsync(g => g.Amount),
                 PrayerRequestsCount = await _db.PrayerRequests.CountAsync(p => p.MemberId == member.Id),
+                DevotionsTotal = await _db.Devotionals.CountAsync(d => d.Date <= today),
+                DevotionsUnread = await _db.Devotionals.CountAsync(d => d.Date <= today
+                                      && !d.Reads.Any(r => r.MemberId == member.Id)),
                 RecentSermons = await _db.Sermons.Where(s => s.IsPublished)
                     .OrderByDescending(s => s.SermonDate).Take(3).ToListAsync(),
                 UpcomingEvents = await _db.ChurchEvents.Where(e => e.StartDate >= now && e.IsPublic)

@@ -519,6 +519,7 @@ namespace ChurchMinistry.Services
                 [MemberActivityType.Giving] = 5,
                 [MemberActivityType.EventRegistration] = 3,
                 [MemberActivityType.ProfileUpdated] = 1,
+                [MemberActivityType.DevotionalRead] = 2,
             };
 
         public static string Label(MemberActivityType type) => type switch
@@ -535,6 +536,7 @@ namespace ChurchMinistry.Services
             MemberActivityType.Giving => "Gave",
             MemberActivityType.EventRegistration => "Event registration",
             MemberActivityType.ProfileUpdated => "Updated profile",
+            MemberActivityType.DevotionalRead => "Read a devotion",
             _ => type.ToString()
         };
 

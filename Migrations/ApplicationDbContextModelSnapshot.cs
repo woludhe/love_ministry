@@ -232,6 +232,108 @@ namespace ChurchMinistry.Migrations
                     b.ToTable("ChurchEvents");
                 });
 
+            modelBuilder.Entity("ChurchMinistry.Models.Devotional", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    b.Property<string>("Content")
+                        .IsRequired()
+                        .HasColumnType("longtext");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("CreatedBy")
+                        .HasMaxLength(150)
+                        .HasColumnType("varchar(150)");
+
+                    b.Property<DateTime>("Date")
+                        .HasColumnType("date");
+
+                    b.Property<string>("Prayer")
+                        .HasColumnType("longtext");
+
+                    b.Property<string>("Scripture")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("varchar(500)");
+
+                    b.Property<string>("StudyScriptures")
+                        .HasColumnType("longtext");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("varchar(200)");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Date")
+                        .IsUnique();
+
+                    b.ToTable("Devotionals");
+                });
+
+            modelBuilder.Entity("ChurchMinistry.Models.DevotionalNote", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    b.Property<int>("DevotionalId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("MemberId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Text")
+                        .IsRequired()
+                        .HasMaxLength(4000)
+                        .HasColumnType("varchar(4000)");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("MemberId");
+
+                    b.HasIndex("DevotionalId", "MemberId")
+                        .IsUnique();
+
+                    b.ToTable("DevotionalNotes");
+                });
+
+            modelBuilder.Entity("ChurchMinistry.Models.DevotionalRead", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    b.Property<int>("DevotionalId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("MemberId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("ReadAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("MemberId");
+
+                    b.HasIndex("DevotionalId", "MemberId")
+                        .IsUnique();
+
+                    b.ToTable("DevotionalReads");
+                });
+
             modelBuilder.Entity("ChurchMinistry.Models.EventPayment", b =>
                 {
                     b.Property<int>("Id")
@@ -1850,6 +1952,44 @@ namespace ChurchMinistry.Migrations
                     b.Navigation("Member");
                 });
 
+            modelBuilder.Entity("ChurchMinistry.Models.DevotionalNote", b =>
+                {
+                    b.HasOne("ChurchMinistry.Models.Devotional", "Devotional")
+                        .WithMany()
+                        .HasForeignKey("DevotionalId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("ChurchMinistry.Models.Member", "Member")
+                        .WithMany()
+                        .HasForeignKey("MemberId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Devotional");
+
+                    b.Navigation("Member");
+                });
+
+            modelBuilder.Entity("ChurchMinistry.Models.DevotionalRead", b =>
+                {
+                    b.HasOne("ChurchMinistry.Models.Devotional", "Devotional")
+                        .WithMany("Reads")
+                        .HasForeignKey("DevotionalId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("ChurchMinistry.Models.Member", "Member")
+                        .WithMany()
+                        .HasForeignKey("MemberId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Devotional");
+
+                    b.Navigation("Member");
+                });
+
             modelBuilder.Entity("ChurchMinistry.Models.EventPayment", b =>
                 {
                     b.HasOne("ChurchMinistry.Models.EventRegistration", "Registration")
@@ -2264,6 +2404,11 @@ namespace ChurchMinistry.Migrations
             modelBuilder.Entity("ChurchMinistry.Models.ChurchEvent", b =>
                 {
                     b.Navigation("Registrations");
+                });
+
+            modelBuilder.Entity("ChurchMinistry.Models.Devotional", b =>
+                {
+                    b.Navigation("Reads");
                 });
 
             modelBuilder.Entity("ChurchMinistry.Models.EventRegistration", b =>

@@ -189,6 +189,8 @@ namespace ChurchMinistry.ViewModels
         public int VirtualAttendanceThisMonth { get; set; }   // services joined online
         public decimal TotalGivingThisYear { get; set; }
         public int PrayerRequestsCount { get; set; }
+        public int DevotionsTotal { get; set; }               // published up to today
+        public int DevotionsUnread { get; set; }
         public List<Sermon> RecentSermons { get; set; } = new();
         public List<ChurchEvent> UpcomingEvents { get; set; } = new();
         public List<Notification> Notifications { get; set; } = new();
@@ -283,6 +285,31 @@ namespace ChurchMinistry.ViewModels
         [Required] public string Body { get; set; } = "";
         public string? PreviewText { get; set; }
         public bool SendNow { get; set; }
+    }
+
+    // ─── Devotionals ───
+    public class DevotionalFormViewModel
+    {
+        public int Id { get; set; }
+        [Required, MaxLength(200)] public string Title { get; set; } = "";
+        [Required, DataType(DataType.Date)] public DateTime Date { get; set; } = DateTime.Today;
+        [Required, MaxLength(500)] public string Scripture { get; set; } = "";
+        [Required] public string Content { get; set; } = "";
+        public string? Prayer { get; set; }
+        [Display(Name = "Scriptural Study")] public string? StudyScriptures { get; set; }
+    }
+
+    // One row of the side list: unread ones are shown in bold
+    public record DevotionalListItem(int Id, DateTime Date, string Title, bool IsRead);
+
+    public class DevotionalReadViewModel
+    {
+        public Devotional? Devotional { get; set; }   // null when there are no devotions yet
+        public string? Note { get; set; }
+        public List<DevotionalListItem> Others { get; set; } = new();
+        public PagerModel Pager { get; set; } = new(1, "devotions");
+        public bool UnreadOnly { get; set; }   // the side list's "Unread only" tick box
+        public int UnreadCount { get; set; }
     }
 
     // ─── Admin ───

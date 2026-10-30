@@ -23,6 +23,9 @@ namespace ChurchMinistry.Data
         public DbSet<PrayerRequest> PrayerRequests => Set<PrayerRequest>();
         public DbSet<PrayerInteraction> PrayerInteractions => Set<PrayerInteraction>();
         public DbSet<Newsletter> Newsletters => Set<Newsletter>();
+        public DbSet<Devotional> Devotionals => Set<Devotional>();
+        public DbSet<DevotionalRead> DevotionalReads => Set<DevotionalRead>();
+        public DbSet<DevotionalNote> DevotionalNotes => Set<DevotionalNote>();
         public DbSet<NewsletterSubscriber> NewsletterSubscribers => Set<NewsletterSubscriber>();
         public DbSet<ChurchEvent> ChurchEvents => Set<ChurchEvent>();
         public DbSet<EventRegistration> EventRegistrations => Set<EventRegistration>();
@@ -130,6 +133,29 @@ namespace ChurchMinistry.Data
                 e.Property(p => p.Category).HasConversion<string>();
                 e.HasOne(p => p.Member).WithMany(m => m.PrayerRequests)
                     .HasForeignKey(p => p.MemberId).OnDelete(DeleteBehavior.SetNull);
+            });
+
+            // Devotionals: one per date; one read mark and one note per member per devotion
+            builder.Entity<Devotional>(e =>
+            {
+                e.Property(d => d.Date).HasColumnType("date");
+                e.HasIndex(d => d.Date).IsUnique();
+            });
+            builder.Entity<DevotionalRead>(e =>
+            {
+                e.HasIndex(r => new { r.DevotionalId, r.MemberId }).IsUnique();
+                e.HasOne(r => r.Devotional).WithMany(d => d.Reads)
+                    .HasForeignKey(r => r.DevotionalId).OnDelete(DeleteBehavior.Cascade);
+                e.HasOne(r => r.Member).WithMany()
+                    .HasForeignKey(r => r.MemberId).OnDelete(DeleteBehavior.Cascade);
+            });
+            builder.Entity<DevotionalNote>(e =>
+            {
+                e.HasIndex(n => new { n.DevotionalId, n.MemberId }).IsUnique();
+                e.HasOne(n => n.Devotional).WithMany()
+                    .HasForeignKey(n => n.DevotionalId).OnDelete(DeleteBehavior.Cascade);
+                e.HasOne(n => n.Member).WithMany()
+                    .HasForeignKey(n => n.MemberId).OnDelete(DeleteBehavior.Cascade);
             });
 
             // Newsletter subscriber unique email
