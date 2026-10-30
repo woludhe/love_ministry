@@ -8,20 +8,15 @@
 
     <div class="admin-topbar">
         <div>
-            <h1><i class="fas fa-credit-card"></i> Payment Methods</h1>
-            <p>Configure how members and guests can give. Drag to reorder.</p>
+            <h1>Payment Methods</h1>
+            <p class="admin-topbar-sub">Configure how members and guests can give. Drag to reorder.</p>
         </div>
-        <a asp-action="Create" class="pm-btn pm-btn-primary">
+        <a asp-action="Create" class="btn btn-primary btn-sm">
             <i class="fas fa-plus"></i> Add Method
         </a>
     </div>
 
-    @if (TempData["Success"] != null)
-    {
-        <div class="pm-alert pm-alert-success">
-            <i class="fas fa-check-circle"></i> @TempData["Success"]
-        </div>
-    }
+    @* Success messages are shown by the layout *@
 
     @if (!Model.Any())
     {
@@ -29,7 +24,7 @@
             <i class="fas fa-credit-card fa-3x"></i>
             <h3>No payment methods yet</h3>
             <p>Add your first payment method to get started.</p>
-            <a asp-action="Create" class="pm-btn pm-btn-primary" style="margin-top:1rem">
+            <a asp-action="Create" class="btn btn-primary" style="margin-top:1rem">
                 <i class="fas fa-plus"></i> Add Method
             </a>
         </div>
@@ -116,10 +111,10 @@
             <h3>Delete Payment Method?</h3>
             <p id="deleteModalMsg"></p>
             <div class="pm-modal-btns">
-                <button class="pm-btn pm-btn-ghost" onclick="closeDeleteModal()">Cancel</button>
+                <button class="btn btn-outline" onclick="closeDeleteModal()">Cancel</button>
                 <form method="post" id="deleteForm">
                     @Html.AntiForgeryToken()
-                    <button type="submit" class="pm-btn pm-btn-danger">Delete</button>
+                    <button type="submit" class="btn pm-btn-danger">Delete</button>
                 </form>
             </div>
         </div>

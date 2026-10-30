@@ -11,7 +11,7 @@
     <div class="mp-card">
 
         <div class="mp-header">
-            <div class="mp-badge" style="background:@(method?.BadgeColor ?? "#6366f1")">
+            <div class="mp-badge" style="background:@(method?.BadgeColor ?? "#374151")">
                 @(method?.BadgeLabel ?? "PAY")
             </div>
             <div>
@@ -71,7 +71,7 @@
         <form method="post" asp-action="ConfirmManual" id="confirmForm">
             @Html.AntiForgeryToken()
             <input type="hidden" name="givingId" value="@Model.Id" />
-            <button type="submit" class="mp-confirm-btn" id="confirmBtn">
+            <button type="submit" class="btn btn-primary btn-lg btn-full mp-confirm-btn" id="confirmBtn">
                 <i class="fas fa-check-circle"></i> I Have Paid
             </button>
         </form>
@@ -89,60 +89,48 @@
 </div>
 
 <style>
-.mp-page        { background:#0f0f13;min-height:100vh;display:flex;
-                  align-items:center;justify-content:center;padding:2rem 1rem; }
-.mp-card        { background:#18181f;border:1px solid rgba(255,255,255,.08);
-                  border-radius:20px;padding:2rem;max-width:520px;width:100%; }
+/* Uses the site's colours, card and buttons (site.css) */
+.mp-page        { display:flex;justify-content:center;padding:2.5rem 1rem; }
+.mp-card        { background:var(--white);border:1px solid var(--border);box-shadow:var(--shadow);
+                  border-radius:var(--radius);padding:2rem;max-width:520px;width:100%; }
 .mp-header      { display:flex;align-items:center;gap:1rem;margin-bottom:1.5rem; }
 .mp-badge       { width:56px;height:34px;border-radius:8px;display:flex;
                   align-items:center;justify-content:center;
                   font-size:.75rem;font-weight:800;color:white;flex-shrink:0; }
-.mp-title       { font-size:1.2rem;font-weight:800;color:rgba(255,255,255,.9); }
-.mp-subtitle    { font-size:.85rem;color:rgba(255,255,255,.5);margin-top:.1rem; }
-.mp-subtitle strong{ color:rgba(255,255,255,.8); }
+.mp-title       { font-size:1.3rem;font-weight:800;color:var(--text); }
+.mp-subtitle    { font-size:.88rem;color:var(--text-s);margin-top:.1rem; }
+.mp-subtitle strong{ color:var(--text); }
 
-.mp-amount-display{ background:rgba(99,102,241,.1);border:1px solid rgba(99,102,241,.2);
-                    border-radius:12px;padding:1.25rem;text-align:center;margin-bottom:1.5rem; }
-.mp-amount-label{ display:block;font-size:.75rem;font-weight:600;
-                  color:rgba(255,255,255,.4);text-transform:uppercase;
-                  letter-spacing:.06em;margin-bottom:.3rem; }
-.mp-amount-value{ display:block;font-size:2rem;font-weight:800;
-                  color:white;margin-bottom:.3rem; }
-.mp-ref         { font-size:.72rem;color:rgba(255,255,255,.35);
-                  font-family:monospace;letter-spacing:.04em; }
+.mp-amount-display{ background:var(--purple-l);border-radius:12px;padding:1.25rem;
+                    text-align:center;margin-bottom:1.5rem; }
+.mp-amount-label{ display:block;font-size:.75rem;font-weight:600;color:var(--text-s);
+                  text-transform:uppercase;letter-spacing:.05em;margin-bottom:.3rem; }
+.mp-amount-value{ display:block;font-size:2rem;font-weight:800;color:var(--purple);margin-bottom:.3rem; }
+.mp-ref         { font-size:.78rem;color:var(--text-s);font-family:monospace;letter-spacing:.04em; }
 
-.mp-instructions{ background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);
-                  border-radius:12px;padding:1.25rem;margin-bottom:1.5rem; }
-.mp-instructions-title{ font-size:.85rem;font-weight:700;color:#a5b4fc;
+.mp-instructions{ border:1px solid var(--border);border-radius:12px;padding:1.25rem;margin-bottom:1.5rem; }
+.mp-instructions-title{ font-size:.9rem;font-weight:700;color:var(--purple);
                          display:flex;align-items:center;gap:.45rem;margin-bottom:.75rem; }
-.mp-instructions-text{ font-size:.88rem;color:rgba(255,255,255,.65);
-                        line-height:1.8;white-space:pre-line;margin:0; }
+.mp-instructions-text{ font-size:.9rem;color:var(--text);line-height:1.8;white-space:pre-line;margin:0; }
 .mp-qr-wrap     { margin-top:1rem;text-align:center; }
-.mp-qr          { max-width:160px;border-radius:10px;border:1px solid rgba(255,255,255,.1); }
-.mp-qr-caption  { font-size:.72rem;color:rgba(255,255,255,.35);margin-top:.4rem; }
+.mp-qr          { max-width:160px;border-radius:10px;border:1px solid var(--border);margin:0 auto; }
+.mp-qr-caption  { font-size:.78rem;color:var(--text-s);margin-top:.4rem; }
 
 .mp-steps       { display:flex;flex-direction:column;gap:.75rem;margin-bottom:1.75rem; }
 .mp-step        { display:flex;align-items:center;gap:.85rem; }
-.mp-step-num    { width:28px;height:28px;border-radius:50%;background:#6366f1;
+.mp-step-num    { width:28px;height:28px;border-radius:50%;background:var(--purple);
                   display:flex;align-items:center;justify-content:center;
-                  font-size:.78rem;font-weight:800;color:white;flex-shrink:0; }
-.mp-step-text   { font-size:.85rem;color:rgba(255,255,255,.65);line-height:1.5; }
-.mp-step-text strong{ color:rgba(255,255,255,.85); }
+                  font-size:.8rem;font-weight:800;color:var(--white);flex-shrink:0; }
+.mp-step-text   { font-size:.9rem;color:var(--text-s);line-height:1.5; }
+.mp-step-text strong{ color:var(--text); }
 
-.mp-confirm-btn { width:100%;padding:.9rem;border-radius:12px;border:none;
-                  background:#22c55e;color:white;font-size:1rem;font-weight:700;
-                  cursor:pointer;display:flex;align-items:center;justify-content:center;
-                  gap:.6rem;transition:all .2s;margin-bottom:1rem; }
-.mp-confirm-btn:hover{ background:#16a34a;transform:translateY(-1px);
-                        box-shadow:0 6px 20px rgba(34,197,94,.3); }
-.mp-confirm-btn:disabled{ background:rgba(255,255,255,.1);cursor:not-allowed;transform:none; }
+.mp-confirm-btn { margin-bottom:1rem; }
+.mp-confirm-btn:disabled{ opacity:.7;cursor:not-allowed; }
 
-.mp-footer-links{ display:flex;align-items:center;justify-content:center;
-                  gap:.6rem;flex-wrap:wrap; }
-.mp-link        { font-size:.8rem;color:#a5b4fc;text-decoration:none; }
-.mp-link:hover  { color:white; }
-.mp-divider     { color:rgba(255,255,255,.2); }
-.mp-note        { font-size:.75rem;color:rgba(255,255,255,.3);display:flex;align-items:center;gap:.3rem; }
+.mp-footer-links{ display:flex;align-items:center;justify-content:center;gap:.6rem;flex-wrap:wrap; }
+.mp-link        { font-size:.85rem; }
+.mp-divider     { color:var(--border); }
+.mp-note        { font-size:.8rem;color:var(--text-s);display:flex;align-items:center;gap:.3rem; }
 </style>
 
 @section Scripts {

@@ -11,13 +11,13 @@
             <a asp-action="Index" class="pm-back">
                 <i class="fas fa-arrow-left"></i> Payment Methods
             </a>
-            <h1 class="pm-title" style="margin-top:.5rem">
+            <h1>
                 @(isEdit ? "Edit Payment Method" : "Add Payment Method")
             </h1>
         </div>
     </div>
 
-    <div class="form-page">
+    <div class="form-page pm-form-page">
         <form method="post" enctype="multipart/form-data" class="pm-form" id="pmForm">
         @Html.AntiForgeryToken()
 
@@ -33,19 +33,19 @@
 
                     <div class="pm-field">
                         <label>Method Name <span class="pm-req">*</span></label>
-                        <input asp-for="Name" class="pm-input" placeholder="e.g. MTN Mobile Money" required />
-                        <span asp-validation-for="Name" class="pm-error"></span>
+                        <input asp-for="Name" class="form-control" placeholder="e.g. MTN Mobile Money" required />
+                        <span asp-validation-for="Name" class="field-error"></span>
                     </div>
 
                     <div class="pm-row">
                         <div class="pm-field">
                             <label>Code <span class="pm-req">*</span></label>
-                            <input asp-for="Code" class="pm-input" placeholder="e.g. mtn" required />
+                            <input asp-for="Code" class="form-control" placeholder="e.g. mtn" required />
                             <span class="pm-hint">Lowercase, no spaces. Used internally.</span>
                         </div>
                         <div class="pm-field">
                             <label>Badge Label</label>
-                            <input asp-for="BadgeLabel" class="pm-input" placeholder="MTN" maxlength="8" />
+                            <input asp-for="BadgeLabel" class="form-control" placeholder="MTN" maxlength="8" />
                             <span class="pm-hint">Short label on the payment button.</span>
                         </div>
                     </div>
@@ -56,7 +56,7 @@
                             <input type="color" asp-for="BadgeColor" class="pm-color-swatch"
                                    oninput="document.getElementById('colorHex').value=this.value" />
                             <input type="text" id="colorHex" value="@Model.BadgeColor"
-                                   class="pm-input pm-input-sm"
+                                   class="form-control pm-input-sm"
                                    oninput="document.querySelector('[name=BadgeColor]').value=this.value"
                                    placeholder="#d97706" maxlength="7" />
                             <div class="pm-color-presets">
@@ -88,7 +88,7 @@
                     <div class="pm-row">
                         <div class="pm-field">
                             <label>Currency Code <span class="pm-req">*</span></label>
-                            <select asp-for="Currency" class="pm-input" required>
+                            <select asp-for="Currency" class="form-control" required>
                                 @foreach (var c in new[]{("UGX","Uganda Shilling"),("KES","Kenya Shilling"),
                                     ("TZS","Tanzania Shilling"),("USD","US Dollar"),("GBP","British Pound"),
                                     ("EUR","Euro"),("ZAR","South African Rand"),("NGN","Nigerian Naira"),
@@ -103,7 +103,7 @@
                         </div>
                         <div class="pm-field">
                             <label>Display Symbol</label>
-                            <input asp-for="CurrencySymbol" class="pm-input" placeholder="UGX" maxlength="5" />
+                            <input asp-for="CurrencySymbol" class="form-control" placeholder="UGX" maxlength="5" />
                             <span class="pm-hint">e.g. UGX, KSh, $, £</span>
                         </div>
                     </div>
@@ -115,7 +115,7 @@
                     </h2>
                     <div class="pm-field">
                         <label>Amounts (comma separated)</label>
-                        <input asp-for="DefaultAmounts" class="pm-input"
+                        <input asp-for="DefaultAmounts" class="form-control"
                                placeholder="5000,10000,20000,50000,100000" />
                         <span class="pm-hint">These appear as quick-pick buttons on the giving page.</span>
                     </div>
@@ -168,7 +168,7 @@
 
                         <div class="pm-field" style="margin-top:.75rem">
                             <label>Payment Instructions</label>
-                            <textarea asp-for="InstructionsText" class="pm-input pm-textarea" rows="5"
+                            <textarea asp-for="InstructionsText" class="form-control pm-textarea" rows="5"
                                       placeholder="e.g. Dial *165# → Send Money → Enter 123456 → Enter amount → Confirm with PIN"></textarea>
                             <span class="pm-hint">Shown to the giver when they select this method.</span>
                         </div>
@@ -202,7 +202,7 @@
                             @if (!string.IsNullOrEmpty(Model.InstructionsImagePath))
                             {
                                 <label style="margin-top:.5rem;display:flex;align-items:center;gap:.4rem;
-                                              font-size:.8rem;color:rgba(255,255,255,.5);cursor:pointer">
+                                              font-size:.85rem;color:var(--text-s);cursor:pointer">
                                     <input type="checkbox" name="removeImage" value="true" />
                                     Remove current image
                                 </label>
@@ -236,8 +236,8 @@
         </div>
 
         <div class="pm-form-footer">
-            <a asp-action="Index" class="pm-btn pm-btn-ghost">Cancel</a>
-            <button type="submit" class="pm-btn pm-btn-primary">
+            <a asp-action="Index" class="btn btn-outline">Cancel</a>
+            <button type="submit" class="btn btn-primary">
                 <i class="fas fa-save"></i> @(isEdit ? "Save Changes" : "Add Method")
             </button>
         </div>
@@ -246,109 +246,82 @@
 </div>
 
 <style>
-:root {
-    --pm-bg:#0f0f13;--pm-card:#18181f;--pm-border:rgba(255,255,255,.08);
-    --pm-text:rgba(255,255,255,.88);--pm-sub:rgba(255,255,255,.45);
-    --pm-purple:#6366f1;--pm-radius:14px;
-}
-.pm-page        { max-width:960px;margin:0 auto;padding:1.5rem 1rem; }
-.pm-back        { color:var(--pm-sub);font-size:.85rem;text-decoration:none;
-                  display:inline-flex;align-items:center;gap:.4rem; }
-.pm-back:hover  { color:var(--pm-text); }
-.pm-title       { font-size:1.4rem;font-weight:800;color:var(--pm-text); }
-.pm-header      { margin-bottom:1.5rem; }
+/* Uses the site's page header, form fields, cards and buttons (site.css) */
+.pm-form-page   { max-width:1000px; }
+.pm-back        { color:rgba(255,255,255,.85);font-size:.88rem;display:inline-flex;align-items:center;gap:.4rem;margin-bottom:.5rem; }
+.pm-back:hover  { color:#fff; }
 
 .pm-form-grid   { display:grid;grid-template-columns:1fr 1fr;gap:1.25rem; }
 .pm-form-col    { display:flex;flex-direction:column;gap:1.25rem; }
-.pm-section     { background:var(--pm-card);border:1px solid var(--pm-border);
-                  border-radius:var(--pm-radius);padding:1.25rem; }
-.pm-section-title{ font-size:.88rem;font-weight:700;color:var(--pm-text);
+.pm-section     { background:var(--white);border:1px solid var(--border);box-shadow:var(--shadow);
+                  border-radius:var(--radius);padding:1.25rem; }
+.pm-section-title{ font-size:.95rem;font-weight:700;color:var(--text);
                    margin-bottom:1rem;display:flex;align-items:center;gap:.5rem; }
-.pm-section-title i { color:var(--pm-purple); }
+.pm-section-title i { color:var(--purple); }
 
-.pm-field       { display:flex;flex-direction:column;gap:.35rem;margin-bottom:.85rem; }
+.pm-field       { display:flex;flex-direction:column;gap:.35rem;margin-bottom:1rem; }
 .pm-field:last-child { margin-bottom:0; }
-.pm-field label { font-size:.82rem;font-weight:600;color:var(--pm-sub); }
-.pm-input       { background:rgba(255,255,255,.06);border:1px solid var(--pm-border);
-                  border-radius:9px;padding:.55rem .8rem;color:var(--pm-text);
-                  font-size:.88rem;width:100%;transition:border .15s; }
-.pm-input:focus { outline:none;border-color:rgba(99,102,241,.5);
-                  box-shadow:0 0 0 3px rgba(99,102,241,.12); }
+.pm-field label { font-size:.88rem;font-weight:600;color:var(--text); }
 .pm-textarea    { resize:vertical;min-height:100px; }
-.pm-input-sm    { width:90px;flex-shrink:0; }
-.pm-hint        { font-size:.73rem;color:var(--pm-sub); }
-.pm-error       { font-size:.75rem;color:#fca5a5; }
-.pm-req         { color:#ef4444; }
+.pm-input-sm    { width:100px;flex-shrink:0; }
+.pm-hint        { font-size:.78rem;font-weight:400;color:var(--text-s); }
+.pm-req         { color:var(--coral); }
 .pm-row         { display:grid;grid-template-columns:1fr 1fr;gap:.75rem; }
-.pm-checkbox    { width:16px;height:16px;accent-color:var(--pm-purple);cursor:pointer; }
+.pm-checkbox    { width:16px;height:16px;accent-color:var(--purple);cursor:pointer;vertical-align:-2px;margin-right:.3rem; }
 
 /* Color picker */
 .pm-color-row   { display:flex;align-items:center;gap:.6rem;flex-wrap:wrap; }
-.pm-color-swatch{ width:40px;height:36px;border:none;border-radius:8px;
-                  cursor:pointer;padding:2px;background:none; }
+.pm-color-swatch{ width:42px;height:38px;border:1.5px solid var(--border);border-radius:8px;
+                  cursor:pointer;padding:2px;background:var(--white); }
 .pm-color-presets{ display:flex;gap:.3rem;flex-wrap:wrap; }
-.pm-color-dot   { width:22px;height:22px;border-radius:50%;border:2px solid transparent;
-                  cursor:pointer;transition:border .15s; }
-.pm-color-dot:hover{ border-color:white; }
+.pm-color-dot   { width:22px;height:22px;border-radius:50%;border:2px solid var(--white);
+                  box-shadow:0 0 0 1px var(--border);cursor:pointer;transition:box-shadow .15s; }
+.pm-color-dot:hover{ box-shadow:0 0 0 2px var(--text); }
 
-/* Integration tabs */
+/* Integration choice */
 .pm-integration-tabs { display:grid;grid-template-columns:1fr 1fr;gap:.6rem;margin-bottom:.85rem; }
 .pm-int-tab     { display:flex;flex-direction:column;align-items:center;gap:.25rem;
-                  padding:.75rem .5rem;border:1.5px solid var(--pm-border);
+                  padding:.75rem .5rem;border:1.5px solid var(--border);background:var(--white);
                   border-radius:10px;cursor:pointer;text-align:center;
-                  font-size:.82rem;font-weight:600;color:var(--pm-sub);transition:all .15s; }
+                  font-size:.88rem;font-weight:600;color:var(--text-s);transition:all .15s; }
 .pm-int-tab input{ display:none; }
-.pm-int-tab.active{ border-color:rgba(99,102,241,.5);background:rgba(99,102,241,.1);
-                    color:var(--pm-text); }
-.pm-int-tab:hover { border-color:rgba(255,255,255,.2);color:var(--pm-text); }
-.pm-int-desc    { font-size:.68rem;font-weight:400;color:var(--pm-sub); }
+.pm-int-tab:hover { border-color:var(--purple);color:var(--text); }
+.pm-int-tab.active{ border-color:var(--purple);background:var(--purple-l);color:var(--purple); }
+.pm-int-desc    { font-size:.75rem;font-weight:400;color:var(--text-s); }
 
 /* Info box */
-.pm-info-box    { background:rgba(99,102,241,.08);border:1px solid rgba(99,102,241,.2);
-                  border-radius:9px;padding:.75rem;font-size:.82rem;color:var(--pm-sub);
+.pm-info-box    { background:var(--purple-l);border-radius:10px;padding:.85rem;font-size:.85rem;color:var(--text);
                   display:flex;gap:.6rem;align-items:flex-start;line-height:1.6; }
-.pm-info-box i  { color:var(--pm-purple);margin-top:.1rem;flex-shrink:0; }
-.pm-info-box code{ background:rgba(255,255,255,.08);padding:.1rem .3rem;border-radius:4px;
-                   font-size:.78rem;color:#a5b4fc; }
+.pm-info-box i  { color:var(--purple);margin-top:.2rem;flex-shrink:0; }
+.pm-info-box code{ background:var(--white);padding:.1rem .3rem;border-radius:4px;font-size:.8rem; }
 
 /* Upload area */
-.pm-upload-area { border:2px dashed var(--pm-border);border-radius:10px;
+.pm-upload-area { border:2px dashed var(--border);border-radius:10px;background:var(--bg);
                   padding:1.25rem;text-align:center;cursor:pointer;
-                  transition:border .15s;color:var(--pm-sub);min-height:100px;
+                  transition:border-color .15s;color:var(--text-s);min-height:100px;
                   display:flex;align-items:center;justify-content:center; }
-.pm-upload-area:hover{ border-color:rgba(99,102,241,.4); }
-.pm-upload-area p { font-size:.83rem;margin:.4rem 0 0; }
-.pm-upload-area span{ font-size:.73rem; }
+.pm-upload-area:hover{ border-color:var(--purple); }
+.pm-upload-area p { font-size:.85rem;margin:.4rem 0 0; }
+.pm-upload-area span{ font-size:.78rem; }
 .pm-upload-preview{ max-width:200px;max-height:160px;border-radius:8px;
-                    border:1px solid var(--pm-border);object-fit:contain; }
+                    border:1px solid var(--border);object-fit:contain; }
 
 /* Amounts preview */
 .pm-amounts-preview{ display:flex;flex-wrap:wrap;gap:.35rem;margin-top:.5rem; }
-.pm-amt-chip    { font-size:.72rem;font-weight:600;padding:.2rem .6rem;border-radius:100px;
-                  background:rgba(99,102,241,.15);color:#a5b4fc;
-                  border:1px solid rgba(99,102,241,.25); }
+.pm-amt-chip    { font-size:.75rem;font-weight:600;padding:.2rem .6rem;border-radius:100px;
+                  background:var(--purple-l);color:var(--purple); }
 
-/* Preview card */
-.pm-preview-card{ background:rgba(255,255,255,.04);border:1px solid var(--pm-border);
-                  border-radius:10px;padding:.85rem 1rem;display:flex;
+/* Preview card: as the method appears on the Give page */
+.pm-preview-card{ border:1.5px solid var(--border);border-radius:10px;padding:.85rem 1rem;display:flex;
                   align-items:center;gap:.85rem; }
 .pm-preview-badge{ width:50px;height:30px;border-radius:6px;display:flex;
                    align-items:center;justify-content:center;
                    font-size:.72rem;font-weight:800;color:white;flex-shrink:0; }
-.pm-preview-name{ font-size:.92rem;font-weight:700;color:var(--pm-text); }
-.pm-preview-currency{ font-size:.75rem;color:var(--pm-sub);margin-top:.15rem; }
+.pm-preview-name{ font-size:.95rem;font-weight:700;color:var(--text); }
+.pm-preview-currency{ font-size:.78rem;color:var(--text-s);margin-top:.15rem; }
 
 .pm-form-footer { display:flex;justify-content:flex-end;gap:.75rem;
-                  margin-top:1.5rem;padding-top:1.25rem;
-                  border-top:1px solid var(--pm-border); }
-.pm-btn         { display:inline-flex;align-items:center;gap:.5rem;padding:.55rem 1.1rem;
-                  border-radius:9px;font-size:.88rem;font-weight:600;cursor:pointer;
-                  border:none;text-decoration:none;transition:all .15s; }
-.pm-btn-primary { background:var(--pm-purple);color:white; }
-.pm-btn-primary:hover{ background:#4f46e5;color:white; }
-.pm-btn-ghost   { background:rgba(255,255,255,.07);color:var(--pm-text);
-                  border:1px solid var(--pm-border); }
-.pm-btn-ghost:hover{ background:rgba(255,255,255,.12); }
+                  margin-top:1.5rem;padding-top:1.25rem;border-top:1px solid var(--border); }
 
 @@media(max-width:700px){
     .pm-form-grid{ grid-template-columns:1fr; }

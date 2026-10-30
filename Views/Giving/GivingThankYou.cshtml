@@ -5,29 +5,19 @@
     var isPending = Model.PaymentStatus == ChurchMinistry.Models.PaymentStatus.PendingVerification;
 }
 
-<div style="background:#0f0f13;min-height:100vh;display:flex;align-items:center;
-            justify-content:center;padding:2rem 1rem">
-    <div style="background:#18181f;border:1px solid rgba(255,255,255,.08);border-radius:20px;
-                padding:2.5rem;max-width:480px;width:100%;text-align:center">
-
-        <div style="width:80px;height:80px;border-radius:50%;
-                    background:@(isPending ? "rgba(99,102,241,.15)" : "rgba(34,197,94,.15)");
-                    border:2px solid @(isPending ? "rgba(99,102,241,.4)" : "rgba(34,197,94,.4)");
-                    display:flex;align-items:center;justify-content:center;
-                    margin:0 auto 1.25rem;font-size:2rem;
-                    color:@(isPending ? "#a5b4fc" : "#86efac")">
+<div class="ty-page">
+    <div class="ty-card">
+        <div class="ty-icon @(isPending ? "ty-icon-pending" : "ty-icon-done")">
             <i class="fas fa-@(isPending ? "clock" : "check-circle")"></i>
         </div>
 
-        <h1 style="font-size:1.6rem;font-weight:800;margin-bottom:.5rem">
-            @(isPending ? "Gift Recorded!" : "Thank You! 🙏")
-        </h1>
+        <h1>@(isPending ? "Gift Recorded!" : "Thank You! 🙏")</h1>
 
-        <p style="color:rgba(255,255,255,.6);font-size:.92rem;line-height:1.7;margin-bottom:1.5rem">
+        <p class="ty-text">
             @if (isPending)
             {
                 <span>
-                    Your gift of <strong style="color:white">@Model.Currency @Model.Amount.ToString("N0")</strong>
+                    Your gift of <strong>@Model.Currency @Model.Amount.ToString("N0")</strong>
                     has been recorded and is pending verification.
                     Our team will confirm it shortly.
                 </span>
@@ -36,65 +26,35 @@
             {
                 <span>
                     Your @Model.GivingType of
-                    <strong style="color:white">@Model.Currency @Model.Amount.ToString("N0")</strong>
+                    <strong>@Model.Currency @Model.Amount.ToString("N0")</strong>
                     has been received. May God bless you abundantly.
                 </span>
             }
         </p>
 
-        <div style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);
-                    border-radius:10px;padding:1rem;margin-bottom:1.5rem;
-                    font-size:.8rem;color:rgba(255,255,255,.45)">
-            Reference: <span style="font-family:monospace;color:rgba(255,255,255,.7)">
-                @Model.TransactionId
-            </span>
+        <div class="ty-ref">
+            Reference: <code>@Model.TransactionId</code>
         </div>
 
-        <div style="display:flex;gap:.75rem;justify-content:center;flex-wrap:wrap">
-            <a asp-controller="Home" asp-action="Index" class="gv-btn-ghost">
-                <i class="fas fa-home"></i> Home
-            </a>
-        </div>
+        <a asp-controller="Home" asp-action="Index" class="btn btn-outline">
+            <i class="fas fa-home"></i> Home
+        </a>
     </div>
 </div>
 
 <style>
-    .gv-btn-primary {
-        display: inline-flex;
-        align-items: center;
-        gap: .5rem;
-        padding: .6rem 1.2rem;
-        border-radius: 10px;
-        background: #6366f1;
-        color: white;
-        font-size: .88rem;
-        font-weight: 600;
-        text-decoration: none;
-        transition: all .15s;
-    }
-
-        .gv-btn-primary:hover {
-            background: #4f46e5;
-            color: white;
-        }
-
-    .gv-btn-ghost {
-        display: inline-flex;
-        align-items: center;
-        gap: .5rem;
-        padding: .6rem 1.2rem;
-        border-radius: 10px;
-        background: rgba(255,255,255,.07);
-        border: 1px solid rgba(255,255,255,.1);
-        color: rgba(255,255,255,.7);
-        font-size: .88rem;
-        font-weight: 600;
-        text-decoration: none;
-        transition: all .15s;
-    }
-
-        .gv-btn-ghost:hover {
-            background: rgba(255,255,255,.12);
-            color: white;
-        }
+/* Uses the site's colours, card and buttons (site.css) */
+.ty-page  { display:flex;justify-content:center;padding:3rem 1rem; }
+.ty-card  { background:var(--white);border:1px solid var(--border);box-shadow:var(--shadow);
+            border-radius:var(--radius);padding:2.5rem;max-width:480px;width:100%;text-align:center; }
+.ty-card h1 { font-size:1.6rem;font-weight:800;margin-bottom:.5rem; }
+.ty-icon  { width:80px;height:80px;border-radius:50%;display:flex;align-items:center;justify-content:center;
+            margin:0 auto 1.25rem;font-size:2rem; }
+.ty-icon-pending { background:var(--purple-l);color:var(--purple); }
+.ty-icon-done    { background:#d1fae5;color:var(--green); }
+.ty-text  { color:var(--text-s);font-size:.95rem;line-height:1.7;margin-bottom:1.5rem; }
+.ty-text strong { color:var(--text); }
+.ty-ref   { background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:.85rem;
+            margin-bottom:1.5rem;font-size:.85rem;color:var(--text-s); }
+.ty-ref code { color:var(--text);font-size:.85rem; }
 </style>
