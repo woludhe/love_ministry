@@ -165,6 +165,28 @@ document.addEventListener('DOMContentLoaded', () => {
   };
 });
 
+// Dark mode switch in the dashboard menu: <html data-theme="dark">, remembered in this browser
+// (the layouts' <head> applies the saved choice before the page paints)
+(() => {
+    const root = document.documentElement;
+    const sync = () => {
+        const dark = root.dataset.theme === 'dark';
+        document.querySelectorAll('.js-theme-toggle').forEach(b => {
+            b.setAttribute('aria-checked', dark);
+            b.querySelector('i').className = dark ? 'fas fa-sun' : 'fas fa-moon';
+            b.querySelector('.theme-toggle-label').textContent = dark ? 'Light mode' : 'Dark mode';
+        });
+    };
+    document.addEventListener('click', e => {
+        if (!e.target.closest?.('.js-theme-toggle')) return;
+        const dark = root.dataset.theme !== 'dark';
+        if (dark) root.dataset.theme = 'dark'; else delete root.dataset.theme;
+        try { localStorage.setItem('theme', dark ? 'dark' : 'light'); } catch { /* private window: this page only */ }
+        sync();
+    });
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', sync); else sync();
+})();
+
 // Date / time fields: a click anywhere in the field opens the picker, not just on the small icon
 // (browsers without showPicker keep their normal behaviour)
 document.addEventListener('click', e => {

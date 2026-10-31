@@ -895,8 +895,18 @@
         }
 
         @@media (max-width: 600px) {
+            /* The video stays edge to edge; the cards below keep a gutter */
             .watch-page {
-                padding: 0;
+                padding: 0 0 1.5rem;
+            }
+
+            .sermon-details,
+            .watch-sidebar {
+                margin: 0 1rem;
+            }
+
+            .sermon-details {
+                padding: 1.15rem;
             }
 
             .reco-cards {

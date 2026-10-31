@@ -1,0 +1,453 @@
+/* ============================================================
+   Dark mode. Turned on by the Dark mode switch in the dashboard menu, which sets
+   <html data-theme="dark"> (saved in the browser; see the layouts' <head> and site.js).
+
+   Colours checked for contrast (WCAG AA, 4.5:1 for text) on the dark surfaces:
+     text 14:1 · secondary text 7.4:1 · purple links 5.8:1 · dark text on purple buttons 6.3:1
+   The My Daily newspaper keeps its own paper colours in both modes.
+   ============================================================ */
+
+:root {
+    --surface-2: #f3f4f6;   /* soft panels, table headers, chat bubbles */
+    --on-accent: #ffffff;   /* text on purple */
+}
+
+html[data-theme="dark"] {
+    color-scheme: dark;     /* dark scrollbars, date pickers and native controls */
+    --bg: #0f1117;          /* page */
+    --white: #181b24;       /* cards, panels, inputs (most of the site uses --white as "surface") */
+    --surface-2: #222632;
+    --text: #e6e8ee;
+    --text-s: #a3aab8;
+    --border: #2d3240;
+    --purple: #818cf8;      /* lighter, so purple text reads on dark cards */
+    --purple-d: #a5b4fc;
+    --purple-l: #272a4d;
+    --on-accent: #0f1117;   /* white on the lighter purple would be too faint */
+    --gray: #9ca3af;
+    --shadow: 0 1px 3px rgba(0,0,0,.5), 0 1px 2px rgba(0,0,0,.4);
+    --shadow-m: 0 4px 6px -1px rgba(0,0,0,.5), 0 2px 4px -1px rgba(0,0,0,.4);
+    --shadow-l: 0 10px 15px -3px rgba(0,0,0,.55), 0 4px 6px -2px rgba(0,0,0,.4);
+}
+
+/* Fields */
+html[data-theme="dark"] .form-control::placeholder,
+html[data-theme="dark"] textarea::placeholder,
+html[data-theme="dark"] input::placeholder {
+    color: #7c8394;
+}
+
+/* Status chips (pale tint + dark text) keep their light colours; they read well on dark pages.
+   Alerts get dark tints with light text instead, as they span the page */
+html[data-theme="dark"] .alert-success { background: #0f2e24; color: #6ee7b7; border-color: #14532d; }
+html[data-theme="dark"] .alert-error   { background: #3a1416; color: #fca5a5; border-color: #7f1d1d; }
+html[data-theme="dark"] .alert-info    { background: #172554; color: #93c5fd; border-color: #1e3a8a; }
+
+/* Panels and hover rows inside cards: a step lighter than the card. (Their light-mode colour, --bg, is the
+   page colour, which in dark mode is darker than the card and made them look like holes in it) */
+html[data-theme="dark"] .devo-list a:hover,
+html[data-theme="dark"] .devo-prayer,
+html[data-theme="dark"] .post-photo-picker .post-photo-add,
+html[data-theme="dark"] .pm-tag:not(.pm-tag-blue),
+html[data-theme="dark"] .pm-upload-area,
+html[data-theme="dark"] .ty-ref {
+    background: var(--surface-2);
+}
+
+/* Main menu: the bar stays gold, so its links, bell and menu button keep dark text
+   (#111827 on the gold: 4.5:1 at the darkest stop, 16:1 at the lightest). Hover stays dark and underlines,
+   as purple would be too faint on the darker gold. The logo has its own black badge. */
+html[data-theme="dark"] .navbar {
+    --text: #111827;
+    --text-s: #374151;
+    --purple-l: rgba(255, 255, 255, .45);
+}
+
+html[data-theme="dark"] .navbar .notif-bell-btn:hover,
+html[data-theme="dark"] .navbar .nav-toggle:hover {
+    color: var(--text);
+}
+
+@media (min-width: 769px) {
+    html[data-theme="dark"] .nav-links a:hover,
+    html[data-theme="dark"] .nav-links .btn-logout:hover {
+        color: var(--text) !important;
+    }
+}
+
+/* ...but the dark panels that open from the bar (phone menu, notifications) keep dark-mode colours */
+html[data-theme="dark"] .navbar .notif-dropdown {
+    --text: #e6e8ee;
+    --text-s: #a3aab8;
+    --purple-l: #272a4d;
+}
+
+@media (max-width: 768px) {
+    html[data-theme="dark"] .navbar .nav-links {
+        --text: #e6e8ee;
+        --text-s: #a3aab8;
+        --purple-l: #272a4d;
+    }
+}
+
+/* Devotions list: the open devotion */
+html[data-theme="dark"] .devo-list a.current {
+    background: var(--purple-l);
+}
+
+/* The newspaper stays on paper, with dark text, whatever the theme */
+html[data-theme="dark"] .np { color-scheme: light; }
+
+/* ── Theme switch in the dashboard menu ── */
+.sidebar-nav .theme-toggle {
+    display: flex;
+    align-items: center;
+    gap: .6rem;
+    width: 100%;
+    padding: .6rem .75rem;
+    margin-top: .5rem;
+    border: none;
+    border-top: 1px solid var(--border);
+    border-radius: 0 0 8px 8px;
+    background: none;
+    font: inherit;
+    font-size: .88rem;
+    font-weight: 500;
+    color: var(--text);
+    cursor: pointer;
+    text-align: left;
+}
+
+    .sidebar-nav .theme-toggle:hover {
+        background: var(--purple-l);
+        color: var(--purple);
+    }
+
+    .sidebar-nav .theme-toggle i {
+        width: 18px;
+        text-align: center;
+    }
+
+.theme-toggle .theme-switch {
+    margin-left: auto;
+    width: 34px;
+    height: 20px;
+    border-radius: 999px;
+    background: var(--border);
+    position: relative;
+    transition: background .2s;
+    flex-shrink: 0;
+}
+
+    .theme-toggle .theme-switch::after {
+        content: "";
+        position: absolute;
+        top: 3px;
+        left: 3px;
+        width: 14px;
+        height: 14px;
+        border-radius: 50%;
+        background: #fff;
+        transition: transform .2s;
+    }
+
+html[data-theme="dark"] .theme-toggle .theme-switch { background: var(--purple); }
+html[data-theme="dark"] .theme-toggle .theme-switch::after { transform: translateX(14px); }
+
+/* ============================================================
+   Generated: rules in site.css and page <style> blocks that hard-code light
+   backgrounds, dark text or light borders, pointed at the theme colours instead
+   ============================================================ */
+
+/* wwwroot/css/site.css */
+html[data-theme="dark"] .status-inactive {
+    background: var(--surface-2);
+}
+html[data-theme="dark"] .method-badge {
+    background: var(--surface-2);
+}
+html[data-theme="dark"] .prayer-section {
+    background: var(--surface-2);
+}
+html[data-theme="dark"] .btn-pray:hover {
+    color: var(--on-accent);
+}
+html[data-theme="dark"] .form-control[readonly] {
+    background: var(--surface-2);
+}
+html[data-theme="dark"] .field-error {
+    color: #f87171;
+}
+html[data-theme="dark"] .gv-req {
+    color: #f87171;
+}
+html[data-theme="dark"] .pill-label input:checked + span {
+    color: var(--on-accent);
+}
+html[data-theme="dark"] .amount-presets button {
+    background: var(--white);
+}
+html[data-theme="dark"] .negative {
+    color: #f87171 !important;
+}
+html[data-theme="dark"] .mr-code {
+    background: var(--surface-2);
+}
+html[data-theme="dark"] .data-table th {
+    background: var(--surface-2);
+}
+html[data-theme="dark"] .data-table tr:hover td {
+    background: var(--surface-2);
+}
+html[data-theme="dark"] .room-btn:hover,
+html[data-theme="dark"] .room-btn.active {
+    color: var(--on-accent);
+}
+html[data-theme="dark"] .msg-bubble {
+    background: var(--surface-2);
+}
+html[data-theme="dark"] .chat-msg.own .msg-bubble {
+    color: var(--on-accent);
+}
+html[data-theme="dark"] .fb-composer-prompt {
+    background: var(--surface-2);
+}
+html[data-theme="dark"] .fb-action:hover {
+    background: var(--surface-2);
+}
+html[data-theme="dark"] .fb-bubble {
+    background: var(--surface-2);
+}
+html[data-theme="dark"] .fb-comment-form textarea {
+    background: var(--surface-2);
+}
+html[data-theme="dark"] .cat-badge.cat-general {
+    background: var(--surface-2);
+    color: var(--text);
+}
+html[data-theme="dark"] .pill:hover,
+html[data-theme="dark"] .pill.active {
+    color: var(--on-accent);
+}
+html[data-theme="dark"] .footer-subscribe button {
+    color: var(--on-accent);
+}
+html[data-theme="dark"] .page-btn {
+    background: var(--white);
+}
+html[data-theme="dark"] .page-btn:hover,
+html[data-theme="dark"] .page-btn.active {
+    color: var(--on-accent);
+}
+@media (max-width: 768px) {
+html[data-theme="dark"] .nav-links {
+    background: var(--white);
+}
+}
+html[data-theme="dark"] .live-label {
+    color: #f87171;
+}
+html[data-theme="dark"] .meet-card-type.generalservice {
+    background: var(--surface-2);
+    color: var(--text);
+}
+html[data-theme="dark"] .profile-missing-chip {
+    background: var(--surface-2);
+    color: var(--text);
+}
+html[data-theme="dark"] .activity-login,
+html[data-theme="dark"] .activity-profileupdated {
+    background: var(--surface-2);
+    color: var(--text);
+}
+html[data-theme="dark"] .reminder-row {
+    border-bottom-color: var(--border);
+}
+html[data-theme="dark"] .status-refunded {
+    background: var(--surface-2);
+}
+html[data-theme="dark"] select.form-control:disabled,
+html[data-theme="dark"] input.form-control:disabled {
+    background: var(--surface-2);
+}
+html[data-theme="dark"] .field-error,
+html[data-theme="dark"] .gv-error,
+html[data-theme="dark"] .field-validation-error {
+    color: #f87171;
+}
+
+/* wwwroot/css/notification.css */
+html[data-theme="dark"] .notif-dropdown-header {
+    background: var(--surface-2);
+}
+html[data-theme="dark"] .notif-dropdown-footer {
+    background: var(--surface-2);
+}
+
+/* Views/Admin/_AudioPicker.cshtml */
+html[data-theme="dark"] .ap-status.ap-error {
+    color: #f87171;
+}
+/* Views/Admin/_EventForm.cshtml */
+html[data-theme="dark"] .required-star {
+    color: #f87171;
+}
+html[data-theme="dark"] .thumbnail-preview {
+    background: var(--surface-2);
+}
+/* Views/Admin/AudioLibrary.cshtml */
+html[data-theme="dark"] .al-item.al-failed .al-item-status {
+    color: #f87171;
+}
+/* Views/Admin/EditSermon.cshtml */
+html[data-theme="dark"] .btn-delete-sermon {
+    color: #f87171 !important;
+}
+html[data-theme="dark"] .thumbnail-preview {
+    background: var(--surface-2);
+}
+/* Views/Admin/EventRegistrations.cshtml */
+html[data-theme="dark"] .filter-tab.active {
+    color: var(--on-accent);
+}
+/* Views/Admin/Members.cshtml */
+html[data-theme="dark"] .mem-groups .group-icon:hover {
+    color: var(--on-accent);
+}
+/* Views/Admin/SermonAttendanceReport.cshtml */
+html[data-theme="dark"] .mode-chip.is-empty {
+    background: var(--surface-2);
+}
+/* Views/Admin/Sermons.cshtml */
+html[data-theme="dark"] .sermon-search-clear:hover {
+    color: #f87171;
+}
+html[data-theme="dark"] .filter-chip a:hover {
+    color: #f87171;
+}
+html[data-theme="dark"] .clear-all-filters {
+    color: #f87171;
+}
+html[data-theme="dark"] .no-live-banner {
+    background: var(--surface-2);
+}
+html[data-theme="dark"] .page-btn.active {
+    color: var(--on-accent);
+}
+/* Views/AdminPayment/Create.cshtml */
+html[data-theme="dark"] .pm-req {
+    color: #f87171;
+}
+/* Views/AdminPayment/Edit.cshtml */
+html[data-theme="dark"] .pm-req {
+    color: #f87171;
+}
+/* Views/Events/Details.cshtml */
+html[data-theme="dark"] .partial-progress {
+    background: var(--surface-2);
+}
+/* Views/Events/Index.cshtml */
+html[data-theme="dark"] .spots-urgent {
+    color: #f87171;
+}
+/* Views/Giving/CardPayment.cshtml */
+html[data-theme="dark"] .accepted-cards {
+    background: var(--surface-2);
+}
+/* Views/LiveSettings/_MusicCard.cshtml */
+html[data-theme="dark"] .mc-btn-main {
+    color: var(--on-accent);
+}
+html[data-theme="dark"] .mc-section-head {
+    background: var(--surface-2);
+}
+html[data-theme="dark"] .mc-clear:hover {
+    color: #f87171;
+}
+html[data-theme="dark"] .mc-dialog-close:hover {
+    background: var(--surface-2);
+}
+html[data-theme="dark"] .mc-lib-item:hover {
+    background: var(--surface-2);
+}
+html[data-theme="dark"] .mc-dialog-foot {
+    background: var(--surface-2);
+}
+html[data-theme="dark"] .mc-track.mc-current {
+    background: var(--surface-2);
+}
+/* Views/LiveSettings/Index.cshtml */
+html[data-theme="dark"] .ls-card-header {
+    background: var(--surface-2);
+}
+html[data-theme="dark"] .ls-card-footer {
+    background: var(--surface-2);
+}
+html[data-theme="dark"] .ls-list-item:hover {
+    background: var(--surface-2);
+}
+html[data-theme="dark"] .ls-item-active {
+    background: var(--surface-2) !important;
+}
+html[data-theme="dark"] .bv-verse.bv-pending {
+    background: var(--surface-2);
+}
+html[data-theme="dark"] .bv-log-head {
+    background: var(--surface-2);
+}
+/* Views/Meeting/Index.cshtml */
+html[data-theme="dark"] .meet-card .btn-meet-outline:hover,
+html[data-theme="dark"] .meet-card .btn-meet-secondary:hover {
+    color: var(--on-accent);
+}
+html[data-theme="dark"] .meet-card .meet-icon-btn-danger {
+    color: #f87171;
+}
+/* Views/MeetingApprovals/Index.cshtml */
+html[data-theme="dark"] .generalservice {
+    background: var(--surface-2);
+    color: var(--text);
+}
+html[data-theme="dark"] .btn-reject {
+    color: #f87171 !important;
+}
+/* Views/Members/EditProfile.cshtml */
+html[data-theme="dark"] .member-manage-danger strong {
+    color: #f87171;
+}
+/* Views/Prayer/Index.cshtml */
+html[data-theme="dark"] .prayer-wall-tab.active {
+    color: var(--on-accent);
+}
+html[data-theme="dark"] .prayed-own {
+    background: var(--surface-2);
+}
+/* Views/Prayer/MarkAnswered.cshtml */
+html[data-theme="dark"] .share-preview {
+    background: var(--surface-2);
+}
+/* Views/Prayer/MyRequests.cshtml */
+html[data-theme="dark"] .prayer-stat-active .prayer-stat-value {
+    color: #60a5fa;
+}
+html[data-theme="dark"] .filter-pill.active {
+    color: var(--on-accent);
+}
+html[data-theme="dark"] .private-pill {
+    background: var(--surface-2);
+}
+html[data-theme="dark"] .delete-btn {
+    color: #f87171 !important;
+}
+/* Views/Shared/Components/TodaysDevotion/Default.cshtml */
+html[data-theme="dark"] .devo-pop {
+    background: var(--white);
+    color: var(--text);
+}
+html[data-theme="dark"] .devo-pop-close {
+    background: var(--surface-2);
+    color: var(--text-s);
+}
+html[data-theme="dark"] .devo-pop-summary {
+    color: var(--text-s);
+}

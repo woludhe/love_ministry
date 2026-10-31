@@ -9,13 +9,8 @@
         Layout = "~/Views/Shared/_Layout.cshtml";
     }
     var posts = (List<ForumPost>)(ViewBag.Posts ?? new List<ForumPost>());
-    var amenCounts = (Dictionary<int, int>)(ViewBag.AmenCounts ?? new Dictionary<int, int>());
-    var myAmens = (HashSet<int>)(ViewBag.MyAmens ?? new HashSet<int>());
-    var likeCounts = (Dictionary<int, int>)(ViewBag.LikeCounts ?? new Dictionary<int, int>());
-    var myLikes = (HashSet<int>)(ViewBag.MyLikes ?? new HashSet<int>());
     var me = ViewBag.Me as Member;
     var selected = Context.Request.Query["category"].ToString();
-    var returnUrl = Context.Request.Path + Context.Request.QueryString;
 }
 @using ChurchMinistry.Models
 @using ChurchMinistry.ViewModels
@@ -40,27 +35,18 @@
         }
     </div>
 
-    <div class="fb-feed">
-        @foreach (var post in posts)
+    @* 10 posts at a time; community.js loads the next 10 as the member nears the end *@
+    <div class="fb-feed js-feed">
+        @if (((PagerModel)ViewBag.Pager).Page > 1)
         {
-            var card = new ForumPostCardViewModel
-            {
-                Post = post,
-                AmenCount = amenCounts.GetValueOrDefault(post.Id),
-                Amened = myAmens.Contains(post.Id),
-                LikeCount = likeCounts.GetValueOrDefault(post.Id),
-                Liked = myLikes.Contains(post.Id),
-                Me = me,
-                ReturnUrl = returnUrl
-            };
-            <partial name="_PostCard" model="card" />
+            <a href="?@(string.IsNullOrEmpty(selected) ? "" : $"category={selected}")" class="fb-load-more"><i class="fas fa-arrow-up"></i> Back to the latest posts</a>
         }
+        <partial name="_FeedPage" />
         @if (posts.Count == 0)
         {
             <div class="fb-empty"><p>No posts yet. Be the first to start a discussion!</p><a asp-action="NewPost" class="btn btn-primary">Create First Post</a></div>
         }
     </div>
-    <partial name="_Pager" model="(PagerModel)ViewBag.Pager" />
 </div>
 
 @section Scripts {

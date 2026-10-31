@@ -1390,7 +1390,7 @@ namespace ChurchMinistry.Controllers
         // Feed: each post with its responses, Facebook style
         public async Task<IActionResult> Index(ForumCategory? category, int page = 1)
         {
-            var pager = new PagerModel(page, "posts");
+            var pager = new PagerModel(page, "posts") { PageSize = 10 };
             var q = _db.ForumPosts.Include(p => p.Member)
                 .Include(p => p.Replies).ThenInclude(r => r.Member)
                 .Include(p => p.Images).AsQueryable();
@@ -1401,6 +1401,9 @@ namespace ChurchMinistry.Controllers
             ViewBag.Total = pager.Total; ViewBag.Page = pager.Page; ViewBag.TotalPages = pager.TotalPages;
             ViewBag.Pager = pager;
             await SetAmenDataAsync(posts.Select(p => p.Id).ToList());
+
+            // community.js asking for the next 10 as the member scrolls: just those cards
+            if (Request.Headers["X-Requested-With"] == "fetch") return PartialView("_FeedPage");
 
             // The feed has been seen: clears the Community "new" tag (NavUnreadViewComponent)
             var userId = _userManager.GetUserId(User);

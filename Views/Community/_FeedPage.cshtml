@@ -1,0 +1,53 @@
+@using ChurchMinistry.Models
+@using ChurchMinistry.ViewModels
+@*
+    One batch of the community feed (10 posts) and the "load more" link to the next batch.
+    Rendered inside Index.cshtml for the first batch, and on its own when community.js asks for the next one.
+*@
+@{
+    var posts = (List<ForumPost>)(ViewBag.Posts ?? new List<ForumPost>());
+    var amenCounts = (Dictionary<int, int>)(ViewBag.AmenCounts ?? new Dictionary<int, int>());
+    var myAmens = (HashSet<int>)(ViewBag.MyAmens ?? new HashSet<int>());
+    var likeCounts = (Dictionary<int, int>)(ViewBag.LikeCounts ?? new Dictionary<int, int>());
+    var myLikes = (HashSet<int>)(ViewBag.MyLikes ?? new HashSet<int>());
+    var me = ViewBag.Me as Member;
+    var pager = (PagerModel)ViewBag.Pager;
+
+    // The feed address for a batch, keeping the category filter
+    string FeedUrl(int page)
+    {
+        var query = Context.Request.Query
+            .Where(kv => kv.Key != "page")
+            .SelectMany(kv => kv.Value.Select(v => new KeyValuePair<string, string?>(kv.Key, v)))
+            .ToList();
+        if (page > 1) query.Add(new KeyValuePair<string, string?>("page", page.ToString()));
+        return Url.Action("Index", "Community") + Microsoft.AspNetCore.Http.QueryString.Create(query).ToUriComponent();
+    }
+    // Commenting brings the member back to this batch, at the post
+    var returnUrl = FeedUrl(pager.Page);
+}
+@foreach (var post in posts)
+{
+    var card = new ForumPostCardViewModel
+    {
+        Post = post,
+        AmenCount = amenCounts.GetValueOrDefault(post.Id),
+        Amened = myAmens.Contains(post.Id),
+        LikeCount = likeCounts.GetValueOrDefault(post.Id),
+        Liked = myLikes.Contains(post.Id),
+        Me = me,
+        ReturnUrl = returnUrl
+    };
+    <partial name="_PostCard" model="card" />
+}
+@if (pager.Page < pager.TotalPages)
+{
+    <a href="@FeedUrl(pager.Page + 1)" class="fb-load-more js-load-more">
+        <span class="fb-load-more-text">Load more posts</span>
+        <span class="fb-load-more-busy"><i class="fas fa-spinner fa-spin"></i> Loading…</span>
+    </a>
+}
+else if (posts.Count > 0 && pager.TotalPages > 1)
+{
+    <p class="fb-feed-end">You're all caught up.</p>
+}

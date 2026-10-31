@@ -97,8 +97,41 @@ document.addEventListener('DOMContentLoaded', () => {
     if (e.key === 'ArrowRight' && photos.length > 1) show(at + 1);
   });
 
-  // Comment boxes grow with their text; Enter posts, Shift+Enter makes a new line
-  document.querySelectorAll('.fb-comment-form textarea').forEach(t => {
+  // Feed: the next 10 posts load as the "Load more posts" link comes near the screen
+  // (without scripts it is a plain link to the next batch)
+  const feed = document.querySelector('.js-feed');
+  if (feed && 'IntersectionObserver' in window) {
+    let busy = false;
+    const loadMore = async link => {
+      if (busy) return;
+      busy = true;
+      link.classList.add('is-busy');
+      try {
+        const res = await fetch(link.href, { headers: { 'X-Requested-With': 'fetch' } });
+        if (!res.ok) throw new Error(res.status);
+        const batch = document.createElement('div');
+        batch.innerHTML = await res.text();
+        bindComments(batch);
+        link.replaceWith(...batch.childNodes);
+        watch();
+      } catch {
+        link.classList.remove('is-busy');   // the link still works as a normal click
+      }
+      busy = false;
+    };
+    const observer = new IntersectionObserver(entries => {
+      entries.forEach(en => { if (en.isIntersecting) { observer.unobserve(en.target); loadMore(en.target); } });
+    }, { rootMargin: '600px 0px' });
+    const watch = () => feed.querySelectorAll('.js-load-more:not(.is-busy)').forEach(l => observer.observe(l));
+    watch();
+  }
+
+  bindComments(document);
+});
+
+// Comment boxes grow with their text; Enter posts, Shift+Enter makes a new line
+function bindComments(root) {
+  root.querySelectorAll('.fb-comment-form textarea').forEach(t => {
     const grow = () => { t.style.height = 'auto'; t.style.height = t.scrollHeight + 'px'; };
     t.addEventListener('input', grow);
     t.addEventListener('keydown', e => {
@@ -111,4 +144,4 @@ document.addEventListener('DOMContentLoaded', () => {
       setTimeout(() => t.form.querySelector('button[type=submit]').disabled = true);
     });
   });
-});
+}

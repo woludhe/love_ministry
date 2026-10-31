@@ -154,7 +154,9 @@
     /* ── Controls bar ── */
     /* Always on screen: never wraps off the bottom, scrolls sideways if it can't fit,
        and clears phone home-indicator / notch areas. */
-    .controls    { display: flex; align-items: center; justify-content: center; gap: .75rem;
+    /* Centred by the auto margins on the first and last buttons, not justify-content: when the buttons
+       overflow, justify-content: center would push the first ones off the left edge where they can't be scrolled to */
+    .controls    { display: flex; align-items: center; justify-content: flex-start; gap: .75rem;
                    padding: .85rem calc(1.25rem + env(safe-area-inset-right)) calc(1.4rem + env(safe-area-inset-bottom)) calc(1.25rem + env(safe-area-inset-left));
                    background: var(--surface); border-top: 1px solid var(--border);
                    flex-shrink: 0; flex-wrap: nowrap; overflow-x: auto; overflow-y: hidden;
@@ -314,6 +316,12 @@
       .ctrl-btn span { display: none; }
       .ctrl-end { padding: .5rem .85rem; }
     }
+    /* Phones held upright: Leave / End is just the red button with its icon, to make room for the others */
+    @@media (max-width: 768px) and (orientation: portrait) {
+      .ctrl-end { width: 44px; height: 44px; padding: 0; justify-content: center; font-size: 1rem; }
+      .ctrl-end-label { display: none; }
+      .ctrl-people-via-chat { display: none; }
+    }
   </style>
 </head>
 <body>
@@ -427,18 +435,19 @@
       {
         <button class="ctrl-btn ctrl-default" onclick="toggleSidebar('chat')"><i class="fas fa-comments"></i><span>Chat</span></button>
       }
-      <button class="ctrl-btn ctrl-default" onclick="toggleSidebar('people')"><i class="fas fa-users"></i><span>People</span></button>
+      @* With chat on, phones held upright reach People through the Chat panel's People tab (frees room for Leave) *@
+      <button class="ctrl-btn ctrl-default @(Model.Room.ChatEnabled ? "ctrl-people-via-chat" : "")" onclick="toggleSidebar('people')"><i class="fas fa-users"></i><span>People</span></button>
       @if (isHost)
       {
         <button class="ctrl-btn ctrl-default" id="btnSpotlight" onclick="toggleSpotlightMode()" title="Spotlight a participant">
           <i class="fas fa-star"></i><span>Spotlight</span>
         </button>
         <button class="ctrl-btn ctrl-default" onclick="muteAll()"><i class="fas fa-microphone-slash"></i><span>Mute All</span></button>
-        <button class="ctrl-end" onclick="confirmEnd()"><i class="fas fa-phone-slash"></i> End</button>
+        <button class="ctrl-end" onclick="confirmEnd()" title="End meeting" aria-label="End meeting"><i class="fas fa-phone-slash"></i><span class="ctrl-end-label">End</span></button>
       }
       else
       {
-        <button class="ctrl-end" onclick="leaveMeeting()"><i class="fas fa-phone-slash"></i> Leave</button>
+        <button class="ctrl-end" onclick="leaveMeeting()" title="Leave meeting" aria-label="Leave meeting"><i class="fas fa-phone-slash"></i><span class="ctrl-end-label">Leave</span></button>
       }
     </div>
   </div>

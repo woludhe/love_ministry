@@ -41,14 +41,18 @@
 
 /*body { font-family: 'Inter', sans-serif; color: var(--text); background: var(--bg); line-height: 1.6; }*/
 body {
-    font-family: 'Open Sans', sans-serif;
+    /* Body text: Lato. To roll back, use: font-family: 'Open Sans', sans-serif; */
+    font-family: 'Lato', 'Helvetica Neue', Arial, sans-serif;
     color: var(--text);
     background: var(--bg);
     line-height: 1.6;
 }
 
-h1 {
-    font-family: 'Urbanist', sans-serif;
+/* Headings: Quicksand Bold, except the My Daily newspaper (.np), which has its own. To roll back, replace with:
+   h1 { font-family: 'Urbanist', sans-serif; } */
+:where(h1, h2, h3, h4, h5, h6):where(:not(.np *)) {
+    font-family: 'Quicksand', 'Lato', sans-serif;
+    font-weight: 700;
 }
 
 a {
@@ -2509,6 +2513,42 @@ a.kpi-card.kpi-link {
     .fb-empty p {
         margin-bottom: 1rem;
     }
+
+/* Feed batches (_FeedPage.cshtml): "Load more posts" fills in automatically as it nears the screen */
+.fb-load-more {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: .5rem;
+    padding: .8rem 1rem;
+    border-radius: var(--radius);
+    background: var(--white);
+    box-shadow: var(--shadow);
+    font-weight: 600;
+    font-size: .9rem;
+    color: var(--purple);
+}
+
+    .fb-load-more:hover {
+        background: var(--purple-l);
+    }
+
+    .fb-load-more .fb-load-more-busy,
+    .fb-load-more.is-busy .fb-load-more-text {
+        display: none;
+    }
+
+    .fb-load-more.is-busy .fb-load-more-busy {
+        display: inline;
+        color: var(--text-s);
+    }
+
+.fb-feed-end {
+    text-align: center;
+    color: var(--text-s);
+    font-size: .88rem;
+    padding: .75rem 0 .25rem;
+}
 
 .fb-back {
     display: inline-flex;
