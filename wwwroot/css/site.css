@@ -2392,6 +2392,24 @@ a.kpi-card.kpi-link {
     overflow-wrap: anywhere;
 }
 
+.msg-delete {
+    margin-left: .5rem;
+    padding: 0 .15rem;
+    border: 0;
+    background: none;
+    color: inherit;
+    font-size: .7rem;
+    cursor: pointer;
+}
+
+    .msg-delete:hover {
+        color: #dc2626;
+    }
+
+.chat-msg.own .msg-delete:hover {
+    color: #fff;
+}
+
 .system-msg {
     text-align: center;
     font-size: .78rem;
@@ -2598,6 +2616,19 @@ a.kpi-card.kpi-link {
     flex-wrap: wrap;
     align-items: center;
 }
+
+.fb-delete {
+    padding: .15rem .3rem;
+    border: 0;
+    background: none;
+    color: var(--text-s);
+    font-size: .8rem;
+    cursor: pointer;
+}
+
+    .fb-delete:hover {
+        color: #dc2626;
+    }
 
 .fb-post-text {
     padding: 0 1rem .75rem;
@@ -2937,11 +2968,22 @@ a.kpi-card.kpi-link {
     color: var(--purple);
 }
 
+.fb-comment-meta {
+    display: flex;
+    align-items: center;
+    gap: .35rem;
+}
+
 .fb-comment-time {
     display: block;
     margin: .15rem 0 0 .8rem;
     font-size: .74rem;
     color: var(--text-s);
+}
+
+.fb-comment-meta .fb-delete {
+    margin-top: .15rem;
+    font-size: .7rem;
 }
 
 .fb-comment-form {

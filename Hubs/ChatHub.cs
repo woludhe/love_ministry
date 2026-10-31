@@ -106,6 +106,24 @@ namespace ChurchMinistry.Hubs
             await Clients.All.SendAsync("ChatActivity", new { room, memberId = member.Id });
         }
 
+        // Admin and Pastor can remove any message; members only their own
+        public async Task DeleteMessage(int id)
+        {
+            var chat = await _db.ChatMessages.AsNoTracking()
+                .Where(c => c.Id == id)
+                .Select(c => new { c.Room, c.MemberId })
+                .FirstOrDefaultAsync();
+            if (chat == null) return;   // already removed
+
+            var moderator = Context.User?.IsInRole("Admin") == true || Context.User?.IsInRole("Pastor") == true;
+            if (!moderator && await CurrentMemberIdAsync() != chat.MemberId)
+                throw new HubException("You can only delete your own messages.");
+
+            await _db.ChatMessages.Where(c => c.Id == id).ExecuteDeleteAsync();
+            if (chat.Room != null)
+                await Clients.Group(chat.Room).SendAsync("MessageDeleted", id);
+        }
+
         public override async Task OnDisconnectedAsync(Exception? exception)
         {
             if (OnChatPage.TryRemove(Context.ConnectionId, out var userId))

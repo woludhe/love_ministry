@@ -37,7 +37,8 @@
         let joinSeq = 0;   // ignores a slow history reply after the user has moved to another room
         const box = document.getElementById('chatMessages');
         const input = document.getElementById('messageInput');
-        const conn = new signalR.HubConnectionBuilder().withUrl('/chatHub').withAutomaticReconnect().build();
+        const canModerate = @Json.Serialize(User.IsInRole("Admin") || User.IsInRole("Pastor"));   // the hub checks this again
+        const conn =new signalR.HubConnectionBuilder().withUrl('/chatHub').withAutomaticReconnect().build();
 
         function escHtml(t) { const d = document.createElement('div'); d.textContent = t ?? ''; return d.innerHTML; }
 
@@ -52,11 +53,20 @@
         function addMessage(m) {
             const div = document.createElement('div');
             div.className = 'chat-msg' + (m.isOwn ? ' own' : '');
+            div.dataset.id = m.id;
+            const del = canModerate || m.isOwn
+                ? '<button type="button" class="msg-delete" aria-label="Delete message" title="Delete message"><i class="fas fa-trash-alt"></i></button>' : '';
             div.innerHTML = `<img src="${escHtml(m.senderPhoto)}" class="avatar-xs" alt=""/>`
                 + `<div class="msg-bubble"><strong>${m.isOwn ? 'You' : escHtml(m.senderName)}</strong>`
-                + `<p>${escHtml(m.message)}</p><small>${timeLabel(m.sentAt)}</small></div>`;
+                + `<p>${escHtml(m.message)}</p><small>${timeLabel(m.sentAt)}${del}</small></div>`;
             box.appendChild(div);
         }
+
+        box.addEventListener('click', e => {
+            const btn = e.target.closest('.msg-delete');
+            if (!btn || !confirm('Delete this message for everyone?')) return;
+            conn.invoke('DeleteMessage', Number(btn.closest('.chat-msg').dataset.id)).catch(err => systemMessage(errorText(err)));
+        });
 
         function systemMessage(text, cls) {
             const div = document.createElement('div');
@@ -93,6 +103,13 @@
             box.querySelector('.system-msg.empty')?.remove();
             addMessage(m);
             if (nearBottom || m.isOwn) box.scrollTop = box.scrollHeight;
+        });
+
+        conn.on('MessageDeleted', id => {
+            const msg = box.querySelector(`.chat-msg[data-id="${id}"]`);
+            if (!msg) return;
+            msg.remove();
+            if (!box.querySelector('.chat-msg')) systemMessage('No messages yet. Say hello!', 'empty');
         });
 
         // People with the chat page open, across all rooms

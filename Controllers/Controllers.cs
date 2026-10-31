@@ -1543,6 +1543,41 @@ namespace ChurchMinistry.Controllers
                 : RedirectToAction("Post", new { id = postId });
         }
 
+        // Admin and Pastor can remove anything; members only what they wrote
+        private async Task<bool> CanDeleteAsync(int authorMemberId) =>
+            User.IsInRole("Admin") || User.IsInRole("Pastor") || (await GetMemberAsync())?.Id == authorMemberId;
+
+        // Replies, reactions and image rows go with the post (cascades in ApplicationDbContext)
+        [HttpPost, ValidateAntiForgeryToken]
+        public async Task<IActionResult> DeletePost([FromBody] int id)
+        {
+            var post = await _db.ForumPosts.Include(p => p.Images).FirstOrDefaultAsync(p => p.Id == id);
+            if (post == null) return NotFound();
+            if (!await CanDeleteAsync(post.MemberId)) return Forbid();
+
+            var files = post.Images.Select(i => i.Url).ToList();
+            _db.ForumPosts.Remove(post);
+            await _db.SaveChangesAsync();
+            // These rows quote the post title, which would otherwise stay on the activity pages
+            await _db.MemberActivities
+                .Where(a => a.ReferenceId == id && (a.Type == MemberActivityType.ForumPost || a.Type == MemberActivityType.ForumReply))
+                .ExecuteDeleteAsync();
+            foreach (var u in files) System.IO.File.Delete(Path.Combine(_env.WebRootPath, u.TrimStart('/')));
+            return Ok();
+        }
+
+        [HttpPost, ValidateAntiForgeryToken]
+        public async Task<IActionResult> DeleteReply([FromBody] int id)
+        {
+            var reply = await _db.ForumReplies.FindAsync(id);
+            if (reply == null) return NotFound();
+            if (!await CanDeleteAsync(reply.MemberId)) return Forbid();
+
+            _db.ForumReplies.Remove(reply);
+            await _db.SaveChangesAsync();
+            return Ok();
+        }
+
         public IActionResult Chat() => View();
     }
 

@@ -24,6 +24,8 @@
     var hiddenCount = Model.ShowAllReplies ? 0 : Math.Max(0, replies.Count - ForumPostCardViewModel.FeedReplies);
     // Long posts are clamped on the feed with "See more"
     var isLong = !Model.ShowAllReplies && (p.Content.Length > 450 || p.Content.Count(c => c == '\n') > 6);
+    // Delete buttons: Admin and Pastor on everything, members on what they wrote (checked again on the server)
+    var canModerate = User.IsInRole("Admin") || User.IsInRole("Pastor");
 }
 <article class="fb-post @(p.IsPinned ? "is-pinned" : "")" id="post-@p.Id">
     <header class="fb-post-head">
@@ -37,6 +39,10 @@
             @if (p.IsPastorQuestion) { <span class="pastor-badge"><i class="fas fa-church"></i> Pastor Q&amp;A</span> }
             <a href="?category=@p.Category" class="cat-badge cat-@p.Category.ToString().ToLower()">@ForumCategories.Label(p.Category)</a>
         </div>
+        @if (canModerate || Model.Me?.Id == p.MemberId)
+        {
+            <button type="button" class="fb-delete js-delete-post" data-id="@p.Id" aria-label="Delete post" title="Delete post"><i class="fas fa-trash-alt"></i></button>
+        }
     </header>
 
     <div class="fb-post-text">
@@ -63,7 +69,7 @@
         <span class="js-amen-summary" hidden="@(Model.AmenCount == 0)">🙏 <span class="js-amen-count">@Model.AmenCount</span> Amen</span>
         <span class="js-like-summary" hidden="@(Model.LikeCount == 0)">👍 <span class="js-like-count">@Model.LikeCount</span> <span class="js-like-word">@(Model.LikeCount == 1 ? "Like" : "Likes")</span></span>
         <span class="fb-stats-right">
-            @replies.Count @(replies.Count == 1 ? "comment" : "comments") · @p.ViewCount @(p.ViewCount == 1 ? "view" : "views")
+            <span class="js-comment-count">@replies.Count</span> <span class="js-comment-word">@(replies.Count == 1 ? "comment" : "comments")</span> · @p.ViewCount @(p.ViewCount == 1 ? "view" : "views")
         </span>
     </div>
 
@@ -82,7 +88,7 @@
     <div class="fb-comments">
         @if (hiddenCount > 0)
         {
-            <button type="button" class="fb-view-all js-view-all">View all @replies.Count comments</button>
+            <button type="button" class="fb-view-all js-view-all">View all <span class="js-comment-count">@replies.Count</span> <span class="js-comment-word">comments</span></button>
         }
         @for (var i = 0; i < replies.Count; i++)
         {
@@ -95,7 +101,13 @@
                         @if (r.IsPastorReply) { <span class="fb-pastor-tag"><i class="fas fa-church"></i> Pastor</span> }
                         <div>@Html.Raw(ForumText.Format(r.Content))</div>
                     </div>
-                    <span class="fb-comment-time" title="@r.CreatedAt.ToLocalTime().ToString("d MMM yyyy, h:mm tt")">@Ago(r.CreatedAt)</span>
+                    <div class="fb-comment-meta">
+                        <span class="fb-comment-time" title="@r.CreatedAt.ToLocalTime().ToString("d MMM yyyy, h:mm tt")">@Ago(r.CreatedAt)</span>
+                        @if (canModerate || Model.Me?.Id == r.MemberId)
+                        {
+                            <button type="button" class="fb-delete js-delete-reply" data-id="@r.Id" aria-label="Delete comment" title="Delete comment"><i class="fas fa-trash-alt"></i></button>
+                        }
+                    </div>
                 </div>
             </div>
         }

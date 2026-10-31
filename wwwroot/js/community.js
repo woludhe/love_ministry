@@ -1,12 +1,59 @@
 // ============================================================
-//  Community feed: Amen / Like, comment box, "View all comments", "See more"
+//  Community feed: Amen / Like, comment box, "View all comments", "See more", deleting posts and comments
 //  Used by Views/Community/Index.cshtml and Post.cshtml (cards from _PostCard.cshtml)
 // ============================================================
 
 document.addEventListener('DOMContentLoaded', () => {
   const token = document.querySelector('input[name="__RequestVerificationToken"]')?.value ?? '';
 
+  // True once the item is gone; 404 means someone else already removed it
+  const deleteItem = async (url, id) => {
+    try {
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'RequestVerificationToken': token },
+        body: JSON.stringify(Number(id))
+      });
+      // A refused or expired login redirects to a page that loads fine, so that isn't success
+      return !res.redirected && (res.ok || res.status === 404);
+    } catch {
+      return false;
+    }
+  };
+
   document.addEventListener('click', async e => {
+    // Delete a post: off the feed in place, or back to the feed from the post page
+    const delPost = e.target.closest('.js-delete-post');
+    if (delPost) {
+      if (!confirm('Delete this post? Its comments and photos are deleted too. This cannot be undone.')) return;
+      delPost.disabled = true;
+      if (await deleteItem('/Community/DeletePost', delPost.dataset.id)) {
+        if (document.querySelector('.js-feed')) delPost.closest('.fb-post').remove();
+        else location.href = '/Community';
+      } else {
+        delPost.disabled = false;
+      }
+      return;
+    }
+
+    // Delete a comment, then bring the card's comment counts up to date
+    const delReply = e.target.closest('.js-delete-reply');
+    if (delReply) {
+      if (!confirm('Delete this comment? This cannot be undone.')) return;
+      delReply.disabled = true;
+      if (await deleteItem('/Community/DeleteReply', delReply.dataset.id)) {
+        const card = delReply.closest('.fb-post');
+        delReply.closest('.fb-comment').remove();
+        const left = card.querySelectorAll('.fb-comment').length;
+        card.querySelectorAll('.js-comment-count').forEach(c => c.textContent = left);
+        card.querySelectorAll('.js-comment-word').forEach(w => w.textContent = left === 1 ? 'comment' : 'comments');
+        if (!card.querySelector('.fb-comment.is-hidden')) card.querySelector('.js-view-all')?.remove();
+      } else {
+        delReply.disabled = false;
+      }
+      return;
+    }
+
     // Amen / Like: toggle, then show the server's count
     const react = e.target.closest('.js-react');
     if (react) {
