@@ -331,6 +331,21 @@ html[data-theme="dark"] .clear-all-filters {
 html[data-theme="dark"] .no-live-banner {
     background: var(--surface-2);
 }
+/* The live sermon's row keeps its light highlight in dark mode, so its text stays dark */
+html[data-theme="dark"] .row-live td,
+html[data-theme="dark"] .row-live .btn-outline {
+    color: #1f2937;
+}
+html[data-theme="dark"] .row-live .meta {
+    color: #4b5563;
+}
+html[data-theme="dark"] .row-live .btn-outline {
+    border-color: #d1d5db;
+}
+html[data-theme="dark"] .row-live .btn-outline:hover {
+    color: #4f46e5;
+    border-color: #4f46e5;
+}
 html[data-theme="dark"] .page-btn.active {
     color: var(--on-accent);
 }
@@ -391,6 +406,13 @@ html[data-theme="dark"] .ls-item-active {
 }
 html[data-theme="dark"] .bv-verse.bv-pending {
     background: var(--surface-2);
+}
+/* These keep their light highlight in dark mode, so their text stays dark */
+html[data-theme="dark"] .bv-verse:is(:hover, .bv-target, .bv-on):not(.bv-pending) {
+    color: #1f2937;
+}
+html[data-theme="dark"] .bv-verse:is(:hover, .bv-target, .bv-on):not(.bv-pending) .bv-num {
+    color: #4f46e5;
 }
 html[data-theme="dark"] .bv-log-head {
     background: var(--surface-2);
