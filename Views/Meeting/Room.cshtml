@@ -1156,7 +1156,12 @@ async function confirmEnd(){
   if(rec.recorder){toast('Saving the recording…');await stopRecording();}
   conn.invoke('EndMeeting',ROOM_CODE);
 }
-function leaveMeeting(){room.disconnect();conn.invoke('LeaveRoom',ROOM_CODE).then(()=>window.location.href='/Meeting');}
+async function leaveMeeting(){
+  // Send the last of the recording first: leaving tells the server to save it
+  if(rec.recorder){toast('Saving the recording…');await stopRecording();}
+  room.disconnect();
+  conn.invoke('LeaveRoom',ROOM_CODE).then(()=>window.location.href='/Meeting');
+}
 
 // ── Sidebar ───────────────────────────────────────────────
 function toggleSidebar(tab){

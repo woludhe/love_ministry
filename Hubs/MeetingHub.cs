@@ -516,8 +516,21 @@ namespace ChurchMinistry.Hubs
         [Authorize]
         public async Task LeaveRoom(string roomCode)
         {
+            var wasRecording = _recorders.TryGetValue(roomCode, out var holder) && holder == Context.ConnectionId;
             await HandleDisconnect(roomCode);
             await Groups.RemoveFromGroupAsync(Context.ConnectionId, roomCode);
+
+            // The recording host left: save what was recorded, unless a host has taken over
+            // (or come back) by then. A dropped connection doesn't do this: that page may
+            // reconnect and carry on recording.
+            if (wasRecording)
+            {
+                var sermonIds = await _db.Sermons
+                    .Where(s => s.MeetingRoomCode == roomCode)
+                    .Select(s => s.Id).ToListAsync();
+                foreach (var id in sermonIds)
+                    _recordings.QueueFinalize(id, () => _recorders.ContainsKey(roomCode));
+            }
         }
 
         [Authorize]

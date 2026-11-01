@@ -1054,17 +1054,18 @@ namespace ChurchMinistry.Services
     // ─── Meeting recordings ───
     // While a sermon is live, the host's Room page records the meeting's audio and sends a
     // piece every 10 s. The pieces wait in App_Data/recordings/{sermonId}/{part}.{ext}/ until the
-    // meeting ends or the sermon stops being live; then they become one file in the audio
-    // library's Sermons folder and the sermon's RecordingUrl. A part is one recorder run
-    // (the host refreshing the page starts a new one).
+    // meeting ends, the sermon stops being live, or the recording host leaves with no host taking
+    // over; then they become one file in the audio library's Sermons folder and the sermon's
+    // RecordingUrl. A part is one recorder run (the host refreshing the page starts a new one).
     public interface IRecordingService
     {
         // False when the part, piece number or format isn't valid
         Task<bool> SaveChunkAsync(int sermonId, string partId, int seq, string ext, Stream data);
         // True while this part has pieces waiting (it hasn't been finalized yet)
         bool HasPart(int sermonId, string partId, string ext);
-        // Finalizes after a short wait, so the host's last piece can still arrive
-        void QueueFinalize(int sermonId);
+        // Finalizes after a short wait, so the host's last piece can still arrive.
+        // cancelIf is asked after the wait: true leaves the pieces for a later finalize.
+        void QueueFinalize(int sermonId, Func<bool>? cancelIf = null);
         Task FinalizeAsync(int sermonId);
     }
 
@@ -1108,13 +1109,14 @@ namespace ChurchMinistry.Services
             return true;
         }
 
-        public void QueueFinalize(int sermonId)
+        public void QueueFinalize(int sermonId, Func<bool>? cancelIf = null)
         {
             _ = Task.Run(async () =>
             {
                 try
                 {
                     await Task.Delay(FinalizeDelay);
+                    if (cancelIf?.Invoke() == true) return;
                     using var scope = _scopes.CreateScope();
                     await scope.ServiceProvider.GetRequiredService<IRecordingService>().FinalizeAsync(sermonId);
                 }
@@ -1138,6 +1140,7 @@ namespace ChurchMinistry.Services
 
                 // Each part's pieces joined in order make a playable file
                 var parts = new List<string>();
+                var joinedDirs = new List<DirectoryInfo>();
                 foreach (var dir in new DirectoryInfo(root).GetDirectories().OrderBy(d => d.CreationTimeUtc))
                 {
                     var chunks = dir.GetFiles("*.chunk").OrderBy(f => f.Name).ToList();
@@ -1150,6 +1153,7 @@ namespace ChurchMinistry.Services
                             await input.CopyToAsync(output);
                         }
                     parts.Add(joined);
+                    joinedDirs.Add(dir);
                 }
                 if (parts.Count == 0) { Directory.Delete(root, true); return; }
 
@@ -1187,7 +1191,11 @@ namespace ChurchMinistry.Services
 
                 sermon.RecordingUrl = AudioStore.Url("sermons", name);
                 await _db.SaveChangesAsync();
-                Directory.Delete(root, true);
+
+                // Only what went into this file: a host may have started a new part meanwhile
+                foreach (var dir in joinedDirs) dir.Delete(true);
+                foreach (var file in parts.Append(mp3).Where(File.Exists)) File.Delete(file);
+                if (!Directory.EnumerateFileSystemEntries(root).Any()) Directory.Delete(root);
                 _logger.LogInformation("Recording of sermon {SermonId} saved as {Url}", sermonId, sermon.RecordingUrl);
             }
             finally
