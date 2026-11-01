@@ -125,11 +125,47 @@ namespace ChurchMinistry.ViewModels
         [Required] public string FirstName { get; set; } = "";
         [Required] public string LastName { get; set; } = "";
         [Required, EmailAddress] public string Email { get; set; } = "";
-        [Phone] public string? Phone { get; set; }
+        public string CountryCode { get; set; } = PhoneCountries.Default;
+        public string? Phone { get; set; }   // the number after the country code; checked by PhoneCountries.Combine
         [Required, DataType(DataType.Password), MinLength(8)]
         public string Password { get; set; } = "";
         [Compare("Password")] public string ConfirmPassword { get; set; } = "";
         public bool AgreeToTerms { get; set; }
+    }
+
+    // Country codes offered next to a phone number
+    public static class PhoneCountries
+    {
+        public const string Default = "+256";
+
+        public static readonly (string Code, string Name)[] All =
+        {
+            ("+213", "Algeria"), ("+244", "Angola"), ("+61", "Australia"), ("+229", "Benin"),
+            ("+267", "Botswana"), ("+226", "Burkina Faso"), ("+257", "Burundi"), ("+237", "Cameroon"),
+            ("+1", "Canada"), ("+236", "Central African Republic"), ("+235", "Chad"),
+            ("+242", "Congo"), ("+225", "Côte d'Ivoire"), ("+243", "DR Congo"), ("+20", "Egypt"),
+            ("+268", "Eswatini"), ("+251", "Ethiopia"), ("+33", "France"), ("+241", "Gabon"),
+            ("+220", "Gambia"), ("+49", "Germany"), ("+233", "Ghana"), ("+224", "Guinea"),
+            ("+91", "India"), ("+254", "Kenya"), ("+266", "Lesotho"), ("+231", "Liberia"),
+            ("+261", "Madagascar"), ("+265", "Malawi"), ("+223", "Mali"), ("+212", "Morocco"),
+            ("+258", "Mozambique"), ("+264", "Namibia"), ("+31", "Netherlands"), ("+227", "Niger"),
+            ("+234", "Nigeria"), ("+250", "Rwanda"), ("+966", "Saudi Arabia"), ("+221", "Senegal"),
+            ("+232", "Sierra Leone"), ("+252", "Somalia"), ("+27", "South Africa"), ("+211", "South Sudan"),
+            ("+249", "Sudan"), ("+46", "Sweden"), ("+255", "Tanzania"), ("+228", "Togo"),
+            ("+216", "Tunisia"), ("+256", "Uganda"), ("+971", "United Arab Emirates"),
+            ("+44", "United Kingdom"), ("+1", "USA"), ("+260", "Zambia"), ("+263", "Zimbabwe")
+        };
+
+        // "+256" and "0772 123 456" → "+256772123456", or null if that isn't a phone number.
+        // A number typed with its own + keeps it, whatever code is selected.
+        public static string? Combine(string? code, string number)
+        {
+            var digits = System.Text.RegularExpressions.Regex.Replace(number, @"[\s\-().]", "");
+            var full = digits.StartsWith('+') ? digits
+                     : All.Any(c => c.Code == code) ? code + digits.TrimStart('0')
+                     : "";
+            return System.Text.RegularExpressions.Regex.IsMatch(full, @"^\+[1-9]\d{7,14}$") ? full : null;
+        }
     }
 
     // ─── Member ───

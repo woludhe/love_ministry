@@ -12,7 +12,15 @@
         <div class="form-group"><label asp-for="LastName"></label><input asp-for="LastName" class="form-control" /><span asp-validation-for="LastName" class="field-error"></span></div>
       </div>
       <div class="form-group"><label asp-for="Email"></label><input asp-for="Email" class="form-control" /><span asp-validation-for="Email" class="field-error"></span></div>
-      <div class="form-group"><label asp-for="Phone">Phone Number</label><input asp-for="Phone" class="form-control" placeholder="+256 7XX XXX XXX" /></div>
+      <div class="form-group">
+        <label asp-for="Phone">Phone Number</label>
+        <div class="phone-input">
+          <select asp-for="CountryCode" class="form-control country-code-named" aria-label="Country code"
+                  asp-items="@ChurchMinistry.ViewModels.PhoneCountries.All.Select(c => new Microsoft.AspNetCore.Mvc.Rendering.SelectListItem($"{c.Name} ({c.Code})", c.Code))"></select>
+          <input asp-for="Phone" type="tel" class="form-control" />
+        </div>
+        <span asp-validation-for="Phone" class="field-error"></span>
+      </div>
       <div class="form-row">
         <div class="form-group"><label asp-for="Password"></label><input asp-for="Password" class="form-control" type="password" /><span asp-validation-for="Password" class="field-error"></span></div>
         <div class="form-group"><label asp-for="ConfirmPassword">Confirm Password</label><input asp-for="ConfirmPassword" class="form-control" type="password" /><span asp-validation-for="ConfirmPassword" class="field-error"></span></div>

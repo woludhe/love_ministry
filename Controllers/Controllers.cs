@@ -506,11 +506,17 @@ namespace ChurchMinistry.Controllers
             return RedirectToAction(nameof(Security));
         }
 
-        [HttpGet] public IActionResult Register() => View();
+        [HttpGet] public IActionResult Register() => View(new RegisterViewModel());
 
         [HttpPost]
         public async Task<IActionResult> Register(RegisterViewModel vm)
         {
+            string? phone = null;
+            if (!string.IsNullOrWhiteSpace(vm.Phone))
+            {
+                phone = PhoneCountries.Combine(vm.CountryCode, vm.Phone);
+                if (phone == null) ModelState.AddModelError(nameof(vm.Phone), "Enter a valid phone number.");
+            }
             if (!ModelState.IsValid) return View(vm);
             var user = new ApplicationUser { UserName = vm.Email, Email = vm.Email, FirstName = vm.FirstName, LastName = vm.LastName };
             var result = await _userManager.CreateAsync(user, vm.Password);
@@ -527,7 +533,7 @@ namespace ChurchMinistry.Controllers
                 FirstName = vm.FirstName,
                 LastName = vm.LastName,
                 Email = vm.Email,
-                Phone = vm.Phone,
+                Phone = phone,
                 UserId = user.Id
             };
             _db.Members.Add(member);

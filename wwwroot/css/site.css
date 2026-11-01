@@ -1427,6 +1427,22 @@ img {
     min-width: 110px;
 }
 
+/* The register page's list, "Kenya (+254)": on phones it takes its own line above the number */
+.country-code-named {
+    flex: 0 0 14rem;
+    min-width: 0;
+}
+
+@media (max-width: 520px) {
+    .phone-input:has(.country-code-named) {
+        flex-wrap: wrap;
+    }
+
+    .country-code-named {
+        flex-basis: 100%;
+    }
+}
+
 .toggle-label {
     display: flex;
     align-items: center;
