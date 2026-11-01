@@ -173,6 +173,9 @@
     .ctrl-default:hover { background: var(--border); }
     .ctrl-danger  { background: var(--red) !important; color: white; }
     .ctrl-active  { background: var(--purple) !important; color: white; }
+    /* The chat icon flashes twice for a new message */
+    @@keyframes chat-flash { 50% { color: #f59e0b; text-shadow: 0 0 10px #f59e0b; } }
+    .chat-flash { animation: chat-flash .45s ease-in-out 2; }
     .ctrl-end     { background: var(--red); color: white; border-radius: 14px;
                     padding: .65rem 1.5rem; font-size: .9rem; font-weight: 700;
                     display: flex; align-items: center; gap: .4rem; border: none; cursor: pointer;
@@ -433,7 +436,7 @@
       <div class="controls-spacer"></div>
       @if (Model.Room.ChatEnabled)
       {
-        <button class="ctrl-btn ctrl-default" onclick="toggleSidebar('chat')"><i class="fas fa-comments"></i><span>Chat</span></button>
+        <button class="ctrl-btn ctrl-default" id="btnChat" onclick="toggleSidebar('chat')"><i class="fas fa-comments"></i><span>Chat</span></button>
       }
       @* With chat on, phones held upright reach People through the Chat panel's People tab (frees room for Leave) *@
       <button class="ctrl-btn ctrl-default @(Model.Room.ChatEnabled ? "ctrl-people-via-chat" : "")" onclick="toggleSidebar('people')"><i class="fas fa-users"></i><span>People</span></button>
@@ -1192,7 +1195,12 @@ function appendChatMessage({senderName,message,type,sentAt,connectionId,isOwn:ow
     <div class="${isPrayer?'msg-prayer':'msg-bubble-meet'}">${escHtml(message)}</div>
     <div class="msg-time">${fmtChatTime(sentAt)}</div>`;
   box.appendChild(div); box.scrollTop=box.scrollHeight;
+  if(!fromHistory&&!isOwn) flashChatIcon();
   if(!fromHistory&&!isOwn&&(currentTab!=='chat'||!sidebarOpen)){unreadChat++;const b=document.getElementById('chatCount');b.style.display='inline';b.textContent=unreadChat;}
+}
+// Removing the class first restarts the flash if another message arrives during it
+function flashChatIcon(){
+  document.querySelectorAll('#btnChat i,#tabChat i').forEach(i=>{i.classList.remove('chat-flash');void i.offsetWidth;i.classList.add('chat-flash');});
 }
 function fmtChatTime(iso){const d=new Date(iso);return isNaN(d)?'':d.toLocaleTimeString([],{hour:'numeric',minute:'2-digit'});}
 // Chat so far (this room, plus the sermon's Live page chat) — on entering and after a reconnect.

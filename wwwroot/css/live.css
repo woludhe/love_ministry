@@ -412,6 +412,15 @@
     color: #a5b4fc;
 }
 
+/* The chat icon flashes twice for a new message */
+@keyframes chat-flash {
+    50% { color: #f59e0b; text-shadow: 0 0 10px #f59e0b; }
+}
+
+.chat-flash {
+    animation: chat-flash .45s ease-in-out 2;
+}
+
 .active-btn {
     background: rgba(99,102,241,.3) !important;
     border-color: rgba(99,102,241,.6) !important;

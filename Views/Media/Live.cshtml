@@ -1201,7 +1201,13 @@
                     <div class="chat-msg-time">${fmtChatTime(sentAt)}</div>
                 </div>`;
             box.appendChild(div); box.scrollTop = box.scrollHeight;
+            if (countUnread && !isOwn) flashChatIcon();
             if (countUnread && !chatOpen && !isOwn) { unreadChat++; updateChatBadge(unreadChat); }
+        }
+        // Removing the class first restarts the flash if another message arrives during it
+        function flashChatIcon() {
+            const icon = document.querySelector('#btnInfoChat i'); if (!icon) return;
+            icon.classList.remove('chat-flash'); void icon.offsetWidth; icon.classList.add('chat-flash');
         }
         function appendSystemChatMsg(msg) {
             const box = document.getElementById('liveChatMessages'); if (!box) return;
