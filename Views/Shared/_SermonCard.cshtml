@@ -11,7 +11,7 @@
     @if (!string.IsNullOrEmpty(s.ScriptureReference)) { <p class="scripture"><i class="fas fa-book-open"></i> @s.ScriptureReference</p> }
     <div class="card-actions">
       @if (s.IsLive) { <a asp-controller="Media" asp-action="Live" class="btn btn-primary btn-sm"><span class="live-dot"></span> Watch Live</a> }
-      else if (s.SermonDate > DateTime.UtcNow) { <a asp-controller="Media" asp-action="Watch" asp-route-id="@s.Id" class="btn btn-primary btn-sm"><i class="fas fa-eye"></i> View</a> }
+      else if (s.IsUpcoming) { <a asp-controller="Media" asp-action="Watch" asp-route-id="@s.Id" class="btn btn-primary btn-sm"><i class="fas fa-eye"></i> View</a> }
       else if (s.DeliveryMode == "audio" || (s.DeliveryMode == "meeting" && s.RecordingUrl != null)) { <a asp-controller="Media" asp-action="Watch" asp-route-id="@s.Id" class="btn btn-primary btn-sm"><i class="fas fa-headphones"></i> Listen</a> }
       else { <a asp-controller="Media" asp-action="Watch" asp-route-id="@s.Id" class="btn btn-primary btn-sm"><i class="fas fa-play"></i> Watch</a> }
     </div>

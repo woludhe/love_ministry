@@ -242,6 +242,12 @@ namespace ChurchMinistry.Models
             : !string.IsNullOrEmpty(VideoUrl) ? "video"
             : !string.IsNullOrEmpty(AudioUrl) ? "audio"
             : "video";
+
+        // Scheduled for later and not live yet, so only its poster shows. A recording means it
+        // has already happened, whatever date it was given.
+        [NotMapped]
+        public bool IsUpcoming => !IsLive && SermonDate > DateTime.UtcNow && string.IsNullOrEmpty(RecordingUrl);
+
         // Navigation (optional — load meeting room details when needed)
         [NotMapped]
         public MeetingRoom? LinkedMeetingRoom { get; set; }

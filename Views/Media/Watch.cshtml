@@ -8,8 +8,8 @@
 @{
     var recommended = ViewBag.Recommended as List<ChurchMinistry.Models.Sermon>
                       ?? new List<ChurchMinistry.Models.Sermon>();
-    // Scheduled for later and not live yet: show the poster instead of a player
-    var isUpcoming = !Model.IsLive && Model.SermonDate > DateTime.UtcNow;
+    // Show the poster instead of a player
+    var isUpcoming = Model.IsUpcoming;
     var isSignedIn = User.Identity?.IsAuthenticated == true;
 }
 

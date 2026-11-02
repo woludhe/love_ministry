@@ -69,7 +69,7 @@ public class MediaController : Controller
         await _db.SaveChangesAsync();
 
         // Upcoming sermons only show a poster, so opening one isn't counted as watching
-        if (sermon.IsLive || sermon.SermonDate <= DateTime.UtcNow)
+        if (!sermon.IsUpcoming)
             await _activity.LogForUserAsync(_userManager.GetUserId(User),
                 MemberActivityType.WatchSermon, sermon.Title, sermon.Id, oncePerDay: true);
 
