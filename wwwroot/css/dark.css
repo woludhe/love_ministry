@@ -283,6 +283,12 @@ html[data-theme="dark"] .notif-dropdown-header {
 html[data-theme="dark"] .notif-dropdown-footer {
     background: var(--surface-2);
 }
+/* Unread rows, in the bell's list and on Views/Notifications/Index.cshtml: their light-mode colour is
+   near white, under light text. :not(:hover) leaves the bell list's hover colour in place */
+html[data-theme="dark"] .notif-drop-item.unread:not(:hover),
+html[data-theme="dark"] .notif-page-item.unread {
+    background: var(--surface-2);
+}
 
 /* Views/Admin/_AudioPicker.cshtml */
 html[data-theme="dark"] .ap-status.ap-error {
