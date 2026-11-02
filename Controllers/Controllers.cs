@@ -2516,7 +2516,9 @@ namespace ChurchMinistry.Controllers
         {
             await PopulateMeetingRoomsAsync();
             ViewBag.AudioFiles = await ListAudioFilesAsync(env);
-            return View(new Sermon());
+            // Today, at the current minute (seconds would show in the date picker)
+            var now = DateTime.Now;
+            return View(new Sermon { SermonDate = now.Date.AddHours(now.Hour).AddMinutes(now.Minute) });
         }
 
         // ── Add Sermon POST ─────────────────────────────────────────
