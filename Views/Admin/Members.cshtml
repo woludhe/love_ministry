@@ -42,6 +42,10 @@
                         {
                             <span class="top-badge top-badge-sm" title="Top Participant"><i class="fas fa-medal"></i></span>
                         }
+                        @if (!string.IsNullOrEmpty(m.Alias))
+                        {
+                            <div class="form-hint" title="Alias other members see">@@@m.Alias</div>
+                        }
                     </td>
                     <td>@m.Email</td>
                     <td>@m.Phone</td>

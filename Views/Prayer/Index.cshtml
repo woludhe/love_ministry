@@ -79,7 +79,7 @@
                 </div>
                 <p class="prayer-name">
                     <i class="fas fa-user"></i>
-                    @(pr.IsAnonymous ? "Anonymous" : pr.AnonymousName)
+                    @(pr.IsAnonymous ? "Anonymous" : pr.Member?.NameFor(User) ?? pr.AnonymousName)
                 </p>
                 <p class="prayer-text">@pr.Request</p>
                 @if (pr.IsAnswered && !string.IsNullOrEmpty(pr.AnswerTestimony))

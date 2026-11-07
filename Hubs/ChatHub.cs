@@ -40,7 +40,8 @@ namespace ChurchMinistry.Hubs
         public async Task<List<object>> JoinRoom(string room)
         {
             if (!Rooms.Contains(room)) throw new HubException("Unknown room.");
-            await Groups.AddToGroupAsync(Context.ConnectionId, room);
+            // Staff and members are told apart in the room so each gets the names it may see
+            await HubAudience.JoinAsync(Context, Groups, room);
 
             var userId = UserId;
             if (userId != null && OnChatPage.TryAdd(Context.ConnectionId, userId))
@@ -55,18 +56,20 @@ namespace ChurchMinistry.Hubs
                 .Where(c => c.Room == room)
                 .OrderByDescending(c => c.SentAt).ThenByDescending(c => c.Id)
                 .Take(HistorySize)
-                .Select(c => new { c.Id, c.MemberId, c.Member.FirstName, c.Member.LastName, c.Member.ProfilePhoto, c.Message, c.SentAt })
+                .Select(c => new { c.Id, c.MemberId, c.Member.FirstName, c.Member.LastName, c.Member.Alias, c.Member.ProfilePhoto, c.Message, c.SentAt })
                 .ToListAsync();
 
+            var staff = Context.User.IsStaff();
             return recent.AsEnumerable().Reverse()
-                .Select(c => Payload(c.Id, $"{c.FirstName} {c.LastName}", c.ProfilePhoto, c.Message, c.SentAt, c.MemberId == myId))
+                .Select(c => Payload(c.Id, MemberNames.For(c.FirstName, c.LastName, c.Alias, staff),
+                    c.ProfilePhoto, c.Message, c.SentAt, c.MemberId == myId))
                 .ToList();
         }
 
         public async Task LeaveRoom(string room)
         {
             if (Rooms.Contains(room))
-                await Groups.RemoveFromGroupAsync(Context.ConnectionId, room);
+                await HubAudience.LeaveAsync(Context, Groups, room);
         }
 
         public async Task SendMessage(string room, string message)
@@ -79,7 +82,7 @@ namespace ChurchMinistry.Hubs
             var userId = UserId;
             var member = userId == null ? null : await _db.Members.AsNoTracking()
                 .Where(m => m.UserId == userId)
-                .Select(m => new { m.Id, m.FirstName, m.LastName, m.ProfilePhoto })
+                .Select(m => new { m.Id, m.FirstName, m.LastName, m.Alias, m.ProfilePhoto })
                 .FirstOrDefaultAsync();
             // Messages belong to a member profile; logins without one (e.g. the admin) can read but not post
             if (member == null) throw new HubException("Only members with a profile can post in the chat.");
@@ -97,11 +100,13 @@ namespace ChurchMinistry.Hubs
             await _activity.LogAsync(member.Id, MemberActivityType.CommunityChat,
                 $"Chatted in #{room}", oncePerDay: true);
 
-            var name = $"{member.FirstName} {member.LastName}";
-            await Clients.OthersInGroup(room).SendAsync("ReceiveMessage",
-                Payload(chat.Id, name, member.ProfilePhoto, chat.Message, chat.SentAt, false));
+            // Staff see "Real Name (@alias)", members "@alias"
+            await HubAudience.SendAsync(Clients, room, "ReceiveMessage", staff => new object?[] {
+                Payload(chat.Id, MemberNames.For(member.FirstName, member.LastName, member.Alias, staff),
+                    member.ProfilePhoto, chat.Message, chat.SentAt, false) }, Context.ConnectionId);
             await Clients.Caller.SendAsync("ReceiveMessage",
-                Payload(chat.Id, name, member.ProfilePhoto, chat.Message, chat.SentAt, true));
+                Payload(chat.Id, MemberNames.For(member.FirstName, member.LastName, member.Alias, Context.User.IsStaff()),
+                    member.ProfilePhoto, chat.Message, chat.SentAt, true));
             // Live Chat menu tag on other pages, and unread dots on the other rooms' buttons
             await Clients.All.SendAsync("ChatActivity", new { room, memberId = member.Id });
         }

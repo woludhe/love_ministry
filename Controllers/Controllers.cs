@@ -20,6 +20,14 @@ namespace ChurchMinistry.Controllers
         private readonly ApplicationDbContext _db;
         public HomeController(ApplicationDbContext db) { _db = db; }
 
+        // Android app download page; shows "Coming soon" until the APK is in wwwroot/downloads
+        public IActionResult AndroidApp([FromServices] IWebHostEnvironment env)
+        {
+            var apk = new FileInfo(Path.Combine(env.WebRootPath, "downloads", "apostle-enock-makoko.apk"));
+            ViewBag.ApkMb = apk.Exists ? Math.Max(1, (int)Math.Ceiling(apk.Length / 1024d / 1024d)) : (int?)null;
+            return View();
+        }
+
         public async Task<IActionResult> Index()
         {
             //var vm = new
@@ -119,6 +127,7 @@ namespace ChurchMinistry.Controllers
         private readonly IEmailService _email;
         private readonly IQrCodeService _qr;
         private readonly ISmsService _sms;
+        private readonly IMailTemplateService _mailTemplates;
         private readonly ILogger<AccountController> _log;
 
         // Roles that can turn on two-step verification. Admin only for now;
@@ -127,9 +136,10 @@ namespace ChurchMinistry.Controllers
 
         public AccountController(UserManager<ApplicationUser> um, SignInManager<ApplicationUser> sm,
             ApplicationDbContext db, IEmailService email, IQrCodeService qr, ISmsService sms,
-            ILogger<AccountController> log)
+            IMailTemplateService mailTemplates, ILogger<AccountController> log)
         {
-            _userManager = um; _signInManager = sm; _db = db; _email = email; _qr = qr; _sms = sms; _log = log;
+            _userManager = um; _signInManager = sm; _db = db; _email = email; _qr = qr; _sms = sms;
+            _mailTemplates = mailTemplates; _log = log;
         }
 
         [HttpGet] public IActionResult Login(string? returnUrl = null) { ViewBag.ReturnUrl = returnUrl; return View(); }
@@ -279,8 +289,12 @@ namespace ChurchMinistry.Controllers
                 if (channel == "Phone")
                     await _sms.SendSmsAsync(user.PhoneNumber!, $"{code} is your {church} sign-in code. Don't share it with anyone.");
                 else
+                {
+                    var (subject, body) = await _mailTemplates.RenderAsync("TwoFactorCode",
+                        new Dictionary<string, string> { ["CODE"] = code });
                     await _email.SendEmailAsync(channel == "Recovery" ? user.RecoveryEmail! : user.Email!,
-                        "Your sign-in code", CodeEmailBody(code, "sign in to your account"), user.FullName);
+                        subject, body, user.FullName);
+                }
                 return true;
             }
             catch (Exception ex)
@@ -289,12 +303,6 @@ namespace ChurchMinistry.Controllers
                 return false;
             }
         }
-
-        private static string CodeEmailBody(string code, string purpose) =>
-            $"<p>Use this code to {purpose}:</p>" +
-            $"<p style=\"font-size:28px;font-weight:700;letter-spacing:6px\">{code}</p>" +
-            "<p>It expires in a few minutes. If you didn't ask for it, someone may know your password; " +
-            "please change it straight away.</p>";
 
         private static string MaskEmail(string email)
         {
@@ -396,8 +404,9 @@ namespace ChurchMinistry.Controllers
             var code = await _userManager.GenerateUserTokenAsync(user, TokenOptions.DefaultEmailProvider, RecoveryEmailPurpose(email));
             try
             {
-                await _email.SendEmailAsync(email, "Verify your recovery email",
-                    CodeEmailBody(code, "verify this address as the recovery email for your account"), user.FullName);
+                var (subject, body) = await _mailTemplates.RenderAsync("RecoveryEmailVerification",
+                    new Dictionary<string, string> { ["CODE"] = code });
+                await _email.SendEmailAsync(email, subject, body, user.FullName);
             }
             catch (Exception ex)
             {
@@ -544,7 +553,8 @@ namespace ChurchMinistry.Controllers
             await _db.SaveChangesAsync();
 
             await _signInManager.SignInAsync(user, false);
-            await _email.SendWelcomeAsync(member);
+            var portalLink = Url.Action("Dashboard", "Members", null, Request.Scheme)!;
+            await _email.SendWelcomeAsync(member, portalLink);
 
             // Welcome notification for the new member
             _db.Notifications.Add(new Notification
@@ -609,18 +619,17 @@ namespace ChurchMinistry.Controllers
                 var token = await _userManager.GeneratePasswordResetTokenAsync(user);
                 var code = Microsoft.AspNetCore.WebUtilities.WebEncoders.Base64UrlEncode(Encoding.UTF8.GetBytes(token));
                 var link = Url.Action("ResetPassword", "Account", new { code, email }, Request.Scheme)!;
-                var body = $"<p>We received a request to reset your password.</p>" +
-                    $"<p><a href=\"{System.Net.WebUtility.HtmlEncode(link)}\">Choose a new password</a></p>" +
-                    $"<p>If you didn't ask for this, you can ignore this email; your password won't change.</p>";
+                var (subject, body) = await _mailTemplates.RenderAsync("PasswordReset",
+                    new Dictionary<string, string> { ["LINK"] = System.Net.WebUtility.HtmlEncode(link) });
                 // Also to a verified recovery email, in case the main inbox can't be reached
                 var hasRecovery = user.RecoveryEmailConfirmed && !string.IsNullOrEmpty(user.RecoveryEmail);
-                try { await _email.SendEmailAsync(email, "Reset your password", body); }
+                try { await _email.SendEmailAsync(email, subject, body); }
                 catch (Exception ex) when (hasRecovery)
                 {
                     _log.LogError(ex, "Couldn't send a password reset email to user {UserId}", user.Id);
                 }
                 if (hasRecovery)
-                    await _email.SendEmailAsync(user.RecoveryEmail!, "Reset your password", body);
+                    await _email.SendEmailAsync(user.RecoveryEmail!, subject, body);
             }
             TempData["Info"] = "If that email exists, a reset link has been sent.";
             return RedirectToAction("Login");
@@ -749,19 +758,24 @@ namespace ChurchMinistry.Controllers
             var top = await testimonies
                 .Where(p => p.CreatedAt >= since && p.Reactions.Any())
                 .OrderByDescending(p => p.Reactions.Count()).ThenByDescending(p => p.CreatedAt)
-                .Take(count).Select(TestimonyProjection).ToListAsync();
+                .Take(count).Select(TestimonyProjection(User.IsStaff())).ToListAsync();
             if (top.Count < count)
             {
                 var taken = top.Select(t => t.Id).ToList();
                 top.AddRange(await testimonies.Where(p => !taken.Contains(p.Id))
                     .OrderByDescending(p => p.CreatedAt)
-                    .Take(count - top.Count).Select(TestimonyProjection).ToListAsync());
+                    .Take(count - top.Count).Select(TestimonyProjection(User.IsStaff())).ToListAsync());
             }
             return top;
         }
 
-        private static readonly System.Linq.Expressions.Expression<Func<ForumPost, TestimonyItem>> TestimonyProjection =
-            p => new TestimonyItem(p.Id, p.Title, p.Content, p.Member.FirstName + " " + p.Member.LastName, p.CreatedAt,
+        // The author's name as this viewer may see it (MemberNames.For, written so the database can run it)
+        private static System.Linq.Expressions.Expression<Func<ForumPost, TestimonyItem>> TestimonyProjection(bool staff) =>
+            p => new TestimonyItem(p.Id, p.Title, p.Content,
+                p.Member.Alias == null ? p.Member.FirstName + " " + p.Member.LastName
+                    : staff ? p.Member.FirstName + " " + p.Member.LastName + " (@" + p.Member.Alias + ")"
+                    : "@" + p.Member.Alias,
+                p.CreatedAt,
                 p.Reactions.Count(r => r.Kind == ForumReactionKind.Amen),
                 p.Reactions.Count(r => r.Kind == ForumReactionKind.Like),
                 p.Replies.Count(),
@@ -805,6 +819,9 @@ namespace ChurchMinistry.Controllers
                 .Where(n => n.MemberId == member.Id && !n.IsRead)
                 .OrderByDescending(n => n.CreatedAt).Take(10).ToListAsync();
             vm.LiveSermon = await _db.Sermons.FirstOrDefaultAsync(s => s.IsLive && s.IsPublished);
+            vm.OneOnOne = await _db.OneOnOneRequests.AsNoTracking().Include(r => r.MeetingRoom)
+                .Where(r => r.MemberId == member.Id)
+                .OrderByDescending(r => r.CreatedAt).FirstOrDefaultAsync();
 
             // Live meetings — public ones, plus private ones this member is invited to directly,
             // through one of their groups or by email (same rules as the Meetings page) —
@@ -908,6 +925,16 @@ namespace ChurchMinistry.Controllers
                 if (current?.Id != member.Id) return Forbid();
             }
 
+            // Alias: tidy it, then check it before anything is saved
+            var alias = MemberNames.Normalize(vm.Alias);
+            if (alias != null && await AliasErrorAsync(alias, member) is { } aliasError)
+            {
+                ModelState.AddModelError(nameof(vm.Alias), aliasError);
+                vm.ExistingPhoto = member.ProfilePhoto;
+                vm.Groups = await GroupsOfAsync(member.Id);
+                return View("EditProfile", vm);
+            }
+
             if (vm.ProfilePhotoFile != null)
             {
                 // Saved as a small square JPEG so photos load quickly everywhere they're shown
@@ -924,6 +951,7 @@ namespace ChurchMinistry.Controllers
             }
 
             member.FirstName = vm.FirstName; member.LastName = vm.LastName;
+            member.Alias = alias;
             member.Phone = vm.Phone; member.DateOfBirth = vm.DateOfBirth;
             member.Gender = vm.Gender; member.MaritalStatus = vm.MaritalStatus;
             member.Address = vm.Address; member.City = vm.City; member.Country = vm.Country;
@@ -943,6 +971,24 @@ namespace ChurchMinistry.Controllers
             {
                 return RedirectToAction("Dashboard");
             }
+        }
+
+        // Why an alias can't be used for this member, or null when it's fine. It must be
+        // well formed, not another member's alias or real name, and (unless the member is
+        // an Admin/Pastor) free of church titles.
+        private async Task<string?> AliasErrorAsync(string alias, Member member)
+        {
+            var memberIsStaff = member.UserId != null && await _db.UserRoles
+                .AnyAsync(ur => ur.UserId == member.UserId
+                    && _db.Roles.Any(r => r.Id == ur.RoleId && (r.Name == "Admin" || r.Name == "Pastor")));
+            if (MemberNames.FormatError(alias, memberIsStaff) is { } formatError) return formatError;
+
+            var lower = alias.ToLower();
+            if (await _db.Members.AnyAsync(m => m.Id != member.Id && m.Alias != null && m.Alias.ToLower() == lower))
+                return "Another member already uses that alias. Please choose a different one.";
+            if (await _db.Members.AnyAsync(m => m.Id != member.Id && (m.FirstName + " " + m.LastName).ToLower() == lower))
+                return "That is another member's name. Please choose a different alias.";
+            return null;
         }
 
         // ── Deactivate / reactivate a member (Admin, Pastor) ──
@@ -1044,6 +1090,7 @@ namespace ChurchMinistry.Controllers
             Id = m.Id,
             FirstName = m.FirstName,
             LastName = m.LastName,
+            Alias = m.Alias,
             Email = m.Email,
             Phone = m.Phone,
             DateOfBirth = m.DateOfBirth,
@@ -1090,7 +1137,15 @@ namespace ChurchMinistry.Controllers
             var q = _db.Members.Include(m => m.MinistryGroups)
                 .Where(m => m.Status == MemberStatus.Active).AsQueryable();
             if (!string.IsNullOrEmpty(search))
-                q = q.Where(m => m.FirstName.Contains(search) || m.LastName.Contains(search));
+            {
+                // Members search by what they can see: the alias, or the real name of someone
+                // without one. Staff also find people by real name.
+                var term = search.Trim().TrimStart('@');
+                q = User.IsStaff()
+                    ? q.Where(m => m.FirstName.Contains(term) || m.LastName.Contains(term) || (m.Alias != null && m.Alias.Contains(term)))
+                    : q.Where(m => m.Alias != null ? m.Alias.Contains(term)
+                                                   : m.FirstName.Contains(term) || m.LastName.Contains(term));
+            }
             if (!string.IsNullOrEmpty(group) && int.TryParse(group, out int gid))
                 q = q.Where(m => m.MinistryGroups.Any(g => g.Id == gid));
             ViewBag.Groups = await _db.MinistryGroups.Where(g => g.IsActive).ToListAsync();
@@ -1682,11 +1737,15 @@ namespace ChurchMinistry.Controllers
         private readonly ISmsService _sms;
         private readonly IAttendanceService _attendance;
         private readonly IActivityService _activity;
+        private readonly IMailTemplateService _mailTemplates;
+        private readonly ILogger<AdminController> _log;
 
         public AdminController(ApplicationDbContext db, UserManager<ApplicationUser> um,
-            IEmailService email, ISmsService sms, IAttendanceService attendance, IActivityService activity)
+            IEmailService email, ISmsService sms, IAttendanceService attendance, IActivityService activity,
+            IMailTemplateService mailTemplates, ILogger<AdminController> log)
         {
             _db = db; _userManager = um; _email = email; _sms = sms; _attendance = attendance; _activity = activity;
+            _mailTemplates = mailTemplates; _log = log;
         }
 
         public async Task<IActionResult> Index()
@@ -1970,7 +2029,12 @@ namespace ChurchMinistry.Controllers
             var pager = new PagerModel(page, "members");
             var q = _db.Members.Include(m => m.MinistryGroups).AsQueryable();
             if (!string.IsNullOrEmpty(search))
-                q = q.Where(m => m.FirstName.Contains(search) || m.LastName.Contains(search) || m.Email.Contains(search));
+            {
+                // An alias can be searched with or without its "@"
+                var aliasTerm = search.Trim().TrimStart('@');
+                q = q.Where(m => m.FirstName.Contains(search) || m.LastName.Contains(search) || m.Email.Contains(search)
+                              || (m.Alias != null && m.Alias.Contains(aliasTerm)));
+            }
             if (Enum.TryParse<MemberStatus>(status, out var ms))
                 q = q.Where(m => m.Status == ms);
             if (group != null)
@@ -2228,6 +2292,91 @@ namespace ChurchMinistry.Controllers
                 return;
             _db.MinistryGroupMembers.Add(new MinistryGroupMember { MinistryGroupId = group.Id, MemberId = leaderId });
             await _db.SaveChangesAsync();
+        }
+
+        // ── Mail templates ──
+        public async Task<IActionResult> MailTemplates()
+        {
+            var templates = await _db.MailTemplates.OrderBy(t => t.Name).ToListAsync();
+            return View(templates);
+        }
+
+        [HttpGet]
+        public async Task<IActionResult> EditMailTemplate(int id)
+        {
+            var row = await _db.MailTemplates.FindAsync(id);
+            if (row == null) return NotFound();
+            ViewBag.Placeholders = MailTemplateCatalog.GetByKey(row.Key)?.Placeholders
+                ?? new List<(string Token, string Description)>();
+            ViewBag.CurrentUserEmail = (await _userManager.GetUserAsync(User))?.Email ?? "";
+            return View(new MailTemplateFormViewModel { Id = row.Id, Key = row.Key, Name = row.Name, Subject = row.Subject, Body = row.Body });
+        }
+
+        [HttpPost, ValidateAntiForgeryToken]
+        public async Task<IActionResult> EditMailTemplate(MailTemplateFormViewModel vm)
+        {
+            var row = await _db.MailTemplates.FindAsync(vm.Id);
+            if (row == null) return NotFound();
+
+            if (!ModelState.IsValid)
+            {
+                vm.Key = row.Key; vm.Name = row.Name;
+                ViewBag.Placeholders = MailTemplateCatalog.GetByKey(row.Key)?.Placeholders
+                    ?? new List<(string Token, string Description)>();
+                ViewBag.CurrentUserEmail = (await _userManager.GetUserAsync(User))?.Email ?? "";
+                return View(vm);
+            }
+
+            var user = await _userManager.GetUserAsync(User);
+            var me = user == null ? null : await _db.Members.FirstOrDefaultAsync(m => m.UserId == user.Id);
+
+            row.Subject = vm.Subject;
+            row.Body = vm.Body;
+            row.UpdatedAt = DateTime.UtcNow;
+            row.UpdatedByMemberId = me?.Id;
+            await _db.SaveChangesAsync();
+            _mailTemplates.InvalidateCache(row.Key);
+
+            TempData["Success"] = $"\"{row.Name}\" was updated.";
+            return RedirectToAction(nameof(EditMailTemplate), new { id = row.Id });
+        }
+
+        [HttpPost, ValidateAntiForgeryToken]
+        public async Task<IActionResult> ResetMailTemplate(int id)
+        {
+            var row = await _db.MailTemplates.FindAsync(id);
+            if (row == null) return NotFound();
+            await _mailTemplates.ResetToDefaultAsync(id);
+            TempData["Success"] = $"\"{row.Name}\" was reset to its default wording.";
+            return RedirectToAction(nameof(EditMailTemplate), new { id });
+        }
+
+        [HttpPost, ValidateAntiForgeryToken]
+        public async Task<IActionResult> SendTestMailTemplate(MailTemplateFormViewModel vm, string? testEmail)
+        {
+            var def = MailTemplateCatalog.GetByKey(vm.Key);
+            if (def == null) return NotFound();
+
+            testEmail = (testEmail ?? "").Trim();
+            if (!new System.ComponentModel.DataAnnotations.EmailAddressAttribute().IsValid(testEmail))
+            {
+                TempData["Error"] = "Enter a valid email address to send the test to.";
+                return RedirectToAction(nameof(EditMailTemplate), new { id = vm.Id });
+            }
+
+            var subject = "[TEST] " + MailTemplateCatalog.Substitute(vm.Subject, def.SampleValues);
+            var body = MailTemplateCatalog.Substitute(vm.Body, def.SampleValues);
+            try
+            {
+                await _email.SendEmailAsync(testEmail, subject, body);
+                TempData["Info"] = $"A test email was sent to {testEmail}.";
+            }
+            catch (Exception ex)
+            {
+                _log.LogError(ex, "Couldn't send a test email for template {Key}", vm.Key);
+                TempData["Error"] = "Couldn't send the test email. Check the email server settings.";
+            }
+            return RedirectToAction(nameof(EditMailTemplate), new { id = vm.Id });
         }
 
         // ── Attendance management ──
@@ -2553,7 +2702,7 @@ namespace ChurchMinistry.Controllers
         {
             var sermon = await _db.Sermons.FindAsync(id);
             if (sermon == null) return NotFound();
-            await PopulateMeetingRoomsAsync();
+            await PopulateMeetingRoomsAsync(sermon.MeetingRoomCode);
             ViewBag.AudioFiles = await ListAudioFilesAsync(env);
             return View(sermon);
         }
@@ -2565,7 +2714,8 @@ namespace ChurchMinistry.Controllers
             IFormFile? thumbnail,
             string? deliveryMode,
             [FromServices] IWebHostEnvironment env,
-            bool removeRecording = false)
+            bool removeRecording = false,
+            string? attachRecording = null)
         {
             var sermon = await _db.Sermons.FindAsync(updated.Id);
             if (sermon == null) return NotFound();
@@ -2594,6 +2744,9 @@ namespace ChurchMinistry.Controllers
             sermon.LiveStreamUrl = updated.LiveStreamUrl;
             ApplyDeliveryMode(sermon, deliveryMode);
             if (removeRecording) sermon.RecordingUrl = null;
+            // Chosen by hand from the Audio Library (any type: a meeting's recording or another file)
+            if (!string.IsNullOrEmpty(attachRecording) && AudioStore.IsLibraryUrl(env, attachRecording))
+                sermon.RecordingUrl = attachRecording;
 
             await _db.SaveChangesAsync();
             TempData["Success"] = "Sermon updated!";
@@ -2725,6 +2878,10 @@ namespace ChurchMinistry.Controllers
                          .Select(s => new { s.RecordingUrl, s.Title }).ToListAsync())
                 Add(s.RecordingUrl!, $"recording of {s.Title}");
 
+            foreach (var r in await _db.MeetingRooms.Where(r => r.RecordingUrl != null && r.RecordingUrl.StartsWith("/uploads/audio/"))
+                         .Select(r => new { r.RecordingUrl, r.Title, r.IsPublic }).ToListAsync())
+                Add(r.RecordingUrl!, $"recording of the {(r.IsPublic ? "" : "private ")}meeting {r.Title}");
+
             foreach (var ls in await _db.LiveSessions.Where(l => l.MusicPlaylistJson != null)
                          .Select(l => new { l.MusicPlaylistJson, l.Sermon.Title }).ToListAsync())
                 foreach (var track in LiveSession.ReadPlaylist(ls.MusicPlaylistJson))
@@ -2741,11 +2898,14 @@ namespace ChurchMinistry.Controllers
             _ => string.IsNullOrEmpty(s.VideoUrl) ? "Add a video, audio or live stream link to this sermon before going live." : null
         };
 
-        private async Task PopulateMeetingRoomsAsync()
+        // Live and scheduled rooms, plus the sermon's own room once its meeting has ended, so the
+        // sermon can still be saved (e.g. to attach a recording) without losing its link
+        private async Task PopulateMeetingRoomsAsync(string? currentCode = null)
         {
             ViewBag.MeetingRooms = await _db.MeetingRooms
                 .Where(r => r.Status == RoomStatus.Live ||
-                            r.Status == RoomStatus.Scheduled)
+                            r.Status == RoomStatus.Scheduled ||
+                            (currentCode != null && r.RoomCode == currentCode))
                 .OrderBy(r => r.Status == RoomStatus.Live ? 0 : 1)
                 .ThenBy(r => r.ScheduledAt)
                 .ToListAsync();
@@ -2753,8 +2913,7 @@ namespace ChurchMinistry.Controllers
 
         [HttpPost]
         public async Task<IActionResult> ToggleLive(int id,
-            [FromServices] IHubContext<ChurchMinistry.Hubs.MeetingHub> meetingHub,
-            [FromServices] IRecordingService recordings)
+            [FromServices] IHubContext<ChurchMinistry.Hubs.MeetingHub> meetingHub)
         {
             var sermon = await _db.Sermons.FindAsync(id);
             if (sermon == null) return NotFound();
@@ -2782,13 +2941,10 @@ namespace ChurchMinistry.Controllers
             await _attendance.CloseSermonAttendanceAsync(
                 stopped.Where(s => !s.IsLive).Select(s => s.Id));
 
-            // A meeting room records its audio while its sermon is live: tell the host's page
-            // to start or stop, and turn what was recorded into the sermon's recording
+            // The meeting room shows LIVE while its sermon streams. Its recording runs for the
+            // whole meeting and reaches the sermon when the meeting ends (RecordingService).
             foreach (var s in stopped.Where(s => !s.IsLive && s.IsOnlineMeeting && s.MeetingRoomCode != null))
-            {
                 await meetingHub.Clients.Group(s.MeetingRoomCode!).SendAsync("SermonLiveChanged", s.Id, false);
-                recordings.QueueFinalize(s.Id);
-            }
             if (sermon.IsLive && sermon.IsOnlineMeeting && sermon.MeetingRoomCode != null)
                 await meetingHub.Clients.Group(sermon.MeetingRoomCode).SendAsync("SermonLiveChanged", sermon.Id, true);
 

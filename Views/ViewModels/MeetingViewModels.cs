@@ -3,6 +3,36 @@ using ChurchMinistry.Models;
 
 namespace ChurchMinistry.ViewModels
 {
+    // Member's One-on-One request form (dashboard). Times are the browser's local time.
+    public class OneOnOneRequestViewModel
+    {
+        [Required(ErrorMessage = "Tell us briefly what you'd like to talk about."), MaxLength(1000)]
+        public string Topic { get; set; } = "";
+        [Required(ErrorMessage = "Pick at least one time that suits you.")]
+        public DateTime? Time1 { get; set; }
+        public DateTime? Time2 { get; set; }
+        public DateTime? Time3 { get; set; }
+        public OneOnOneFormat PreferredFormat { get; set; } = OneOnOneFormat.Either;
+    }
+
+    // Staff form to schedule (or reschedule) a One-on-One request
+    public class OneOnOneScheduleViewModel
+    {
+        public int Id { get; set; }
+        [Required, Display(Name = "Date and time")]
+        [DisplayFormat(ApplyFormatInEditMode = true, DataFormatString = "{0:yyyy-MM-ddTHH:mm}")]
+        public DateTime? ScheduledAt { get; set; }
+        [Range(10, 240), Display(Name = "Length (minutes)")] public int DurationMinutes { get; set; } = 30;
+        public OneOnOneFormat Format { get; set; } = OneOnOneFormat.Online;
+        public OneOnOnePrivacy Privacy { get; set; } = OneOnOnePrivacy.OneOnOne;
+        [MaxLength(300), Display(Name = "Place")] public string? Location { get; set; }
+        [MaxLength(300), Display(Name = "Who else is coming")] public string? OtherAttendees { get; set; }
+        [MaxLength(1000), Display(Name = "Note to the member")] public string? StaffNote { get; set; }
+
+        // Shown on the page, not posted
+        public OneOnOneRequest? Request { get; set; }
+    }
+
     public class CreateMeetingViewModel
     {
         [Required] public string Title { get; set; } = "";
@@ -14,6 +44,7 @@ namespace ChurchMinistry.ViewModels
         public int? DurationMinutes { get; set; } = 60;
         public bool WaitingRoomEnabled { get; set; } = true;
         public bool ChatEnabled { get; set; } = true;
+        public bool RecordingEnabled { get; set; }
         public int MaxParticipants { get; set; } = 50;
         public bool IsPublic { get; set; } = true;
         public string? PassCode { get; set; }

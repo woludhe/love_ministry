@@ -1,0 +1,102 @@
+@model ChurchMinistry.ViewModels.OneOnOneScheduleViewModel
+@using ChurchMinistry.Models
+@{
+    var r = Model.Request!;
+    ViewData["Title"] = "Schedule One-on-One";
+    Layout = "~/Views/Shared/_AdminDashboard_Layout.cshtml";
+    var minLocal = DateTime.Now.ToString("yyyy-MM-ddTHH:mm");
+}
+<div class="admin-main">
+    <div class="admin-topbar">
+        <h1>@(r.Status == OneOnOneStatus.Scheduled ? "Change One-on-One" : "Schedule One-on-One")</h1>
+        <a asp-action="Index" class="btn btn-outline btn-sm"><i class="fas fa-arrow-left"></i> All requests</a>
+    </div>
+
+    <div class="ooa-card ooa-card-summary">
+        <div class="ooa-person">
+            <img src="@(r.Member.ProfilePhoto ?? "/images/avatar-default.png")" alt="" />
+            <div>
+                <strong>@r.Member.StaffName</strong>
+                <span class="meta">@(r.Member.Email + (string.IsNullOrEmpty(r.Member.Phone) ? "" : " · " + r.Member.Phone))</span>
+            </div>
+        </div>
+        <p class="ooa-topic">@r.Topic</p>
+        @if (r.PreferredTimesUtc.Any())
+        {
+            <div class="ooa-times">
+                <i class="fas fa-calendar"></i>
+                @foreach (var t in r.PreferredTimesUtc)
+                {
+                    <button type="button" class="ooa-time ooa-pick" data-time="@t.ToLocalTime().ToString("yyyy-MM-ddTHH:mm")"
+                            title="Use this time">@t.ToLocalTime().ToString("ddd dd MMM, h:mm tt")</button>
+                }
+                <span class="meta">· prefers @(r.PreferredFormat == OneOnOneFormat.InPerson ? "in person" : r.PreferredFormat.ToString().ToLower())</span>
+            </div>
+        }
+    </div>
+
+    <form asp-action="Schedule" method="post" class="form-page ooa-form">
+        <input type="hidden" asp-for="Id" />
+        <div asp-validation-summary="ModelOnly" class="validation-summary"></div>
+        <div class="form-row">
+            <div class="form-group">
+                <label asp-for="ScheduledAt"></label>
+                <input asp-for="ScheduledAt" type="datetime-local" class="form-control" min="@minLocal" />
+                <span asp-validation-for="ScheduledAt" class="field-error"></span>
+            </div>
+            <div class="form-group">
+                <label asp-for="DurationMinutes"></label>
+                <input asp-for="DurationMinutes" type="number" min="10" max="240" step="5" class="form-control" />
+                <span asp-validation-for="DurationMinutes" class="field-error"></span>
+            </div>
+        </div>
+        <div class="form-row">
+            <div class="form-group">
+                <label>Meeting</label>
+                <div class="oneonone-formats">
+                    <label><input type="radio" asp-for="Format" value="Online" /> Online</label>
+                    <label><input type="radio" asp-for="Format" value="InPerson" /> In person</label>
+                </div>
+            </div>
+            <div class="form-group">
+                <label>Who is invited</label>
+                <div class="oneonone-formats">
+                    <label><input type="radio" asp-for="Privacy" value="OneOnOne" /> One-on-one</label>
+                    <label><input type="radio" asp-for="Privacy" value="Private" /> Private (others too)</label>
+                </div>
+                <small class="form-hint" data-show="online-private">After saving you'll go to the Invite page to add the others.</small>
+            </div>
+        </div>
+        <div class="form-group" data-show="inperson">
+            <label asp-for="Location"></label>
+            <input asp-for="Location" class="form-control" placeholder="e.g. Church office, Kampala" />
+            <span asp-validation-for="Location" class="field-error"></span>
+        </div>
+        <div class="form-group" data-show="inperson-private">
+            <label asp-for="OtherAttendees"></label>
+            <input asp-for="OtherAttendees" class="form-control" placeholder="e.g. Their spouse" />
+        </div>
+        <div class="form-group">
+            <label asp-for="StaffNote"></label>
+            <textarea asp-for="StaffNote" class="form-control" rows="2" placeholder="Optional, sent to the member"></textarea>
+        </div>
+        <button type="submit" class="btn btn-primary"><i class="fas fa-calendar-check"></i> @(r.Status == OneOnOneStatus.Scheduled ? "Save changes" : "Schedule and notify")</button>
+    </form>
+</div>
+@section Scripts {
+    <script>
+        (() => {
+            const form = document.querySelector('.ooa-form');
+            const val = n => form.querySelector(`input[name="${n}"]:checked`)?.value;
+            function sync() {
+                const inPerson = val('Format') === 'InPerson', priv = val('Privacy') === 'Private';
+                const show = { 'inperson': inPerson, 'inperson-private': inPerson && priv, 'online-private': !inPerson && priv };
+                form.querySelectorAll('[data-show]').forEach(el => el.hidden = !show[el.dataset.show]);
+            }
+            form.addEventListener('change', sync); sync();
+            document.querySelectorAll('.ooa-pick').forEach(b => b.addEventListener('click', () => {
+                form.querySelector('input[name="ScheduledAt"]').value = b.dataset.time;
+            }));
+        })();
+    </script>
+}

@@ -32,7 +32,10 @@ namespace ChurchMinistry.Models
         public int? SeriesId { get; set; }
         public bool WaitingRoomEnabled { get; set; } = true;
         public bool ChatEnabled { get; set; } = true;
+        // Ticked, or a sermon linked to the room: the host's page records the meeting's audio
         public bool RecordingEnabled { get; set; }
+        // This meeting's recording in the audio library (uploads/audio/meetings/…)
+        [MaxLength(300)] public string? RecordingUrl { get; set; }
         public int MaxParticipants { get; set; } = 50;
         public bool IsPublic { get; set; } = true;
         public string? PassCode { get; set; }
@@ -161,5 +164,58 @@ namespace ChurchMinistry.Models
 
         // Unique token for the invitation link
         public string Token { get; set; } = Guid.NewGuid().ToString("N");
+    }
+
+    // ── One-on-One with Apostle Enock Makoko ───────────────────────
+    // A member asks from their dashboard; an Admin/Pastor schedules it (online or in person) or declines.
+    public enum OneOnOneStatus { Pending, Scheduled, Declined, Cancelled }
+    public enum OneOnOneFormat { Either, Online, InPerson }
+    // OneOnOne: only the member. Private: staff may invite others too (e.g. family).
+    public enum OneOnOnePrivacy { OneOnOne, Private }
+
+    public class OneOnOneRequest
+    {
+        public int Id { get; set; }
+        public int MemberId { get; set; }
+        public Member Member { get; set; } = null!;
+        public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+
+        // From the member. The topic is only shown to Admins and Pastors.
+        [Required, MaxLength(1000)] public string Topic { get; set; } = "";
+        // Up to 3 preferred times, UTC, as ISO strings separated by "|"
+        [MaxLength(200)] public string? PreferredTimes { get; set; }
+        public OneOnOneFormat PreferredFormat { get; set; } = OneOnOneFormat.Either;
+
+        public OneOnOneStatus Status { get; set; } = OneOnOneStatus.Pending;
+
+        // Set by staff
+        public DateTime? ScheduledAt { get; set; }
+        public int? DurationMinutes { get; set; }
+        public OneOnOneFormat? Format { get; set; }
+        public OneOnOnePrivacy Privacy { get; set; } = OneOnOnePrivacy.OneOnOne;
+        [MaxLength(300)] public string? Location { get; set; }
+        // In-person private meeting: who else is coming, shown to the member
+        [MaxLength(300)] public string? OtherAttendees { get; set; }
+        public int? MeetingRoomId { get; set; }
+        public MeetingRoom? MeetingRoom { get; set; }
+        [MaxLength(1000)] public string? StaffNote { get; set; }
+        public string? HandledByUserId { get; set; }
+        public DateTime? HandledAt { get; set; }
+
+        [System.ComponentModel.DataAnnotations.Schema.NotMapped]
+        public List<DateTime> PreferredTimesUtc => (PreferredTimes ?? "")
+            .Split('|', StringSplitOptions.RemoveEmptyEntries)
+            .Select(s => DateTime.TryParse(s, null, System.Globalization.DateTimeStyles.RoundtripKind, out var d) ? d : (DateTime?)null)
+            .Where(d => d != null).Select(d => d!.Value).ToList();
+
+        // Still needs attention or still ahead: the member can't ask again until it's closed
+        public static System.Linq.Expressions.Expression<Func<OneOnOneRequest, bool>> IsOpen(DateTime nowUtc) =>
+            r => r.Status == OneOnOneStatus.Pending
+              || (r.Status == OneOnOneStatus.Scheduled && r.ScheduledAt != null
+                  && r.ScheduledAt.Value.AddMinutes(r.DurationMinutes ?? 30) > nowUtc);
+
+        public const string ApostleName = "Apostle Enock Makoko";
+        public string MeetingTitle => Privacy == OneOnOnePrivacy.Private
+            ? $"Private meeting with {ApostleName}" : $"One-on-One with {ApostleName}";
     }
 }

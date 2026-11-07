@@ -1,0 +1,36 @@
+@model List<ChurchMinistry.Models.MailTemplate>
+@{
+    ViewData["Title"] = "Mail Templates"; Layout = "~/Views/Shared/_AdminDashboard_Layout.cshtml";
+}
+
+<div class="admin-main">
+    <div class="admin-topbar">
+        <h1>Mail Templates (@Model.Count)</h1>
+    </div>
+    <p class="form-hint" style="margin:-.5rem 0 1rem">
+        These are the system emails the app sends automatically. Edit the wording below — use the
+        placeholder legend on each one to see what dynamic info you can include.
+    </p>
+
+    <table class="data-table">
+        <thead><tr><th>Name</th><th>Key</th><th>Subject</th><th>Last updated</th><th>Actions</th></tr></thead>
+        <tbody>
+            @foreach (var t in Model)
+            {
+                <tr>
+                    <td class="cell-title">@t.Name</td>
+                    <td><code>@t.Key</code></td>
+                    <td class="mt-subject-preview">@t.Subject</td>
+                    <td>@t.UpdatedAt.ToString("dd MMM yyyy")</td>
+                    <td class="cell-actions">
+                        <a asp-action="EditMailTemplate" asp-route-id="@t.Id" class="btn btn-outline btn-xs">Edit</a>
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+</div>
+
+<style>
+.mt-subject-preview { max-width:320px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text-s); }
+</style>

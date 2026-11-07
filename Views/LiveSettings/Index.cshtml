@@ -31,6 +31,13 @@
             <p>@sermon?.Title &nbsp;·&nbsp; @sermon?.Speaker</p>
         </div>
         <div style="display:flex;gap:.75rem;flex-wrap:wrap">
+            @if (sermon?.IsLive == true)
+            {
+                @* Same stop as the Sermons list (AdminController.ToggleLive stops a live sermon) *@
+                <button type="button" class="btn ls-stop-live" id="lsStopLive" data-id="@sermonId">
+                    <i class="fas fa-stop-circle"></i> Stop Live
+                </button>
+            }
             <a asp-controller="Media" asp-action="Live" target="_blank"
                class="btn btn-outline" style="color:white;border-color:rgba(255,255,255,.4)">
                 <i class="fas fa-eye"></i> Preview Live Page
@@ -393,6 +400,24 @@
     <script>
         const SERMON_ID = @sermonId;
         const BASE = `/Admin/LiveSettings/${SERMON_ID}`;
+
+        // ── Stop the live session (back to the Sermons list once it's off) ──
+        document.getElementById('lsStopLive')?.addEventListener('click', async e => {
+            const btn = e.currentTarget;
+            if (!confirm('Stop the live session? Viewers will no longer see it as live.')) return;
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Stopping…';
+            try {
+                const res = await fetch('/Admin/ToggleLive/' + btn.dataset.id, { method: 'POST' });
+                const data = await res.json();
+                if (!res.ok || data.isLive) throw new Error(data.error || 'The live session could not be stopped.');
+                location.href = '/Admin/Sermons';
+            } catch (err) {
+                alert(err.message || 'The live session could not be stopped.');
+                btn.disabled = false;
+                btn.innerHTML = '<i class="fas fa-stop-circle"></i> Stop Live';
+            }
+        });
 
         // ── SignalR admin connection ──────────────────────────────
         const conn = new signalR.HubConnectionBuilder()
@@ -846,6 +871,10 @@
         .ls-online strong { font-size:.9rem; }
         .ls-online small { opacity:.85;font-weight:500; }
         .ls-online small:not(:empty)::before { content:'·';margin-right:.35rem; }
+        /* Stop Live: white on the red header so it stands out from the outline buttons */
+        .ls-stop-live { background:#fff;color:#b91c1c;border:1.5px solid #fff;font-weight:700; }
+        .ls-stop-live:hover { background:#fee2e2;color:#991b1b; }
+        .ls-stop-live:disabled { opacity:.7;cursor:wait; }
 
         /* ── Page layout ───────────────────────────── */
         .live-settings-page {

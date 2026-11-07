@@ -100,6 +100,14 @@
         </div>
       </label>
       <label class="option-toggle">
+        <input asp-for="RecordingEnabled" type="checkbox" />
+        <div class="option-content">
+          <i class="fas fa-microphone-lines"></i>
+          <span>Record this meeting</span>
+          <small>Audio saved to the Audio Library</small>
+        </div>
+      </label>
+      <label class="option-toggle">
         <input asp-for="IsRecurring" type="checkbox"
                onchange="document.getElementById('recurringOpts').style.display=this.checked?'grid':'none'" />
         <div class="option-content">

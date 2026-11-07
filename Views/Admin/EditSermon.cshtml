@@ -120,6 +120,8 @@
                             {
                                 var extraInfo = room.Status == ChurchMinistry.Models.RoomStatus.Live
                                 ? " • LIVE"
+                                : room.Status == ChurchMinistry.Models.RoomStatus.Ended
+                                ? " • Ended"
                                 : room.ScheduledAt.HasValue
                                 ? $" • {room.ScheduledAt.Value:dd MMM h:mm tt}"
                                 : "";
@@ -172,7 +174,14 @@
                     </p>
                 </div>
 
-                @* {{-- Audio recorded from the room while the sermon was live --}} *@
+                @* {{-- The meeting's recording (set when the meeting ends), or one chosen by hand --}} *@
+                @{
+                    // Only sermon uploads and meeting recordings belong here — not background music or other library audio
+                    var recFiles = (ViewBag.AudioFiles as List<ChurchMinistry.Controllers.AdminController.AudioFileInfo> ?? new())
+                        .Where(f => f.Type == "meetings" || f.Type == "sermons")
+                        .GroupBy(f => f.TypeLabel)
+                        .OrderBy(g => g.First().Type == "meetings" ? 0 : 1).ThenBy(g => g.Key);
+                }
                 <div class="form-group">
                     <label><i class="fas fa-microphone" style="color:var(--purple)"></i> Recording</label>
                     @if (!string.IsNullOrEmpty(Model.RecordingUrl))
@@ -189,10 +198,26 @@
                     else
                     {
                         <small class="meta">
-                            The meeting's audio is recorded while this sermon is live, and members can
-                            listen to it here after the meeting ends.
+                            The meeting is recorded from start to end, and its recording is attached here
+                            when the meeting ends. Members can then listen to it on the sermon page.
                         </small>
                     }
+                    <select name="attachRecording" id="attachRecording" class="form-control" style="margin-top:.5rem"
+                            aria-label="Attach a recording from the Audio Library">
+                        <option value="">@(string.IsNullOrEmpty(Model.RecordingUrl) ? "Attach a recording from the Audio Library…" : "Replace with a recording from the Audio Library…")</option>
+                        @foreach (var g in recFiles)
+                        {
+                            <optgroup label="@g.Key">
+                                @foreach (var f in g.Where(f => f.Url != Model.RecordingUrl))
+                                {
+                                    @* A private meeting's file has a random name: what it's the recording of tells it apart *@
+                                    var usedBy = f.UsedBy.FirstOrDefault(u => u.StartsWith("recording of the"));
+                                    <option value="@f.Url">@f.Name (@(f.Size >= 1024 * 1024 ? $"{f.Size / 1024d / 1024d:0.0} MB" : $"{Math.Max(1, f.Size / 1024)} KB"), @f.Modified.ToString("dd MMM yyyy"))@(usedBy != null ? $" — {usedBy}" : "")</option>
+                                }
+                            </optgroup>
+                        }
+                    </select>
+                    <small class="meta">Newest first. Saving the sermon attaches the chosen file.</small>
                 </div>
             </div>
 

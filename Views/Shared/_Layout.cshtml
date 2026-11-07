@@ -12,6 +12,8 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>@(ViewData["Title"] ?? @Config["Church:Name"])</title>
+    <link rel="manifest" href="~/site.webmanifest" />
+    <meta name="theme-color" content="#6366f1" />
     <script>/* Dark mode chosen in the dashboard menu; set before the page paints so it never flashes white */ try { if (localStorage.getItem("theme") === "dark") document.documentElement.dataset.theme = "dark"; } catch (e) { }</script>
     <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
     <link rel="stylesheet" href="~/css/dark.css" asp-append-version="true" />

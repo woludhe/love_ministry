@@ -31,7 +31,7 @@
     <header class="fb-post-head">
         <img src="@(p.Member.ProfilePhoto ?? avatar)" alt="" class="fb-avatar" />
         <div class="fb-post-who">
-            <strong>@p.Member.FullName</strong>
+            <strong>@p.Member.NameFor(User)</strong>
             <a asp-action="Post" asp-route-id="@p.Id" class="fb-time" title="@p.CreatedAt.ToLocalTime().ToString("dddd d MMMM yyyy, h:mm tt")">@Ago(p.CreatedAt)</a>
         </div>
         <div class="fb-tags">
@@ -97,7 +97,7 @@
                 <img src="@(r.Member.ProfilePhoto ?? avatar)" alt="" class="fb-avatar fb-avatar-sm" />
                 <div>
                     <div class="fb-bubble">
-                        <strong>@r.Member.FullName</strong>
+                        <strong>@r.Member.NameFor(User)</strong>
                         @if (r.IsPastorReply) { <span class="fb-pastor-tag"><i class="fas fa-church"></i> Pastor</span> }
                         <div>@Html.Raw(ForumText.Format(r.Content))</div>
                     </div>

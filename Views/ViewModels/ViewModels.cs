@@ -173,14 +173,16 @@ namespace ChurchMinistry.ViewModels
     {
         public int Id { get; set; }
         public MemberStatus Status { get; set; }   // shown to Admin/Pastor; not edited by the form
-        [Required] public string FirstName { get; set; } = "";
-        [Required] public string LastName { get; set; } = "";
+        [Required, Display(Name = "First Name")] public string FirstName { get; set; } = "";
+        [Required, Display(Name = "Last Name")] public string LastName { get; set; } = "";
+        // Public name shown with "@" to other members (checked in MembersController)
+        [Display(Name = "Alias (public name)")] public string? Alias { get; set; }
         [Required, EmailAddress] public string Email { get; set; } = "";
         [Phone] public string? Phone { get; set; }
         public string? AlternatePhone { get; set; }
-        public DateTime? DateOfBirth { get; set; }
+        [Display(Name = "Date of Birth")] public DateTime? DateOfBirth { get; set; }
         public Gender Gender { get; set; }
-        public MaritalStatus MaritalStatus { get; set; }
+        [Display(Name = "Marital Status")] public MaritalStatus MaritalStatus { get; set; }
         public string? Address { get; set; }
         public string? City { get; set; }
         public string? Country { get; set; }
@@ -234,6 +236,8 @@ namespace ChurchMinistry.ViewModels
         public List<MeetingRoom> LiveMeetings { get; set; } = new();  // public + invited private meetings in progress
         public int ProfilePercent { get; set; }
         public bool IsTopParticipant { get; set; }
+        // The member's latest One-on-One request (null when they never asked)
+        public OneOnOneRequest? OneOnOne { get; set; }
     }
 
     // My Daily: the dashboard as a newspaper, plus the day's devotion and community testimonies
@@ -396,6 +400,17 @@ namespace ChurchMinistry.ViewModels
         public string? Icon { get; set; }
         [Display(Name = "Leader")] public int? LeaderId { get; set; }
         [Display(Name = "Active")] public bool IsActive { get; set; } = true;
+    }
+
+    // ─── Mail templates ───
+    public class MailTemplateFormViewModel
+    {
+        public int Id { get; set; }
+        public string Key { get; set; } = "";
+        public string Name { get; set; } = "";
+        // No [Required]: the shared layout template legitimately has an empty Subject (it's unused)
+        public string Subject { get; set; } = "";
+        [Required] public string Body { get; set; } = "";
     }
 
     // Bootstrap Icons offered for groups; shown in the member list in place of the group name

@@ -16,6 +16,7 @@ namespace ChurchMinistry.Controllers
         private readonly UserManager<ApplicationUser> _userManager;
         private readonly INotificationService _notifications;
         private readonly IEmailService _email;
+        private readonly IMailTemplateService _mailTemplates;
         private readonly IMeetingAccessService _access;
         private readonly IMeetingSeriesService _series;
 
@@ -23,6 +24,7 @@ namespace ChurchMinistry.Controllers
             UserManager<ApplicationUser> um,
             INotificationService notifications,
             IEmailService email,
+            IMailTemplateService mailTemplates,
             IMeetingAccessService access,
             IMeetingSeriesService series)
         {
@@ -30,6 +32,7 @@ namespace ChurchMinistry.Controllers
             _userManager = um;
             _notifications = notifications;
             _email = email;
+            _mailTemplates = mailTemplates;
             _access = access;
             _series = series;
         }
@@ -52,7 +55,7 @@ namespace ChurchMinistry.Controllers
             => User.IsInRole("Admin") || User.IsInRole("Pastor");
 
         // ── Lobby ───────────────────────────────────────────────
-        public async Task<IActionResult> Index(int scheduledPage = 1)
+        public async Task<IActionResult> Index([FromServices] IRecordingService recordings, int scheduledPage = 1)
         {
             var now = DateTime.UtcNow;
 
@@ -94,6 +97,8 @@ namespace ChurchMinistry.Controllers
                     x.Room.EndedAt = x.LastActivity;
                 }
                 await _db.SaveChangesAsync();
+                // Anything recorded before the host's page dropped becomes the meeting's recording
+                foreach (var x in abandoned) recordings.QueueFinalize(x.Room.Id);
             }
 
             // Recurring series whose latest meeting ended or was missed get their next meeting
@@ -193,6 +198,113 @@ namespace ChurchMinistry.Controllers
             return View(vm);
         }
 
+        // ── Calendar view (JSON for the lobby's calendar) ───────
+        // Same meetings the lobby cards show this person: public approved ones, their own (also pending),
+        // private ones they're invited to (directly, by group or by email) and, for staff, all private ones.
+        // Recurring meetings also get their later dates in the range ("Repeats"); those rooms don't exist yet.
+        [HttpGet]
+        public async Task<IActionResult> CalendarEvents(DateTimeOffset start, DateTimeOffset end)
+        {
+            var from = start.UtcDateTime;
+            var to = end.UtcDateTime;
+            if (to <= from || (to - from).TotalDays > 62) return BadRequest();
+
+            var now = DateTime.UtcNow;
+            var staff = IsAdminOrPastor();
+            var userId = _userManager.GetUserId(User);
+            var member = await GetMemberAsync();
+            var memberId = member?.Id;
+            var userEmail = await _db.Users.Where(u => u.Id == userId).Select(u => u.Email).FirstOrDefaultAsync();
+            var emails = new[] { member?.Email, userEmail }.Where(e => !string.IsNullOrWhiteSpace(e))
+                .Select(e => e!.ToLower()).Distinct().ToList();
+            var groupIds = memberId == null ? new List<int>()
+                : await _db.MinistryGroupMembers.Where(gm => gm.MemberId == memberId)
+                    .Select(gm => gm.MinistryGroupId).ToListAsync();
+
+            var rooms = await _db.MeetingRooms.AsNoTracking()
+                .Include(r => r.HostMember)
+                .Where(r => r.Status != RoomStatus.Cancelled && r.ApprovalStatus != ApprovalStatus.Rejected)
+                .Where(r => (r.IsApproved && r.IsPublic)
+                         || (memberId != null && r.HostMemberId == memberId)
+                         || (userId != null && r.HostUserId == userId)
+                         || (r.IsApproved && staff)
+                         || (r.IsApproved && r.Invitations.Any(i =>
+                                (memberId != null && i.MemberId == memberId)
+                             || (i.MinistryGroupId != null && groupIds.Contains(i.MinistryGroupId.Value))
+                             || (i.Email != null && emails.Contains(i.Email.ToLower())))))
+                // In the range, or a recurring meeting still to come whose later dates may fall in it
+                .Where(r => (r.ScheduledAt >= from && r.ScheduledAt < to)
+                         || (r.ScheduledAt == null && r.StartedAt >= from && r.StartedAt < to)
+                         || (r.Status == RoomStatus.Ended && r.StartedAt >= from && r.StartedAt < to)
+                         || (r.IsRecurring && r.Status != RoomStatus.Ended && r.ScheduledAt < to))
+                .ToListAsync();
+
+            var events = new List<object>();
+            foreach (var r in rooms)
+            {
+                var isHost = (memberId != null && r.HostMemberId == memberId) || (userId != null && r.HostUserId == userId);
+                var pending = !r.IsApproved;
+                // A meeting that took place sits where it happened; others where they're planned
+                var when = r.Status == RoomStatus.Ended ? r.StartedAt ?? r.ScheduledAt : r.ScheduledAt ?? r.StartedAt ?? r.CreatedAt;
+                if (when == null) continue;
+                var finish = r.Status == RoomStatus.Ended && r.EndedAt > when ? r.EndedAt.Value
+                           : when.Value.AddMinutes(r.DurationMinutes ?? 60);
+                var status = pending ? "pending" : r.Status.ToString().ToLower();
+                var canJoin = !pending && r.Status != RoomStatus.Ended
+                    && (r.Status == RoomStatus.Live || isHost || staff || r.ScheduledAt == null || r.ScheduledAt <= now + EarlyJoinWindow);
+                var common = new
+                {
+                    type = r.MeetingType.ToString(),
+                    isPrivate = !r.IsPublic,
+                    host = r.HostMember?.NameFor(User) ?? "Host",
+                    recurrence = r.RecurrenceLabel,
+                    canManage = isHost || staff,
+                };
+
+                if (when < to && finish > from)
+                    events.Add(new
+                    {
+                        id = r.Id.ToString(),
+                        title = r.Title,
+                        start = DateTime.SpecifyKind(when.Value, DateTimeKind.Utc),
+                        end = DateTime.SpecifyKind(finish, DateTimeKind.Utc),
+                        classNames = new[] { "mc-" + r.MeetingType.ToString().ToLower(), "mc-" + status },
+                        extendedProps = new
+                        {
+                            common.type, common.isPrivate, common.host, common.recurrence, common.canManage,
+                            meetingId = r.Id, status, code = r.RoomCode, canJoin,
+                            recording = r.RecordingUrl != null ? $"/Meeting/Recording/{r.Id}" : null,
+                            joinOpens = r.ScheduledAt.HasValue ? DateTime.SpecifyKind(r.ScheduledAt.Value - EarlyJoinWindow, DateTimeKind.Utc) : (DateTime?)null,
+                        }
+                    });
+
+                // Later dates of a recurring meeting that hasn't happened yet
+                if (r.IsRecurring && r.Status != RoomStatus.Ended && r.ScheduledAt != null)
+                {
+                    var next = r.NextOccurrenceUtc(r.ScheduledAt.Value);
+                    for (var n = 0; next != null && next < to && n < 62; n++, next = r.NextOccurrenceUtc(next.Value))
+                    {
+                        if (next.Value.AddMinutes(r.DurationMinutes ?? 60) <= from) continue;
+                        events.Add(new
+                        {
+                            id = $"{r.Id}-{next.Value:yyyyMMddHHmm}",
+                            title = r.Title,
+                            start = DateTime.SpecifyKind(next.Value, DateTimeKind.Utc),
+                            end = DateTime.SpecifyKind(next.Value.AddMinutes(r.DurationMinutes ?? 60), DateTimeKind.Utc),
+                            classNames = new[] { "mc-" + r.MeetingType.ToString().ToLower(), "mc-repeat" },
+                            extendedProps = new
+                            {
+                                common.type, common.isPrivate, common.host, common.recurrence, common.canManage,
+                                meetingId = r.Id, status = "repeat", code = (string?)null, canJoin = false,
+                                joinOpens = (DateTime?)null,
+                            }
+                        });
+                    }
+                }
+            }
+            return Json(events);
+        }
+
         // ── Create (schedule a meeting) ─────────────────────────
         [HttpGet]
         public IActionResult Create() => View(new CreateMeetingViewModel
@@ -221,6 +333,7 @@ namespace ChurchMinistry.Controllers
                 DurationMinutes = vm.DurationMinutes,
                 WaitingRoomEnabled = vm.WaitingRoomEnabled,
                 ChatEnabled = vm.ChatEnabled,
+                RecordingEnabled = vm.RecordingEnabled,
                 MaxParticipants = vm.MaxParticipants,
                 IsPublic = vm.IsPublic,
                 PassCode = vm.PassCode,
@@ -301,6 +414,7 @@ namespace ChurchMinistry.Controllers
                 DurationMinutes = room.DurationMinutes,
                 WaitingRoomEnabled = room.WaitingRoomEnabled,
                 ChatEnabled = room.ChatEnabled,
+                RecordingEnabled = room.RecordingEnabled,
                 MaxParticipants = room.MaxParticipants,
                 IsPublic = room.IsPublic,
                 PassCode = room.PassCode,
@@ -337,6 +451,7 @@ namespace ChurchMinistry.Controllers
             room.DurationMinutes = vm.DurationMinutes;
             room.WaitingRoomEnabled = vm.WaitingRoomEnabled;
             room.ChatEnabled = vm.ChatEnabled;
+            room.RecordingEnabled = vm.RecordingEnabled;
             room.MaxParticipants = vm.MaxParticipants;
             room.IsPublic = vm.IsPublic;
             room.PassCode = vm.PassCode;
@@ -478,10 +593,8 @@ namespace ChurchMinistry.Controllers
                     };
                     room.Invitations.Add(inv);
 
-                    await _email.SendEmailAsync(
-                        email,
-                        $"You're invited: {room.Title}",
-                        BuildInviteEmail(room, email, joinUrl, inv.Token));
+                    var (subject, body) = await BuildInviteEmailAsync(room, email, joinUrl, inv.Token);
+                    await _email.SendEmailAsync(email, subject, body);
 
                     sentCount++;
                 }
@@ -555,44 +668,25 @@ namespace ChurchMinistry.Controllers
                 $"You have been invited to join {room.Title}{when}. Room code: {room.RoomCode}",
                 $"/meeting/room/{room.RoomCode}");
 
-            await _email.SendEmailAsync(
-                invitee.Email,
-                $"You're invited: {room.Title}",
-                BuildInviteEmail(room, invitee.FullName, joinUrl, token));
+            var (subject, body) = await BuildInviteEmailAsync(room, invitee.FullName, joinUrl, token);
+            await _email.SendEmailAsync(invitee.Email, subject, body);
         }
 
         // ── Email template ─────────────────────────────────────────
-        private static string BuildInviteEmail(MeetingRoom room, string name, string joinUrl, string? token)
+        private async Task<(string Subject, string Body)> BuildInviteEmailAsync(MeetingRoom room, string name, string joinUrl, string? token)
         {
             var scheduled = room.ScheduledAt?.ToLocalTime().ToString("dddd, dd MMMM yyyy 'at' h:mm tt") ?? "Soon";
             var description = string.IsNullOrEmpty(room.Description) ? ""
                 : $"<p style=\"color:#4b5563\">{System.Net.WebUtility.HtmlEncode(room.Description)}</p>";
-            return $"""
-                <div style="font-family:sans-serif;max-width:520px;margin:0 auto">
-                  <div style="background:#312e81;padding:1.5rem;border-radius:12px 12px 0 0;text-align:center">
-                    <h1 style="color:white;font-size:1.4rem;margin:0">✝ You're Invited</h1>
-                  </div>
-                  <div style="background:#f9fafb;padding:1.5rem;border-radius:0 0 12px 12px;border:1px solid #e5e7eb">
-                    <p>Hi <strong>{System.Net.WebUtility.HtmlEncode(name)}</strong>,</p>
-                    <p>You have been invited to join an online meeting:</p>
-                    <div style="background:white;border:1px solid #e5e7eb;border-radius:8px;padding:1rem;margin:1rem 0">
-                      <h2 style="margin:0 0 .5rem;color:#1e1b4b">{System.Net.WebUtility.HtmlEncode(room.Title)}</h2>
-                      <p style="margin:0;color:#6b7280">📅 {scheduled}</p>
-                      <p style="margin:.3rem 0 0;color:#6b7280">🔑 Room code: <strong>{room.RoomCode}</strong></p>
-                    </div>
-                    {description}
-                    <div style="text-align:center;margin:1.5rem 0">
-                      <a href="{joinUrl}" style="background:#6366f1;color:white;padding:.75rem 2rem;
-                         border-radius:8px;text-decoration:none;font-weight:700;display:inline-block">
-                        Join Meeting
-                      </a>
-                    </div>
-                    <p style="font-size:.8rem;color:#9ca3af;text-align:center">
-                      Or use room code <strong>{room.RoomCode}</strong> at the meeting page.
-                    </p>
-                  </div>
-                </div>
-                """;
+            return await _mailTemplates.RenderAsync("MeetingInvitation", new Dictionary<string, string>
+            {
+                ["NAME"] = System.Net.WebUtility.HtmlEncode(name),
+                ["MEETINGTITLE"] = System.Net.WebUtility.HtmlEncode(room.Title),
+                ["SCHEDULEDAT"] = scheduled,
+                ["ROOMCODE"] = room.RoomCode,
+                ["DESCRIPTIONROW"] = description,
+                ["JOINLINK"] = joinUrl
+            });
         }
 
         // ── Instant meeting — Admin/Pastor only ─────────────────
@@ -730,7 +824,8 @@ namespace ChurchMinistry.Controllers
             var user = await _userManager.GetUserAsync(User);
             // The admin login has no member profile: it shows as "Admin" with the site logo, not its email
             var isAdminLogin = member == null && User.IsInRole("Admin");
-            var displayName = member?.FullName ?? (isAdminLogin ? MeetingAvatar.AdminName : user?.UserName) ?? "Guest";
+            // A member sees themselves under their public name ("@alias"), as others do
+            var displayName = member?.PublicName ?? (isAdminLogin ? MeetingAvatar.AdminName : user?.UserName) ?? "Guest";
 
             // Sermon streamed through this room (for verse overlays + attendance tracking)
             var linkedSermon = await _db.Sermons
@@ -742,6 +837,7 @@ namespace ChurchMinistry.Controllers
             ViewBag.SermonIsLive = linkedSermon?.IsLive == true;
             ViewBag.TrackAttendance = linkedSermon?.TrackAttendance == true;
             ViewBag.SermonPoster = linkedSermon?.ThumbnailUrl;   // shown in audio only mode
+            ViewBag.Records = await RecordsAsync(room);
 
             return View(new MeetingRoomViewModel
             {
@@ -754,8 +850,9 @@ namespace ChurchMinistry.Controllers
         }
 
         // ── Recording: a 10 s piece of the meeting's audio from the host's page ──
-        // A new part starts only while the room and its sermon are live; the last pieces of a
-        // part still arrive after the sermon stops, until it's finalized (Services/RecordingService)
+        // Only for a meeting set to record (ticked, or a sermon linked). A new part starts only
+        // while the room is live; the last pieces of a part still arrive after the meeting ends,
+        // until it's finalized (Services/RecordingService)
         [HttpPost, ValidateAntiForgeryToken]
         [RequestSizeLimit(5 * 1024 * 1024)]
         public async Task<IActionResult> RecordingChunk(string code, string part, int seq, string format,
@@ -770,17 +867,27 @@ namespace ChurchMinistry.Controllers
                       || room.HostUserId == _userManager.GetUserId(User);
             if (!isHost && !IsAdminOrPastor()) return Forbid();
 
-            var sermon = await _db.Sermons
-                .Where(s => s.IsOnlineMeeting && s.MeetingRoomCode == code)
-                .OrderByDescending(s => s.IsLive).ThenByDescending(s => s.Id)
-                .Select(s => new { s.Id, s.IsLive }).FirstOrDefaultAsync();
-            if (sermon == null) return Conflict();
-            var recording = room.Status == RoomStatus.Live && sermon.IsLive;
-            if (!recording && !recordings.HasPart(sermon.Id, part, format)) return Conflict();
+            if (!await RecordsAsync(room)) return Conflict();
+            if (room.Status != RoomStatus.Live && !recordings.HasPart(room.Id, part, format)) return Conflict();
 
             await using var data = chunk.OpenReadStream();
-            return await recordings.SaveChunkAsync(sermon.Id, part, seq, format, data)
+            return await recordings.SaveChunkAsync(room.Id, part, seq, format, data)
                 ? Ok() : BadRequest();
+        }
+
+        // Ticked "Record this meeting", or a sermon is streamed through it
+        private async Task<bool> RecordsAsync(MeetingRoom room) =>
+            room.RecordingEnabled
+            || await _db.Sermons.AnyAsync(s => s.IsOnlineMeeting && s.MeetingRoomCode == room.RoomCode);
+
+        // ── A meeting's recording, for anyone who may see the meeting ──
+        [HttpGet]
+        public async Task<IActionResult> Recording(int id)
+        {
+            var room = await _db.MeetingRooms.FindAsync(id);
+            if (room == null || string.IsNullOrEmpty(room.RecordingUrl)) return NotFound();
+            if (!await _access.CanAccessAsync(room, User)) return Forbid();
+            return Redirect(room.RecordingUrl);
         }
 
         // ── Participants API ────────────────────────────────────
@@ -791,13 +898,17 @@ namespace ChurchMinistry.Controllers
             if (room == null) return NotFound();
             if (!await _access.CanAccessAsync(room, User)) return Forbid();
 
+            var staff = User.IsStaff();
             var list = await _db.MeetingParticipants
                 .Include(p => p.Member)
                 .Where(p => p.MeetingRoomId == room.Id && p.LeftAt == null)
                 .Select(p => new
                 {
                     p.Id,
-                    p.DisplayName,
+                    // The saved name is the public one; Admins and Pastors also see the real name
+                    DisplayName = staff && p.Member != null && p.Member.Alias != null
+                        ? p.Member.FirstName + " " + p.Member.LastName + " (@" + p.Member.Alias + ")"
+                        : p.DisplayName,
                     p.IsHost,
                     p.IsCoHost,
                     p.IsMuted,

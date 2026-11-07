@@ -365,9 +365,16 @@
     </div>
     @if (isHost)
     {
-      <div class="rec-indicator" id="recBadge" style="display:none" title="The meeting's audio is being recorded for the sermon">
+      <div class="rec-indicator" id="recBadge" style="display:none" title="Your page is recording the meeting's audio">
         <span class="rec-dot"></span><span id="recTime">REC 00:00</span>
         <button type="button" id="recPauseBtn" onclick="toggleRecPause()" title="Pause recording"><i class="fas fa-pause"></i></button>
+      </div>
+    }
+    @if (ViewBag.Records as bool? == true)
+    {
+      @* Everyone is told; a host whose own page records sees the timer above instead *@
+      <div class="rec-indicator" id="recNotice" title="This meeting's audio is recorded and saved to the church's audio library">
+        <span class="rec-dot"></span><span>Recorded</span>
       </div>
     }
   </div>
@@ -433,6 +440,7 @@
       <button class="ctrl-btn ctrl-default" id="btnHand" onclick="toggleHand()"><i class="fas fa-hand"></i><span>Hand</span></button>
       <button class="ctrl-btn ctrl-default" onclick="toggleReactions()"><i class="fas fa-face-smile"></i><span>React</span></button>
       <button class="ctrl-btn ctrl-default" id="btnAudioOnly" onclick="toggleAudioOnly()" title="Listen without other people's video to save data"><i class="fas fa-headphones"></i><span>Audio only</span></button>
+      <button class="ctrl-btn ctrl-default" id="btnQuality" onclick="vq.openMenu(this)" title="Video quality — lower keeps your phone cooler"><i class="fas fa-sliders"></i><span>Quality</span></button>
       <div class="controls-spacer"></div>
       @if (Model.Room.ChatEnabled)
       {
@@ -496,12 +504,14 @@
      data-waiting-room="@Model.Room.WaitingRoomEnabled.ToString().ToLower()"
      data-sermon-id="@(ViewBag.LiveSermonId as int? ?? 0)"
      data-sermon-live="@((ViewBag.SermonIsLive as bool? == true).ToString().ToLower())"
+     data-records="@((ViewBag.Records as bool? == true).ToString().ToLower())"
      data-track-attendance="@((ViewBag.TrackAttendance as bool? == true).ToString().ToLower())"
      style="display:none">@Html.AntiForgeryToken()</div>
 
 <script src="~/js/wake-lock.js" asp-append-version="true"></script>
 <script src="~/js/live-music.js" asp-append-version="true"></script>
 <script src="~/js/audio-wave.js" asp-append-version="true"></script>
+<script src="~/js/video-quality.js" asp-append-version="true"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/microsoft-signalr/8.0.0/signalr.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/livekit-client@2.22.3/dist/livekit-client.umd.js"
         integrity="sha384-G/xxtkVytOx/ia9Q8MXxM+V0ohsaY1fZAgVP3iSGTPz4wJ0s3+ulJNKXh/gnzEDZ" crossorigin="anonymous"></script>
@@ -532,6 +542,23 @@ const peerInfo={};
 // (10 people arriving) those renegotiations timed out and forced full reconnects.
 const room=new LK.Room({adaptiveStream:true, dynacast:true, singlePeerConnection:false});
 
+// How sharp the video we receive is (wwwroot/js/video-quality.js). Phones get medium by
+// default and step down by themselves when they get hot or the battery is low.
+const vq=VideoQuality(LK,{room,toast:m=>toast(m)});
+// Phone browsers can't share the screen: drop the button to make room in the toolbar
+if(!navigator.mediaDevices?.getDisplayMedia) document.getElementById('btnScreen')?.remove();
+// The camera encoder can't keep up (the phone is busy or hot): send a smaller, slower
+// camera picture and take lighter video from others
+let camLowered=false;
+room.localParticipant.on(LK.ParticipantEvent.LocalTrackCpuConstrained,track=>{
+  if(track.source===LK.Track.Source.Camera&&vq.isMobile&&!camLowered){
+    camLowered=true;
+    track.mediaStreamTrack?.applyConstraints({width:{ideal:320},height:{ideal:180},frameRate:{max:12}})
+      .catch(e=>console.warn('Could not lower the camera',e));
+  }
+  vq.stepDown('camera encoder overloaded');
+});
+
 const conn = new signalR.HubConnectionBuilder()
   .withUrl('/meetingHub').withAutomaticReconnect().build();
 // A phone on a weak connection can go quiet for a while; allow longer before dropping
@@ -561,7 +588,10 @@ async function initMedia() {
 
   let tracks = [];
   try {
-    tracks = await LK.createLocalTracks({audio:audioOptions, video:{resolution:LK.VideoPresets.h720.resolution}});
+    // Encoding our camera is the heaviest work a phone does here: phones send 360p at
+    // 15 fps (computers 720p)
+    tracks = await LK.createLocalTracks({audio:audioOptions, video:{resolution:vq.isMobile
+      ?{...LK.VideoPresets.h360.resolution,frameRate:15}:LK.VideoPresets.h720.resolution}});
     console.log('Media acquired — tracks:', tracks.map(t=>t.kind+':'+t.mediaStreamTrack.label));
   } catch(err1) {
     console.warn('Video+audio failed:', err1.name, err1.message);
@@ -659,7 +689,10 @@ async function connectMedia(){
     // Tracks are subscribed by hand so audio only mode never downloads video
     await room.connect(t.url,t.token,{autoSubscribe:false});
     applyAllSubscriptions();
-    for(const track of [micTrack,camTrack]) if(track) await room.localParticipant.publishTrack(track);
+    // A phone's camera goes out as two layers (360p + 180p) instead of three
+    const camOptions=vq.isMobile?{videoEncoding:{maxBitrate:450000,maxFramerate:15},videoSimulcastLayers:[LK.VideoPresets.h180]}:undefined;
+    if(micTrack) await room.localParticipant.publishTrack(micTrack);
+    if(camTrack) await room.localParticipant.publishTrack(camTrack,camOptions);
     room.remoteParticipants.forEach(p=>{ensureTile(p);showRemoteVideo(p.identity);});
     if(!room.canPlaybackAudio) showSoundUnlock();
     await maybeRecord();
@@ -681,8 +714,40 @@ let audioOnly=(()=>{
   if(slow) setTimeout(()=>toast('Slow connection — Audio only mode. Tap Audio only to see video.'),1500);
   return slow;
 })();
-function applySubscription(pub){pub.setSubscribed(pub.kind==='audio'||!audioOnly);}
-function applyAllSubscriptions(){room.remoteParticipants.forEach(p=>p.trackPublications.forEach(applySubscription));}
+// A phone decodes video from at most this many people at once; the others show their
+// photo (and are still heard). Order: spotlight, screen shares, recent speakers, then
+// whoever joined first. People with their camera off don't take a place.
+const MOBILE_MAX_VIDEOS=4;
+const recentSpeakers=[];   // identities, most recent first
+let limitExplained=false;
+function videoAllowed(){
+  if(!vq.isMobile) return null;   // null: everyone's video
+  const all=[...room.remoteParticipants.values()];
+  const hasVideo=p=>[...p.videoTrackPublications.values()].some(x=>!x.isMuted);
+  const withVideo=all.filter(hasVideo);
+  if(withVideo.length<=MOBILE_MAX_VIDEOS) return null;
+  const order=[];
+  const add=id=>{const p=room.remoteParticipants.get(id);if(p&&hasVideo(p)&&!order.includes(id))order.push(id);};
+  add(spotlightId);
+  withVideo.filter(p=>p.getTrackPublication(LK.Track.Source.ScreenShare)).forEach(p=>add(p.identity));
+  recentSpeakers.forEach(add);
+  withVideo.forEach(p=>add(p.identity));
+  if(!limitExplained&&!audioOnly){limitExplained=true;toast(`To keep your phone cool, video shows for ${MOBILE_MAX_VIDEOS} people at a time`);}
+  return new Set(order.slice(0,MOBILE_MAX_VIDEOS));
+}
+function applySubscription(pub,p,allowed=videoAllowed()){
+  pub.setSubscribed(pub.kind==='audio'||(!audioOnly&&(!allowed||allowed.has(p.identity))));
+}
+function applyAllSubscriptions(){
+  const allowed=videoAllowed();
+  room.remoteParticipants.forEach(p=>p.trackPublications.forEach(pub=>applySubscription(pub,p,allowed)));
+}
+// Phones only: work out again whose video to take, once things settle
+var subsTimer=null;   // var: reflow() can run before this line does
+function scheduleSubscriptions(ms=300){
+  if(!vq.isMobile||subsTimer) return;   // one already pending will see the latest state
+  subsTimer=setTimeout(()=>{subsTimer=null;if(room.state==='connected')applyAllSubscriptions();},ms);
+}
 function showAudioOnlyState(){
   document.getElementById('btnAudioOnly').classList.toggle('ctrl-active',audioOnly);
   document.getElementById('audioOnlyStage').style.display=audioOnly?'flex':'none';
@@ -703,27 +768,42 @@ audioBox.style.display='none';
 document.body.appendChild(audioBox);
 
 room
-  .on(LK.RoomEvent.ParticipantConnected,p=>ensureTile(p))
-  // A camera, mic or screen share was turned on: subscribe unless it's video in audio only mode
-  .on(LK.RoomEvent.TrackPublished,pub=>applySubscription(pub))
-  .on(LK.RoomEvent.ParticipantDisconnected,p=>{document.getElementById(`tile-${p.identity}`)?.remove();reflow();})
+  .on(LK.RoomEvent.ParticipantConnected,p=>{ensureTile(p);scheduleSubscriptions();})
+  // A camera, mic or screen share was turned on: subscribe unless it's video in audio only
+  // mode (or, on a phone, more videos than it should decode)
+  .on(LK.RoomEvent.TrackPublished,(pub,p)=>{applySubscription(pub,p);scheduleSubscriptions();})
+  .on(LK.RoomEvent.ParticipantDisconnected,p=>{
+    document.getElementById(`tile-${p.identity}`)?.remove();
+    const i=recentSpeakers.indexOf(p.identity); if(i>=0) recentSpeakers.splice(i,1);
+    reflow();
+  })
   .on(LK.RoomEvent.TrackSubscribed,(track,pub,p)=>{
     if(track.kind==='audio'){audioBox.appendChild(track.attach());recAdd(track.sid,track.mediaStreamTrack);wave.addTrack(track.sid,track.mediaStreamTrack);}
-    else showRemoteVideo(p.identity);
+    else{vq.apply(pub);showRemoteVideo(p.identity);}
   })
   .on(LK.RoomEvent.TrackUnsubscribed,(track,pub,p)=>{
     if(track.kind==='audio'){track.detach().forEach(el=>el.remove());recRemove(track.sid);wave.removeTrack(track.sid);}
     else showRemoteVideo(p.identity);
   })
   .on(LK.RoomEvent.TrackMuted,(pub,p)=>{
-    if(p!==room.localParticipant) showRemoteVideo(p.identity);
+    if(p!==room.localParticipant){showRemoteVideo(p.identity);scheduleSubscriptions();}
     // Muted by the host through the media server: keep our button in step
     else if(pub.source===LK.Track.Source.Microphone&&!isMuted) toggleMic();
   })
-  .on(LK.RoomEvent.TrackUnmuted,(pub,p)=>{if(p!==room.localParticipant)showRemoteVideo(p.identity);})
+  .on(LK.RoomEvent.TrackUnmuted,(pub,p)=>{if(p!==room.localParticipant){showRemoteVideo(p.identity);scheduleSubscriptions();}})
   .on(LK.RoomEvent.ActiveSpeakersChanged,speakers=>{
     const ids=new Set(speakers.map(s=>s===room.localParticipant?'local':s.identity));
     document.querySelectorAll('.video-tile').forEach(t=>t.classList.toggle('speaking',ids.has(t.id.slice(5))));
+    // Phones: someone talking whose video we don't take gets it, after a short wait so a
+    // cough doesn't swap the videos
+    if(!vq.isMobile) return;
+    for(const s of [...speakers].reverse()){
+      if(s===room.localParticipant) continue;
+      const i=recentSpeakers.indexOf(s.identity); if(i>=0) recentSpeakers.splice(i,1);
+      recentSpeakers.unshift(s.identity);
+    }
+    if(speakers.some(s=>s!==room.localParticipant&&!s.getTrackPublication(LK.Track.Source.Camera)?.isSubscribed))
+      scheduleSubscriptions(1500);
   })
   .on(LK.RoomEvent.AudioPlaybackStatusChanged,()=>{if(!room.canPlaybackAudio)showSoundUnlock();})
   // The browser's own "Stop sharing" button ends the share without our button
@@ -782,12 +862,13 @@ function removePeer(cid){
 conn.on('ViewerCountUpdated', count => updateViewerCount(count));
 
 // ── Recording ─────────────────────────────────────────────
-// While the sermon is live, one host's page records the meeting's audio: everyone's
-// microphone mixed together, sent to the server in 10 s pieces so little is lost if the
-// page closes. When the meeting ends (or the sermon stops being live) the server turns
-// the pieces into the sermon's recording. Background music plays on each device
-// separately, so it isn't in the recording.
-let sermonLive = data.sermonLive === 'true';
+// A meeting set to record (ticked, or a sermon linked) is recorded from start to end by one
+// host's page: everyone's microphone mixed together, sent to the server in 10 s pieces so
+// little is lost if the page closes. When the meeting ends the server turns the pieces into
+// the meeting's recording in the audio library (and its sermon's). Background music plays on
+// each device separately, so it isn't in the recording.
+const RECORDS = data.records === 'true';
+if(RECORDS) setTimeout(()=>toast('This meeting is being recorded'),1500);
 const ANTI_FORGERY = document.querySelector('#meetData input[name="__RequestVerificationToken"]')?.value ?? '';
 const rec = { ctx:null, dest:null, sources:new Map(), recorder:null, part:null, seq:0,
               queue:[], sending:false, seconds:0, timer:null };
@@ -807,9 +888,9 @@ function recAdd(key,mediaStreamTrack){
 }
 function recRemove(key){rec.sources.get(key)?.disconnect();rec.sources.delete(key);}
 
-// Starts recording when this host may: the sermon is live and no other host's page records
+// Starts recording when this host may: the meeting records and no other host's page does
 async function maybeRecord(){
-  if(!IS_HOST||!SERMON_ID||!sermonLive) return;
+  if(!IS_HOST||!RECORDS) return;
   const claimed=await conn.invoke('ClaimRecorder',ROOM_CODE).catch(()=>false);
   if(!claimed){if(rec.recorder) await stopRecording();return;}   // another host's page records
   if(rec.recorder) return;                                         // still recording after a reconnect
@@ -839,7 +920,7 @@ async function maybeRecord(){
   rec.seconds=0;
   rec.timer=setInterval(()=>{if(rec.recorder?.state==='recording'){rec.seconds++;showRecUi();}},1000);
   showRecUi();
-  toast('Recording the meeting audio for the sermon','success');
+  toast('Recording the meeting audio','success');
 }
 
 // Stops recording; resolves once what was recorded has been sent (at most ~10 s)
@@ -888,6 +969,8 @@ function showRecUi(){
   if(!badge) return;
   const r=rec.recorder;
   badge.style.display=r?'flex':'none';
+  const notice=document.getElementById('recNotice');
+  if(notice) notice.style.display=r?'none':'flex';
   if(!r) return;
   const paused=r.state==='paused';
   badge.classList.toggle('paused',paused);
@@ -904,11 +987,8 @@ document.addEventListener('click',()=>{if(rec.ctx?.state==='suspended')rec.ctx.r
 conn.on('SermonLiveChanged',async(sermonId,live)=>{
   // Sent only to this room, so any of its sermons going live or stopping sets the LIVE tag
   // (a stop of the previous sermon always arrives before the new one's start)
+  // The recording isn't affected: it runs until the meeting ends
   document.getElementById('liveBadge').style.display=live?'':'none';
-  if(sermonId!==SERMON_ID) return;
-  sermonLive=live;
-  if(live) await maybeRecord();
-  else if(rec.recorder){await stopRecording();toast('Recording stopped — it will be on the sermon page shortly','success');}
 });
 // The recording host left: one of the other hosts takes over
 conn.on('RecorderFree',()=>maybeRecord());
@@ -1104,9 +1184,10 @@ function reflow(){
     grid.style.setProperty('--rows', Math.ceil(n/cols));
   }
   refreshSpotlightBtns();
+  scheduleSubscriptions();   // the spotlight decides whose video a phone takes
 }
 
-// ── Counts ────────────────────────────────────────────────
+// ── Counts────────────────────────────────────────────────
 function updateViewerCount(n){document.getElementById('viewerCount').textContent=n;}
 function updateMemberCount(n){document.getElementById('memberCount').textContent=n;}
 
@@ -1137,7 +1218,7 @@ async function toggleScreenShare(){
       const pub=await room.localParticipant.setScreenShareEnabled(true);
       if(!pub?.track) return;
       showLocalVideo(pub.track);
-      isScreenSharing=true; document.getElementById('btnScreen').classList.add('ctrl-active');
+      isScreenSharing=true; document.getElementById('btnScreen')?.classList.add('ctrl-active');
       conn.invoke('StartScreenShare',ROOM_CODE);
     }catch(e){ console.warn('Screen share failed',e); }
   }else{
@@ -1148,7 +1229,7 @@ async function toggleScreenShare(){
 function screenShareStopped(){
   if(!isScreenSharing) return;
   isScreenSharing=false; showLocalVideo(camTrack);
-  document.getElementById('btnScreen').classList.remove('ctrl-active');
+  document.getElementById('btnScreen')?.classList.remove('ctrl-active');
   conn.invoke('StopScreenShare',ROOM_CODE);
 }
 function toggleHand(){isHandRaised=!isHandRaised;document.getElementById('btnHand').classList.toggle('ctrl-active',isHandRaised);conn.invoke('RaiseHand',ROOM_CODE,isHandRaised);}
@@ -1251,7 +1332,10 @@ function updatePeopleCount(){
 // ── Reactions ─────────────────────────────────────────────
 function toggleReactions(){document.getElementById('reactionsBar').classList.toggle('visible');}
 function sendReaction(emoji){conn.invoke('SendReaction',ROOM_CODE,emoji);showFloatingReaction(emoji);document.getElementById('reactionsBar').classList.remove('visible');}
-function showFloatingReaction(emoji){const el=document.createElement('div');el.className='floating-reaction';el.textContent=emoji;el.style.left=(20+Math.random()*60)+'%';el.style.bottom='100px';document.body.appendChild(el);setTimeout(()=>el.remove(),2600);}
+function showFloatingReaction(emoji){
+  // Phones: a few at a time is enough (each one is an animation to draw)
+  if(vq.isMobile&&document.querySelectorAll('.floating-reaction').length>=3) return;
+  const el=document.createElement('div');el.className='floating-reaction';el.textContent=emoji;el.style.left=(20+Math.random()*60)+'%';el.style.bottom='100px';document.body.appendChild(el);setTimeout(()=>el.remove(),2600);}
 
 // ── Timer ─────────────────────────────────────────────────
 function startTimer(){if(timerInterval)return;timerInterval=setInterval(()=>{meetingSeconds++;const h=Math.floor(meetingSeconds/3600),m=Math.floor((meetingSeconds%3600)/60),s=meetingSeconds%60;document.getElementById('meetTimer').textContent=h>0?`${pad(h)}:${pad(m)}:${pad(s)}`:`${pad(m)}:${pad(s)}`;},1000);}

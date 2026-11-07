@@ -79,6 +79,15 @@
                     }
                     else { @("— (not streamed on the Live page)") }
                 </dd>
+                <dt>Recording</dt>
+                <dd>
+                    @if (r.RecordingUrl != null)
+                    {
+                        <audio controls preload="none" src="@r.RecordingUrl" style="width:100%;max-width:420px;display:block"></audio>
+                        <small class="meta"><a href="@r.RecordingUrl" download>Download</a> · in the Audio Library under Meetings</small>
+                    }
+                    else { @(r.RecordingEnabled || Model.LinkedSermon != null ? "— (nothing was recorded)" : "— (not set to record)") }
+                </dd>
             </dl>
         </div>
     </div>

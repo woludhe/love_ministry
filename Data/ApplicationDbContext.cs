@@ -44,6 +44,8 @@ namespace ChurchMinistry.Data
         public DbSet<LiveChatMessage> LiveChatMessages => Set<LiveChatMessage>();
         public DbSet<MemberActivity> MemberActivities => Set<MemberActivity>();
         public DbSet<RecurringGift> RecurringGifts => Set<RecurringGift>();
+        public DbSet<OneOnOneRequest> OneOnOneRequests => Set<OneOnOneRequest>();
+        public DbSet<MailTemplate> MailTemplates => Set<MailTemplate>();
 
         protected override void OnModelCreating(ModelBuilder builder)
         {
@@ -53,6 +55,8 @@ namespace ChurchMinistry.Data
             builder.Entity<Member>(e =>
             {
                 e.HasIndex(m => m.Email).IsUnique();
+                // No two members share an alias (MySQL allows many NULLs; the collation ignores case)
+                e.HasIndex(m => m.Alias).IsUnique();
                 e.Property(m => m.Status).HasConversion<string>();
                 e.Property(m => m.Gender).HasConversion<string>();
                 e.Property(m => m.MaritalStatus).HasConversion<string>();
@@ -202,6 +206,28 @@ namespace ChurchMinistry.Data
             {
                 e.HasOne(i => i.MinistryGroup).WithMany()
                     .HasForeignKey(i => i.MinistryGroupId).OnDelete(DeleteBehavior.Cascade);
+            });
+
+            // One-on-One requests: go with the member; the meeting room can be removed on its own
+            builder.Entity<OneOnOneRequest>(e =>
+            {
+                e.Property(r => r.Status).HasConversion<string>().HasMaxLength(20);
+                e.Property(r => r.PreferredFormat).HasConversion<string>().HasMaxLength(20);
+                e.Property(r => r.Format).HasConversion<string>().HasMaxLength(20);
+                e.Property(r => r.Privacy).HasConversion<string>().HasMaxLength(20);
+                e.HasOne(r => r.Member).WithMany()
+                    .HasForeignKey(r => r.MemberId).OnDelete(DeleteBehavior.Cascade);
+                e.HasOne(r => r.MeetingRoom).WithMany()
+                    .HasForeignKey(r => r.MeetingRoomId).OnDelete(DeleteBehavior.SetNull);
+                e.HasIndex(r => r.Status);
+            });
+
+            // Mail templates
+            builder.Entity<MailTemplate>(e =>
+            {
+                e.HasIndex(m => m.Key).IsUnique();
+                e.HasOne<Member>().WithMany()
+                    .HasForeignKey(m => m.UpdatedByMemberId).OnDelete(DeleteBehavior.SetNull);
             });
 
             // Seed default roles

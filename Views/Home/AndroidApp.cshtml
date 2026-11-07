@@ -1,0 +1,36 @@
+@{
+    ViewData["Title"] = "Android App - Apostle Enock Makoko";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+    var apkMb = ViewBag.ApkMb as int?;
+}
+<section class="page-header">
+    <h1><i class="fab fa-android"></i> Android App</h1>
+</section>
+
+<div class="form-page app-download">
+    <img src="~/android-chrome-192x192.png" alt="" class="app-download-icon" />
+    <h2>Apostle Enock Makoko</h2>
+    <p>Sermons, live services, meetings, giving and the community, all in one app on your phone.</p>
+
+    @if (apkMb != null)
+    {
+        <a href="~/downloads/apostle-enock-makoko.apk" class="btn btn-primary" download>
+            <i class="fas fa-download"></i> Download for Android (@apkMb MB)
+        </a>
+
+        <h3>How to install</h3>
+        <ol>
+            <li>Tap <strong>Download</strong> above, then open the file when it finishes.</li>
+            <li>If your phone asks, allow your browser to <strong>install unknown apps</strong>.</li>
+            <li>Tap <strong>Install</strong>, then open the app.</li>
+        </ol>
+        <p class="meta">
+            Android may warn you because this app isn't from the Play Store. Only download it from this page.
+            The app needs an internet connection.
+        </p>
+    }
+    else
+    {
+        <p class="app-download-soon"><i class="fas fa-clock"></i> Coming soon</p>
+    }
+</div>

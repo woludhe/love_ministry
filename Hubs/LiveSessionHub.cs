@@ -32,7 +32,8 @@ namespace ChurchMinistry.Hubs
         {
             await Groups.AddToGroupAsync(Context.ConnectionId, $"live-{sermonId}");
             // Live page viewers get chat from the start, so the unread badge counts while the panel is closed
-            if (!inMeeting) await Groups.AddToGroupAsync(Context.ConnectionId, $"livechat-{sermonId}");
+            // (split into staff and members, who see names differently: see HubAudience)
+            if (!inMeeting) await HubAudience.JoinAsync(Context, Groups, $"livechat-{sermonId}");
             await LogAttendanceAsync(sermonId, inMeeting);
             await LogActivityAsync(sermonId);
             LiveAudience.Join(Context.ConnectionId, sermonId, inMeeting);
@@ -117,6 +118,7 @@ namespace ChurchMinistry.Hubs
                     : await _db.Members.FirstOrDefaultAsync(m => m.UserId == userId);
                 entry.IsGuest = false;
                 entry.MemberId = member?.Id;
+                // Real name: attendance is only shown to Admins and Pastors
                 entry.DisplayName = member?.FullName ?? Context.User.Identity.Name ?? "Member";
             }
 
@@ -205,7 +207,7 @@ namespace ChurchMinistry.Hubs
         // Kept for older pages: JoinLiveRoom now puts Live page viewers in the chat group
         public async Task JoinLiveChatRoom(int sermonId)
         {
-            await Groups.AddToGroupAsync(Context.ConnectionId, $"livechat-{sermonId}");
+            await HubAudience.JoinAsync(Context, Groups, $"livechat-{sermonId}");
         }
 
         // The chat so far — Live page and meeting room messages merged — and whether it's
@@ -221,7 +223,7 @@ namespace ChurchMinistry.Hubs
             return new
             {
                 paused,
-                messages = items.Select(i => SermonChat.Payload(i, i.IsFrom(userId, memberId)))
+                messages = items.Select(i => SermonChat.Payload(i, i.IsFrom(userId, memberId), Context.User.IsStaff()))
             };
         }
 
@@ -255,23 +257,23 @@ namespace ChurchMinistry.Hubs
                 SermonId = sermonId,
                 UserId = userId,
                 MemberId = member?.Id,
-                SenderName = member?.FullName ?? Context.User.Identity?.Name ?? "Member",
+                // The public name: what's saved is safe to show anyone
+                SenderName = member?.PublicName ?? Context.User.Identity?.Name ?? "Member",
                 Message = message,
                 Type = type
             };
             _db.LiveChatMessages.Add(chat);
             await _db.SaveChangesAsync();
 
-            // Everyone else in the group, then the sender's own copy
-            var item = new SermonChat.Item(chat.SenderName, chat.Message, chat.Type, chat.SentAt,
-                member?.ProfilePhoto, SermonChat.FromLive, userId, member?.Id);
-            await Clients.OthersInGroup($"livechat-{sermonId}").SendAsync("LiveChatMessage", SermonChat.Payload(item, isOwn: false));
-            await Clients.Caller.SendAsync("LiveChatMessage", SermonChat.Payload(item, isOwn: true));
+            // Everyone else in the group (staff see the real name), then the sender's own copy
+            var item = SermonChat.NewItem(member, chat.SenderName, chat.Message, chat.Type, chat.SentAt,
+                SermonChat.FromLive, userId);
+            await SermonChat.SendAsync(Clients, $"livechat-{sermonId}", "LiveChatMessage", item, Context.ConnectionId);
+            await Clients.Caller.SendAsync("LiveChatMessage", SermonChat.Payload(item, isOwn: true, Context.User.IsStaff()));
 
             // Same conversation in the sermon's meeting room
             if (!string.IsNullOrEmpty(sermon.MeetingRoomCode))
-                await _meetingHub.Clients.Group(sermon.MeetingRoomCode)
-                    .SendAsync("ReceiveMessage", SermonChat.Payload(item, isOwn: false));
+                await SermonChat.SendAsync(_meetingHub.Clients, sermon.MeetingRoomCode, "ReceiveMessage", item);
         }
 
         // ── Admin: pause/unpause chat ───────────────────────────────
@@ -326,14 +328,8 @@ namespace ChurchMinistry.Hubs
             if (string.IsNullOrWhiteSpace(emoji) || emoji.Length > 8) return;
 
             // Broadcast to everyone watching this sermon's live room
-            await Clients.Group($"live-{sermonId}").SendAsync("LiveReaction", new
-            {
-                emoji,
-                // Optionally include sender name if logged in
-                senderName = Context.User?.Identity?.IsAuthenticated == true
-                    ? Context.User.Identity.Name
-                    : "Guest"
-            });
+            // Only the emoji: the page doesn't show who reacted, and the login name is an email
+            await Clients.Group($"live-{sermonId}").SendAsync("LiveReaction", new { emoji });
         }
     }
 
@@ -347,7 +343,9 @@ namespace ChurchMinistry.Hubs
         public const string FromLive = "live", FromMeeting = "meeting";
         private const int HistorySize = 100;
 
-        public record Item(string SenderName, string Message, string Type, DateTime SentAt,
+        // SenderName is what members see ("@alias" or the real name), StaffName what Admins
+        // and Pastors see ("Real Name (@alias)")
+        public record Item(string SenderName, string StaffName, string Message, string Type, DateTime SentAt,
             string? Photo, string Source, string? UserId, int? MemberId)
         {
             // Live messages know the sender's login; meeting messages only their member record
@@ -374,29 +372,56 @@ namespace ChurchMinistry.Hubs
                 clearedAt = await db.LiveSessions.Where(s => s.SermonId == sid).Select(s => s.ChatClearedAt).FirstOrDefaultAsync();
             }
 
-            var items = new List<Item>();
+            // A member's name comes from their profile, not the copy saved with the message, so an
+            // alias set (or changed) later applies to what they said before too
+            var rows = new List<Row>();
             if (sermonId is int liveId)
-                items.AddRange(await db.LiveChatMessages
+                rows.AddRange(await db.LiveChatMessages
                     .Where(m => m.SermonId == liveId && (clearedAt == null || m.SentAt > clearedAt))
                     .OrderByDescending(m => m.SentAt).Take(HistorySize)
-                    .Select(m => new Item(m.SenderName, m.Message, m.Type, m.SentAt,
-                        m.Member != null ? m.Member.ProfilePhoto : null, FromLive, m.UserId, m.MemberId))
+                    .Select(m => new Row(m.SenderName, m.Message, m.Type, m.SentAt,
+                        m.Member != null ? m.Member.ProfilePhoto : null, FromLive, m.UserId, m.MemberId,
+                        m.Member != null ? m.Member.FirstName : null, m.Member != null ? m.Member.LastName : null,
+                        m.Member != null ? m.Member.Alias : null))
                     .ToListAsync());
             if (meetingRoomId is int roomId)
-                items.AddRange(await db.MeetingMessages
+                rows.AddRange(await db.MeetingMessages
                     .Where(m => m.MeetingRoomId == roomId && m.Type != "system" && (clearedAt == null || m.SentAt > clearedAt))
                     .OrderByDescending(m => m.SentAt).Take(HistorySize)
-                    .Select(m => new Item(m.SenderName, m.Message, m.Type, m.SentAt,
-                        m.Member != null ? m.Member.ProfilePhoto : null, FromMeeting, null, m.MemberId))
+                    .Select(m => new Row(m.SenderName, m.Message, m.Type, m.SentAt,
+                        m.Member != null ? m.Member.ProfilePhoto : null, FromMeeting, null, m.MemberId,
+                        m.Member != null ? m.Member.FirstName : null, m.Member != null ? m.Member.LastName : null,
+                        m.Member != null ? m.Member.Alias : null))
                     .ToListAsync());
 
-            return items.OrderBy(i => i.SentAt).TakeLast(HistorySize).ToList();
+            return rows.OrderBy(r => r.SentAt).TakeLast(HistorySize)
+                .Select(r => r.First == null
+                    ? new Item(r.Stored, r.Stored, r.Message, r.Type, r.SentAt, r.Photo, r.Source, r.UserId, r.MemberId)
+                    : new Item(MemberNames.For(r.First, r.Last, r.Alias, false), MemberNames.For(r.First, r.Last, r.Alias, true),
+                        r.Message, r.Type, r.SentAt, r.Photo, r.Source, r.UserId, r.MemberId))
+                .ToList();
         }
+        private record Row(string Stored, string Message, string Type, DateTime SentAt, string? Photo,
+            string Source, string? UserId, int? MemberId, string? First, string? Last, string? Alias);
+
+        /// <summary>A new message's Item: member names from the profile, otherwise the given name</summary>
+        public static Item NewItem(Member? member, string fallbackName, string message, string type, DateTime sentAt,
+            string source, string? userId) =>
+            new(member?.PublicName ?? fallbackName, member?.StaffName ?? fallbackName, message, type, sentAt,
+                member?.ProfilePhoto, source, userId, member?.Id);
+
+        /// <summary>
+        /// Sends a chat message to a group in two versions (staff see real names, see HubAudience)
+        /// </summary>
+        public static Task SendAsync(IHubClients<IClientProxy> clients, string group, string method, Item item,
+            params string[] except) =>
+            HubAudience.SendAsync(clients, group, method,
+                staff => new object?[] { Payload(item, isOwn: false, staff) }, except);
 
         // What both pages receive. sentAt is UTC ISO time; each browser shows it in local time.
-        public static object Payload(Item i, bool isOwn) => new
+        public static object Payload(Item i, bool isOwn, bool staff) => new
         {
-            senderName = i.SenderName,
+            senderName = staff ? i.StaffName : i.SenderName,
             message = i.Message,
             type = i.Type,
             sentAt = DateTime.SpecifyKind(i.SentAt, DateTimeKind.Utc).ToString("o"),

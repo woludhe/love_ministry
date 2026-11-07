@@ -1,6 +1,9 @@
 @model ChurchMinistry.ViewModels.MemberDashboardViewModel
 @{
     ViewData["Title"] = "My Dashboard"; Layout = "~/Views/Shared/_MemberDashboard_Layout.cshtml";
+    // A One-on-One that's been scheduled and is still ahead goes above My Daily; otherwise after Upcoming Events
+    var oneOnOneUpcoming = Model.OneOnOne is { Status: ChurchMinistry.Models.OneOnOneStatus.Scheduled } o
+                           && ChurchMinistry.Models.OneOnOneRequest.IsOpen(DateTime.UtcNow).Compile()(o);
 }
 <div style="padding: 2rem;">
     <h1>
@@ -53,6 +56,10 @@
         </div>
     }
     <partial name="_ProfileCompletion" model="(Model.ProfilePercent, new List<string>(), true)" />
+    @if (oneOnOneUpcoming)
+    {
+        <partial name="_OneOnOneCard" model="Model" />
+    }
     <a asp-controller="Members" asp-action="MyDaily" class="my-daily-link">
         <span class="my-daily-icon"><i class="fas fa-newspaper"></i></span>
         <span class="my-daily-text">
@@ -126,4 +133,8 @@
             </div>
         }
     </div>
+    @if (!oneOnOneUpcoming)
+    {
+        <partial name="_OneOnOneCard" model="Model" />
+    }
 </div>

@@ -1,0 +1,159 @@
+@model ChurchMinistry.ViewModels.MemberDashboardViewModel
+@using ChurchMinistry.Models
+@* Dashboard: a card like My Daily that opens a pop-up to ask for a One-on-One with the Apostle,
+   or to see the open request. Posts to OneOnOneController. *@
+@{
+    var r = Model.OneOnOne;
+    var now = DateTime.UtcNow;
+    var isOpen = r != null && OneOnOneRequest.IsOpen(now).Compile()(r);
+    var pending = isOpen && r!.Status == OneOnOneStatus.Pending;
+    var scheduled = isOpen && !pending;
+    var minLocal = DateTime.Now.AddMinutes(5).ToString("yyyy-MM-ddTHH:mm");
+    var room = r?.MeetingRoom;
+    // The room opens to the member 15 minutes before the start (as in MeetingController)
+    var canJoin = scheduled && room != null && r!.ScheduledAt <= now.AddMinutes(15);
+    // Re-open the pop-up after a failed send so the member can fix it (the topic is kept)
+    var reopen = TempData.Peek("OneOnOneTopic") != null;
+
+    var subtitle = pending ? $"Request sent {r!.CreatedAt.ToLocalTime():ddd, dd MMM} · waiting for a time"
+                 : scheduled ? $"{(r!.Privacy == OneOnOnePrivacy.Private ? "Private meeting" : "Meeting")} on {r.ScheduledAt!.Value.ToLocalTime():ddd, dd MMM · h:mm tt}"
+                               + (room != null ? " · online" : " · in person")
+                 : "Ask for a personal meeting, online or in person";
+    var buttonText = pending ? "View request" : scheduled ? (canJoin ? "Join now" : "View meeting") : "Request a meeting";
+}
+<button type="button" class="my-daily-link oneonone-link @(scheduled ? "is-scheduled" : pending ? "is-pending" : "")"
+        id="one-on-one" aria-haspopup="dialog" aria-controls="oneOnOneDialog">
+    <span class="my-daily-icon"><i class="fas fa-user-group"></i></span>
+    <span class="my-daily-text">
+        <strong>One-on-One with @OneOnOneRequest.ApostleName</strong>
+        <span>@subtitle</span>
+    </span>
+    <span class="btn btn-primary btn-sm">@buttonText</span>
+</button>
+
+<dialog class="oneonone-dialog" id="oneOnOneDialog" aria-labelledby="oneOnOneTitle">
+  <div class="oneonone-dialog-body">
+    <div class="oneonone-dialog-head">
+        <h2 id="oneOnOneTitle">One-on-One with @OneOnOneRequest.ApostleName</h2>
+        <button type="button" class="oneonone-close" aria-label="Close"><i class="fas fa-times"></i></button>
+    </div>
+
+    @if (pending)
+    {
+        <div class="oneonone-status">
+            <span class="status-badge status-pending"><i class="fas fa-clock"></i> Request sent</span>
+            <p>You asked on @r!.CreatedAt.ToLocalTime().ToString("ddd, dd MMM"). We'll let you know when a time is set.</p>
+            @if (r.PreferredTimesUtc.Any())
+            {
+                <p class="meta">Times you suggested:
+                    @string.Join(" · ", r.PreferredTimesUtc.Select(t => t.ToLocalTime().ToString("ddd dd MMM, h:mm tt")))</p>
+            }
+        </div>
+        <form asp-controller="OneOnOne" asp-action="Cancel" asp-route-id="@r.Id" method="post" class="oneonone-actions"
+              onsubmit="return confirm('Cancel your One-on-One request?')">
+            <button type="submit" class="btn btn-outline btn-sm">Cancel request</button>
+        </form>
+    }
+    else if (scheduled)
+    {
+        <div class="oneonone-status">
+            <span class="status-badge status-active"><i class="fas fa-calendar-check"></i>
+                @(r!.Privacy == OneOnOnePrivacy.Private ? "Private meeting scheduled" : "Scheduled")</span>
+            <p class="oneonone-when">
+                <i class="fas fa-calendar"></i> @r.ScheduledAt!.Value.ToLocalTime().ToString("dddd, dd MMMM · h:mm tt")
+                <span class="meta">(@(r.DurationMinutes ?? 30) min)</span>
+            </p>
+            @if (room != null)
+            {
+                <p><i class="fas fa-video"></i> Online · room code <strong>@room.RoomCode</strong></p>
+            }
+            else
+            {
+                <p><i class="fas fa-location-dot"></i> In person · @r.Location</p>
+            }
+            @if (!string.IsNullOrEmpty(r.OtherAttendees))
+            {
+                <p><i class="fas fa-users"></i> Also attending: @r.OtherAttendees</p>
+            }
+            @if (!string.IsNullOrEmpty(r.StaffNote))
+            {
+                <p class="oneonone-note"><i class="fas fa-comment"></i> @r.StaffNote</p>
+            }
+        </div>
+        <div class="oneonone-actions">
+            @if (room != null)
+            {
+                @if (canJoin)
+                {
+                    <a asp-controller="Meeting" asp-action="Room" asp-route-code="@room.RoomCode" class="btn btn-primary btn-sm">
+                        <i class="fas fa-right-to-bracket"></i> Join
+                    </a>
+                }
+                else
+                {
+                    <span class="meta">The Join button appears 15 minutes before the start.</span>
+                }
+            }
+            <form asp-controller="OneOnOne" asp-action="Cancel" asp-route-id="@r.Id" method="post"
+                  onsubmit="return confirm('Cancel this meeting?')">
+                <button type="submit" class="btn btn-outline btn-sm">Cancel meeting</button>
+            </form>
+        </div>
+    }
+    else
+    {
+        @if (r?.Status == OneOnOneStatus.Declined)
+        {
+            <div class="oneonone-declined">
+                <i class="fas fa-circle-info"></i>
+                Your last request couldn't be arranged.
+                @if (!string.IsNullOrEmpty(r.StaffNote))
+                {
+                    <span>“@r.StaffNote”</span>
+                }
+                You're welcome to ask again.
+            </div>
+        }
+        <form asp-controller="OneOnOne" asp-action="Ask" method="post" class="oneonone-form">
+            <div class="form-group">
+                <label for="ooTopic">What would you like to talk about?</label>
+                <textarea id="ooTopic" name="Topic" class="form-control" rows="3" maxlength="1000" required
+                          placeholder="A few words are enough">@TempData["OneOnOneTopic"]</textarea>
+                <small class="form-hint"><i class="fas fa-lock"></i> Only pastors and admins see this.</small>
+            </div>
+            <div class="form-group">
+                <label>Times that suit you <span class="meta">(up to 3)</span></label>
+                <div class="oneonone-times">
+                    <input type="datetime-local" name="Time1" class="form-control" min="@minLocal" required aria-label="First choice" />
+                    <input type="datetime-local" name="Time2" class="form-control" min="@minLocal" aria-label="Second choice" />
+                    <input type="datetime-local" name="Time3" class="form-control" min="@minLocal" aria-label="Third choice" />
+                </div>
+            </div>
+            <div class="form-group">
+                <label>How would you like to meet?</label>
+                <div class="oneonone-formats">
+                    <label><input type="radio" name="PreferredFormat" value="Either" checked /> Either</label>
+                    <label><input type="radio" name="PreferredFormat" value="Online" /> Online</label>
+                    <label><input type="radio" name="PreferredFormat" value="InPerson" /> In person</label>
+                </div>
+            </div>
+            <div class="oneonone-actions">
+                <button type="submit" class="btn btn-primary"><i class="fas fa-paper-plane"></i> Send request</button>
+                <button type="button" class="btn btn-outline oneonone-close">Not now</button>
+            </div>
+        </form>
+    }
+  </div>
+</dialog>
+<script>
+    (() => {
+        const dlg = document.getElementById('oneOnOneDialog');
+        const open = () => { if (!dlg.open) dlg.showModal(); };
+        document.getElementById('one-on-one').addEventListener('click', open);
+        dlg.querySelectorAll('.oneonone-close').forEach(b => b.addEventListener('click', () => dlg.close()));
+        // Clicking the dimmed area outside the box closes it
+        dlg.addEventListener('click', e => { if (e.target === dlg) dlg.close(); });
+        // Opened straight away from a notification link (#one-on-one) or after a failed send
+        if (@(reopen ? "true" : "false") || location.hash === '#one-on-one') open();
+    })();
+</script>

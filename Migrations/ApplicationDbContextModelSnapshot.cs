@@ -876,6 +876,45 @@ namespace ChurchMinistry.Migrations
                     b.ToTable("LiveSessions");
                 });
 
+            modelBuilder.Entity("ChurchMinistry.Models.MailTemplate", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    b.Property<string>("Body")
+                        .IsRequired()
+                        .HasColumnType("longtext");
+
+                    b.Property<string>("Key")
+                        .IsRequired()
+                        .HasMaxLength(60)
+                        .HasColumnType("varchar(60)");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("longtext");
+
+                    b.Property<string>("Subject")
+                        .IsRequired()
+                        .HasColumnType("longtext");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<int?>("UpdatedByMemberId")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Key")
+                        .IsUnique();
+
+                    b.HasIndex("UpdatedByMemberId");
+
+                    b.ToTable("MailTemplates");
+                });
+
             modelBuilder.Entity("ChurchMinistry.Models.MeetingInvitation", b =>
                 {
                     b.Property<int>("Id")
@@ -1068,6 +1107,10 @@ namespace ChurchMinistry.Migrations
                     b.Property<bool>("RecordingEnabled")
                         .HasColumnType("tinyint(1)");
 
+                    b.Property<string>("RecordingUrl")
+                        .HasMaxLength(300)
+                        .HasColumnType("varchar(300)");
+
                     b.Property<string>("RecurringPattern")
                         .HasColumnType("longtext");
 
@@ -1124,6 +1167,10 @@ namespace ChurchMinistry.Migrations
 
                     b.Property<string>("Address")
                         .HasColumnType("longtext");
+
+                    b.Property<string>("Alias")
+                        .HasMaxLength(40)
+                        .HasColumnType("varchar(40)");
 
                     b.Property<string>("AlternatePhone")
                         .HasColumnType("longtext");
@@ -1204,6 +1251,9 @@ namespace ChurchMinistry.Migrations
                         .HasColumnType("varchar(255)");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("Alias")
+                        .IsUnique();
 
                     b.HasIndex("Email")
                         .IsUnique();
@@ -1404,6 +1454,84 @@ namespace ChurchMinistry.Migrations
                     b.HasIndex("MemberId");
 
                     b.ToTable("Notifications");
+                });
+
+            modelBuilder.Entity("ChurchMinistry.Models.OneOnOneRequest", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<int?>("DurationMinutes")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Format")
+                        .HasMaxLength(20)
+                        .HasColumnType("varchar(20)");
+
+                    b.Property<DateTime?>("HandledAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("HandledByUserId")
+                        .HasColumnType("longtext");
+
+                    b.Property<string>("Location")
+                        .HasMaxLength(300)
+                        .HasColumnType("varchar(300)");
+
+                    b.Property<int?>("MeetingRoomId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("MemberId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("OtherAttendees")
+                        .HasMaxLength(300)
+                        .HasColumnType("varchar(300)");
+
+                    b.Property<string>("PreferredFormat")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("varchar(20)");
+
+                    b.Property<string>("PreferredTimes")
+                        .HasMaxLength(200)
+                        .HasColumnType("varchar(200)");
+
+                    b.Property<string>("Privacy")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("varchar(20)");
+
+                    b.Property<DateTime?>("ScheduledAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("StaffNote")
+                        .HasMaxLength(1000)
+                        .HasColumnType("varchar(1000)");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("varchar(20)");
+
+                    b.Property<string>("Topic")
+                        .IsRequired()
+                        .HasMaxLength(1000)
+                        .HasColumnType("varchar(1000)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("MeetingRoomId");
+
+                    b.HasIndex("MemberId");
+
+                    b.HasIndex("Status");
+
+                    b.ToTable("OneOnOneRequests");
                 });
 
             modelBuilder.Entity("ChurchMinistry.Models.PaymentMethodConfig", b =>
@@ -2181,6 +2309,14 @@ namespace ChurchMinistry.Migrations
                     b.Navigation("Sermon");
                 });
 
+            modelBuilder.Entity("ChurchMinistry.Models.MailTemplate", b =>
+                {
+                    b.HasOne("ChurchMinistry.Models.Member", null)
+                        .WithMany()
+                        .HasForeignKey("UpdatedByMemberId")
+                        .OnDelete(DeleteBehavior.SetNull);
+                });
+
             modelBuilder.Entity("ChurchMinistry.Models.MeetingInvitation", b =>
                 {
                     b.HasOne("ChurchMinistry.Models.MeetingRoom", "MeetingRoom")
@@ -2312,6 +2448,24 @@ namespace ChurchMinistry.Migrations
                     b.HasOne("ChurchMinistry.Models.Member", "Member")
                         .WithMany()
                         .HasForeignKey("MemberId");
+
+                    b.Navigation("Member");
+                });
+
+            modelBuilder.Entity("ChurchMinistry.Models.OneOnOneRequest", b =>
+                {
+                    b.HasOne("ChurchMinistry.Models.MeetingRoom", "MeetingRoom")
+                        .WithMany()
+                        .HasForeignKey("MeetingRoomId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.HasOne("ChurchMinistry.Models.Member", "Member")
+                        .WithMany()
+                        .HasForeignKey("MemberId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("MeetingRoom");
 
                     b.Navigation("Member");
                 });

@@ -84,6 +84,7 @@
                                     @r.MeetingType
                                     @if (!r.IsPublic) { <span title="Private"><i class="fas fa-lock"></i> Private</span> }
                                     @if (r.RecurrenceLabel != null) { <span><i class="fas fa-rotate"></i> @r.RecurrenceLabel</span> }
+                                    @if (r.RecordingUrl != null) { <a href="@r.RecordingUrl" target="_blank" title="Listen to the recording"><i class="fas fa-headphones"></i> Recording</a> }
                                 </div>
                             </td>
                             <td><code class="mr-code">@r.RoomCode</code></td>

@@ -67,6 +67,37 @@
         }
     }
 
+    @* ── Cards / Calendar switch (remembered per browser; ?view=calendar links straight to it) ── *@
+    <div class="meet-view-switch" role="tablist" aria-label="How to show meetings">
+        <button type="button" role="tab" data-view="cards" aria-selected="true"><i class="fas fa-grip"></i> Cards</button>
+        <button type="button" role="tab" data-view="calendar" aria-selected="false"><i class="fas fa-calendar-days"></i> Calendar</button>
+    </div>
+
+    <section id="meetCalendarView" class="lobby-section meet-calendar" hidden>
+        <div id="meetCalendar"></div>
+        <p class="meet-cal-legend">
+            <span><i class="mc-dot mc-dot-live"></i> Live now</span>
+            <span><i class="mc-dot mc-dot-repeat"></i> Repeats (not open yet)</span>
+            <span><i class="mc-dot mc-dot-pending"></i> Waiting for approval</span>
+            <span><i class="mc-dot mc-dot-ended"></i> Ended</span>
+        </p>
+    </section>
+
+    <dialog class="meet-cal-dialog" id="meetCalDialog" aria-labelledby="mcdTitle">
+        <div class="meet-cal-dialog-body">
+            <div class="meet-cal-dialog-head">
+                <div class="meet-card-pills" id="mcdPills"></div>
+                <button type="button" class="meet-cal-close" aria-label="Close"><i class="fas fa-times"></i></button>
+            </div>
+            <h3 id="mcdTitle"></h3>
+            <p class="meet-time"><i class="fas fa-calendar"></i> <span id="mcdWhen"></span></p>
+            <p class="meet-host"><i class="fas fa-user"></i> <span id="mcdHost"></span></p>
+            <p class="meet-cal-note" id="mcdNote" hidden></p>
+            <div class="meet-card-actions" id="mcdActions"></div>
+        </div>
+    </dialog>
+
+    <div id="meetCardsView">
     @* ── Live now ── *@
     @if (Model.LiveMeetings.Any())
     {
@@ -96,7 +127,7 @@
                                 }
                             </p>
                         }
-                        <p class="meet-host"><i class="fas fa-user"></i> @(room.HostMember?.FullName ?? "Host")</p>
+                        <p class="meet-host"><i class="fas fa-user"></i> @(room.HostMember?.NameFor(User) ?? "Host")</p>
                         <div class="meet-card-meta">
                             <span><i class="fas fa-users"></i> @room.Participants.Count(p => p.LeftAt == null) joined</span>
                             <span><i class="fas fa-clock"></i> @(room.StartedAt.HasValue ? GetAgo(room.StartedAt.Value) : "Live")</span>
@@ -126,7 +157,13 @@
                 {
                     <div class="meet-card" style="border-left:3px solid var(--purple)">
                         <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:.5rem">
-                            <div class="meet-card-type @room.MeetingType.ToString().ToLower()">@room.MeetingType</div>
+                            <div class="meet-card-pills">
+                                <div class="meet-card-type @room.MeetingType.ToString().ToLower()">@room.MeetingType</div>
+                                @if (room.IsRecurring)
+                                {
+                                    <span class="recurring-badge"><i class="fas fa-rotate"></i> @(room.RecurrenceLabel ?? "Recurring")</span>
+                                }
+                            </div>
                             <div style="display:flex;gap:.35rem">
                                 @if (!room.IsPublic)
                                 {
@@ -170,10 +207,6 @@
                                 <i class="fas fa-calendar"></i>
                                 @room.ScheduledAt.Value.ToLocalTime().ToString("ddd, dd MMM · h:mm tt")
                             </p>
-                        }
-                        @if (room.IsRecurring)
-                        {
-                            <span class="recurring-badge"><i class="fas fa-rotate"></i> @(room.RecurrenceLabel ?? "Recurring")</span>
                         }
                         <div class="meet-card-actions">
                             <a asp-action="Room" asp-route-code="@room.RoomCode" class="btn-meet btn-meet-primary btn-sm">
@@ -220,7 +253,7 @@
                                 }
                             </p>
                         }
-                        <p class="meet-host"><i class="fas fa-user"></i> @(room.HostMember?.FullName ?? "Host")</p>
+                        <p class="meet-host"><i class="fas fa-user"></i> @(room.HostMember?.NameFor(User) ?? "Host")</p>
                         @if (room.ScheduledAt.HasValue)
                         {
                             <p class="meet-time">
@@ -282,7 +315,7 @@
                                 }
                             </p>
                         }
-                        <p class="meet-host"><i class="fas fa-user"></i> @(room.HostMember?.FullName ?? "Host")</p>
+                        <p class="meet-host"><i class="fas fa-user"></i> @(room.HostMember?.NameFor(User) ?? "Host")</p>
                         @if (room.ScheduledAt.HasValue)
                         {
                             <p class="meet-time">
@@ -364,7 +397,13 @@
                 @foreach (var room in Model.ScheduledMeetings)
                 {
                     <div class="meet-card">
-                        <div class="meet-card-type @room.MeetingType.ToString().ToLower()">@room.MeetingType</div>
+                        <div class="meet-card-pills">
+                            <div class="meet-card-type @room.MeetingType.ToString().ToLower()">@room.MeetingType</div>
+                            @if (room.IsRecurring)
+                            {
+                                <span class="recurring-badge"><i class="fas fa-rotate"></i> @(room.RecurrenceLabel ?? "Recurring")</span>
+                            }
+                        </div>
                         <h3>@room.Title</h3>
                         @if (Model.LinkedSermons.TryGetValue(room.RoomCode, out var linked))
                         {
@@ -384,17 +423,13 @@
                                 }
                             </p>
                         }
-                        <p class="meet-host"><i class="fas fa-user"></i> @(room.HostMember?.FullName ?? "Host")</p>
+                        <p class="meet-host"><i class="fas fa-user"></i> @(room.HostMember?.NameFor(User) ?? "Host")</p>
                         @if (room.ScheduledAt.HasValue)
                         {
                             <p class="meet-time">
                                 <i class="fas fa-calendar"></i>
                                 @room.ScheduledAt.Value.ToLocalTime().ToString("ddd, dd MMM · h:mm tt")
                             </p>
-                        }
-                        @if (room.IsRecurring)
-                        {
-                            <span class="recurring-badge"><i class="fas fa-rotate"></i> @(room.RecurrenceLabel ?? "Recurring")</span>
                         }
                         <div class="meet-card-actions">
                             <a asp-action="Room" asp-route-code="@room.RoomCode" class="btn-meet btn-meet-outline btn-sm">
@@ -455,6 +490,12 @@
                                 <span><i class="fas fa-calendar"></i> @room.EndedAt.Value.ToLocalTime().ToString("dd MMM yyyy")</span>
                             }
                         </div>
+                        @if (!string.IsNullOrEmpty(room.RecordingUrl))
+                        {
+                            <a href="/Meeting/Recording/@room.Id" target="_blank" class="meet-rec-link">
+                                <i class="fas fa-headphones"></i> Listen to recording
+                            </a>
+                        }
                     </div>
                 }
             </div>
@@ -470,7 +511,113 @@
             <p>Schedule one for later, or ask an admin to start an instant meeting.</p>
         </div>
     }
+    </div>
 </div>
+
+@section Scripts {
+    <script src="https://cdn.jsdelivr.net/npm/fullcalendar@@6.1.15/index.global.min.js"></script>
+    <script>
+        (() => {
+            const KEY = 'meetings.view';
+            const cardsView = document.getElementById('meetCardsView');
+            const calView = document.getElementById('meetCalendarView');
+            const tabs = document.querySelectorAll('.meet-view-switch [data-view]');
+            const phone = matchMedia('(max-width: 640px)').matches;
+            let calendar = null;
+
+            const read = () => { try { return localStorage.getItem(KEY); } catch { return null; } };
+            const save = v => { try { localStorage.setItem(KEY, v); } catch { } };
+
+            function show(view, push) {
+                const cal = view === 'calendar';
+                cardsView.hidden = cal; calView.hidden = !cal;
+                tabs.forEach(t => t.setAttribute('aria-selected', String(t.dataset.view === view)));
+                save(view);
+                if (push) {
+                    const url = new URL(location.href);
+                    if (cal) url.searchParams.set('view', 'calendar'); else url.searchParams.delete('view');
+                    history.pushState({ view }, '', url);
+                }
+                if (cal) { if (!calendar) build(); else calendar.updateSize(); }
+            }
+            tabs.forEach(t => t.addEventListener('click', () => show(t.dataset.view, true)));
+            addEventListener('popstate', () => show(new URL(location.href).searchParams.get('view') === 'calendar' ? 'calendar' : 'cards', false));
+
+            // ── Calendar ──
+            const fmtWhen = new Intl.DateTimeFormat(undefined, { weekday: 'short', day: '2-digit', month: 'short', hour: 'numeric', minute: '2-digit' });
+            const fmtTime = new Intl.DateTimeFormat(undefined, { hour: 'numeric', minute: '2-digit' });
+            const typeLabel = t => t.replace(/([a-z])([A-Z])/g, '$1 $2');
+            const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+            function build() {
+                calendar = new FullCalendar.Calendar(document.getElementById('meetCalendar'), {
+                    // Phones: only a week as a list (month and week grids are too cramped there)
+                    initialView: phone ? 'listWeek' : 'dayGridMonth',
+                    headerToolbar: phone
+                        ? { left: 'prev,next', center: 'title', right: 'today' }
+                        : { left: 'prev,next today', center: 'title', right: 'dayGridMonth,timeGridWeek,listMonth' },
+                    footerToolbar: false,
+                    buttonText: { today: 'Today', month: 'Month', week: 'Week', list: 'List' },
+                    firstDay: 0, height: 'auto', nowIndicator: true, dayMaxEvents: 3, eventDisplay: 'block',
+                    eventTimeFormat: { hour: 'numeric', minute: '2-digit', meridiem: 'short' },
+                    slotMinTime: '05:00:00', scrollTime: '07:00:00',
+                    noEventsContent: 'No meetings in this period',
+                    events: (info, ok, fail) =>
+                        fetch(`/Meeting/CalendarEvents?start=${encodeURIComponent(info.startStr)}&end=${encodeURIComponent(info.endStr)}`)
+                            .then(r => r.ok ? r.json() : Promise.reject(r.status)).then(ok).catch(fail),
+                    eventClick: info => { info.jsEvent.preventDefault(); openDetails(info.event); },
+                    eventDidMount: info => {
+                        const p = info.event.extendedProps;
+                        info.el.title = `${info.event.title} · ${p.host}` + (p.status === 'repeat' ? ' (repeats)' : '');
+                        if (p.isPrivate) info.el.querySelector('.fc-event-title, .fc-list-event-title a')
+                            ?.insertAdjacentHTML('afterbegin', '<i class="fas fa-lock mc-lock"></i> ');
+                    },
+                });
+                calendar.render();
+            }
+
+            // ── Details pop-up ──
+            const dlg = document.getElementById('meetCalDialog');
+            dlg.querySelector('.meet-cal-close').addEventListener('click', () => dlg.close());
+            dlg.addEventListener('click', e => { if (e.target === dlg) dlg.close(); });
+
+            function openDetails(ev) {
+                const p = ev.extendedProps;
+                const pills = [`<div class="meet-card-type ${p.type.toLowerCase()}">${esc(typeLabel(p.type))}</div>`];
+                if (p.recurrence) pills.push(`<span class="recurring-badge"><i class="fas fa-rotate"></i> ${esc(p.recurrence)}</span>`);
+                if (p.isPrivate) pills.push('<span class="meet-private-badge"><i class="fas fa-lock"></i> Private</span>');
+                if (p.status === 'live') pills.push('<span class="mc-live-pill"><span class="live-dot"></span> Live</span>');
+                document.getElementById('mcdPills').innerHTML = pills.join('');
+                document.getElementById('mcdTitle').textContent = ev.title;
+                document.getElementById('mcdWhen').textContent = fmtWhen.format(ev.start) + (ev.end ? ' – ' + fmtTime.format(ev.end) : '');
+                document.getElementById('mcdHost').textContent = p.host;
+
+                const note = {
+                    repeat: 'This is a later date of a repeating meeting. Its room opens once the meeting before it has ended.',
+                    pending: 'Waiting for approval by an admin or pastor.',
+                    ended: 'This meeting has ended.',
+                }[p.status] ?? (!p.canJoin && p.joinOpens ? `You can join from ${fmtTime.format(new Date(p.joinOpens))} on the day.` : null);
+                const noteEl = document.getElementById('mcdNote');
+                noteEl.hidden = !note; noteEl.textContent = note ?? '';
+
+                const actions = [];
+                if (p.canJoin) actions.push(`<a href="/meeting/room/${encodeURIComponent(p.code)}" class="btn-meet btn-meet-primary btn-sm"><i class="fas fa-video"></i> ${p.status === 'live' ? 'Join Now' : 'Join'}</a>`);
+                if (p.recording) actions.push(`<a href="${esc(p.recording)}" target="_blank" class="btn-meet btn-meet-outline btn-sm meet-rec-link"><i class="fas fa-headphones"></i> Listen to recording</a>`);
+                if (p.code) actions.push(`<span class="room-code-badge">${esc(p.code)}</span>`);
+                if (p.canManage && p.status !== 'ended') {
+                    actions.push(`<a href="/Meeting/Edit/${p.meetingId}" class="meet-icon-btn" title="Edit meeting"><i class="fas fa-pencil-alt"></i></a>`);
+                    if (p.isPrivate) actions.push(`<a href="/Meeting/Invite/${p.meetingId}" class="meet-icon-btn meet-icon-btn-invite" title="Invite people"><i class="fas fa-user-plus"></i></a>`);
+                }
+                document.getElementById('mcdActions').innerHTML = actions.join('');
+                dlg.showModal();
+            }
+
+            // Start in the view from the link, else the one used last
+            const fromUrl = new URL(location.href).searchParams.get('view');
+            show(fromUrl === 'calendar' || (!fromUrl && read() === 'calendar') ? 'calendar' : 'cards', false);
+        })();
+    </script>
+}
 
 <style>
     .meet-private-badge {

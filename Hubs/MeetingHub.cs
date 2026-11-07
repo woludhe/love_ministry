@@ -58,8 +58,9 @@ namespace ChurchMinistry.Hubs
             var isEffectiveHost = isHostMember || isAdminPastor;
 
             // The name comes from the server where we know it: a member's own name, and "Admin"
-            // (not the email) for the admin login, which has no member profile
-            if (member != null) displayName = member.FullName;
+            // (not the email) for the admin login, which has no member profile. A member's saved
+            // name is their public one ("@alias" if they have one); staff are sent real names.
+            if (member != null) displayName = member.PublicName;
             else if (Context.User!.IsInRole("Admin")) displayName = MeetingAvatar.AdminName;
 
             // Upsert participant
@@ -106,18 +107,20 @@ namespace ChurchMinistry.Hubs
 
                 if (superseded)
                 {
-                    await Groups.RemoveFromGroupAsync(oldConnectionId!, roomCode);
+                    await HubAudience.LeaveAsync(Groups, oldConnectionId!, roomCode);
                     await Clients.Group(roomCode).SendAsync("PeerLeft", oldConnectionId, participant.IsHost);
                     await Clients.Group(ViewersGroup(roomCode)).SendAsync("PeerLeft", oldConnectionId, participant.IsHost);
                     await _liveKit.RemoveParticipantAsync(_liveKit.RoomName(roomCode), oldConnectionId!);
                 }
             }
 
-            await Groups.AddToGroupAsync(Context.ConnectionId, roomCode);
+            // Split into staff and members, who are sent names differently (HubAudience)
+            await HubAudience.JoinAsync(Context, Groups, roomCode);
+            var staffName = member?.StaffName ?? participant.DisplayName;
 
             // People in the waiting room are announced only once admitted
             if (!participant.IsInWaitingRoom)
-                await AnnounceJoinAsync(roomCode, participant, member?.ProfilePhoto, isAdminPastor);
+                await AnnounceJoinAsync(roomCode, participant, staffName, member?.ProfilePhoto, isAdminPastor);
 
             var forceMuted = !participant.IsHost && _muteOnEntry.ContainsKey(roomCode);
             if (forceMuted) { participant.IsMuted = true; await _db.SaveChangesAsync(); }
@@ -127,7 +130,7 @@ namespace ChurchMinistry.Hubs
                 roomCode,
                 participants    = participant.IsInWaitingRoom
                                     ? new List<ParticipantDto>()
-                                    : await GetActiveParticipantsAsync(room.Id),
+                                    : await GetActiveParticipantsAsync(room.Id, staff: Context.User.IsStaff()),
                 isInWaitingRoom = participant.IsInWaitingRoom,
                 chatEnabled     = room.ChatEnabled,
                 isHost          = participant.IsHost,
@@ -139,30 +142,38 @@ namespace ChurchMinistry.Hubs
             // Notify every host present if this person is waiting
             if (participant.IsInWaitingRoom)
             {
-                var hostConnections = await _db.MeetingParticipants
+                var hosts = await _db.MeetingParticipants
                     .Where(p => p.MeetingRoomId == room.Id && p.IsHost && p.LeftAt == null && p.ConnectionId != null)
-                    .Select(p => p.ConnectionId!)
+                    .Select(p => new { p.ConnectionId, p.MemberId })
                     .ToListAsync();
-                if (hostConnections.Count > 0)
-                    await Clients.Clients(hostConnections).SendAsync("WaitingRoomRequest", new
-                    {
-                        connectionId  = Context.ConnectionId,
-                        displayName   = participant.DisplayName,
-                        participantId = participant.Id
-                    });
+                // A member who hosts sees the alias; Admin/Pastor hosts see the real name
+                var staffIds = await StaffMemberIdsAsync(hosts.Select(h => h.MemberId));
+                foreach (var staffHost in new[] { true, false })
+                {
+                    var connections = hosts.Where(h => IsStaffParticipant(h.MemberId, staffIds) == staffHost)
+                        .Select(h => h.ConnectionId!).ToList();
+                    if (connections.Count > 0)
+                        await Clients.Clients(connections).SendAsync("WaitingRoomRequest", new
+                        {
+                            connectionId  = Context.ConnectionId,
+                            displayName   = staffHost ? staffName : participant.DisplayName,
+                            participantId = participant.Id
+                        });
+                }
             }
 
             // A host arriving late must still see people who were already waiting
             if (participant.IsHost && room.WaitingRoomEnabled)
             {
                 var waiting = await _db.MeetingParticipants
+                    .Include(p => p.Member)
                     .Where(p => p.MeetingRoomId == room.Id && p.IsInWaitingRoom && p.LeftAt == null && p.ConnectionId != null)
                     .ToListAsync();
                 foreach (var w in waiting)
                     await Clients.Caller.SendAsync("WaitingRoomRequest", new
                     {
                         connectionId  = w.ConnectionId,
-                        displayName   = w.DisplayName,
+                        displayName   = w.Member?.NameFor(Context.User) ?? w.DisplayName,
                         participantId = w.Id
                     });
             }
@@ -210,36 +221,48 @@ namespace ChurchMinistry.Hubs
         public record ParticipantDto(string? connectionId, string displayName, bool isHost,
             bool isAdminPastor, bool isMuted, bool isVideoOff, bool isHandRaised, string photo);
 
-        // Admitted, present participants other than the caller (or the given connection)
-        private async Task<List<ParticipantDto>> GetActiveParticipantsAsync(int roomId, string? excludeConnectionId = null)
+        // Admitted, present participants other than the caller (or the given connection).
+        // staff: whether the person receiving the list sees real names.
+        private async Task<List<ParticipantDto>> GetActiveParticipantsAsync(int roomId, string? excludeConnectionId = null,
+            bool staff = false)
         {
             var exclude = excludeConnectionId ?? Context.ConnectionId;
-            return await _db.MeetingParticipants
-                .Include(p => p.Member)
+            var rows = await _db.MeetingParticipants
                 .Where(p => p.MeetingRoomId == roomId && p.LeftAt == null && p.IsAdmitted
                          && p.ConnectionId != exclude)
-                .Select(p => new ParticipantDto(
+                .Select(p => new
+                {
+                    p.ConnectionId, p.DisplayName, p.IsHost, p.IsMuted, p.IsVideoOff, p.IsHandRaised,
+                    First = p.Member != null ? p.Member.FirstName : null,
+                    Last  = p.Member != null ? p.Member.LastName : null,
+                    Alias = p.Member != null ? p.Member.Alias : null,
+                    Photo = p.Member != null
+                        ? p.Member.ProfilePhoto ?? MeetingAvatar.Default
+                        : p.IsHost ? MeetingAvatar.SiteLogo : MeetingAvatar.Default
+                })
+                .ToListAsync();
+            return rows.Select(p => new ParticipantDto(
                     p.ConnectionId,
-                    p.DisplayName,
+                    p.First == null ? p.DisplayName : MemberNames.For(p.First, p.Last, p.Alias, staff),
                     p.IsHost,
                     p.IsHost,   // host flag doubles as admin indicator for clients
                     p.IsMuted,
                     p.IsVideoOff,
                     p.IsHandRaised,
-                    p.Member != null
-                        ? p.Member.ProfilePhoto ?? MeetingAvatar.Default
-                        : p.IsHost ? MeetingAvatar.SiteLogo : MeetingAvatar.Default))
-                .ToListAsync();
+                    p.Photo))
+                .ToList();
         }
 
-        private async Task AnnounceJoinAsync(string roomCode, MeetingParticipant participant,
+        // Tells the room (and Live page viewers) someone came in. staffName is what Admins
+        // and Pastors see; everyone else gets participant.DisplayName (the public name).
+        private async Task AnnounceJoinAsync(string roomCode, MeetingParticipant participant, string staffName,
             string? photo, bool isAdminPastor, string? connectionId = null)
         {
             var cid = connectionId ?? Context.ConnectionId;
-            var joined = new
+            object Joined(bool staff) => new
             {
                 connectionId  = cid,
-                displayName   = participant.DisplayName,
+                displayName   = staff ? staffName : participant.DisplayName,
                 isHost        = participant.IsHost,
                 isAdminPastor = participant.IsHost || isAdminPastor,
                 memberId      = participant.MemberId,
@@ -247,11 +270,26 @@ namespace ChurchMinistry.Hubs
                 isVideoOff    = participant.IsVideoOff,
                 photo         = photo ?? MeetingAvatar.For(participant.MemberId, null, participant.IsHost)
             };
-            await Clients.GroupExcept(roomCode, cid).SendAsync("PeerJoined", joined);
-            await Clients.Group(ViewersGroup(roomCode)).SendAsync("PeerJoined", joined);
-            await Clients.Group(roomCode).SendAsync("SystemMessage",
-                $"{participant.DisplayName} joined the meeting");
+            await HubAudience.SendAsync(Clients, roomCode, "PeerJoined", s => new[] { Joined(s) }, cid);
+            await HubAudience.SendAsync(Clients, ViewersGroup(roomCode), "PeerJoined", s => new[] { Joined(s) });
+            await HubAudience.SendAsync(Clients, roomCode, "SystemMessage",
+                s => new object?[] { $"{(s ? staffName : participant.DisplayName)} joined the meeting" });
         }
+
+        // Which of these members are Admins or Pastors
+        private async Task<HashSet<int>> StaffMemberIdsAsync(IEnumerable<int?> memberIds)
+        {
+            var ids = memberIds.Where(i => i != null).Select(i => i!.Value).Distinct().ToList();
+            if (ids.Count == 0) return new HashSet<int>();
+            return (await _db.Members
+                .Where(m => ids.Contains(m.Id) && m.UserId != null
+                    && _db.UserRoles.Any(ur => ur.UserId == m.UserId
+                        && _db.Roles.Any(r => r.Id == ur.RoleId && (r.Name == "Admin" || r.Name == "Pastor"))))
+                .Select(m => m.Id).ToListAsync()).ToHashSet();
+        }
+        // A participant without a member profile who is in the meeting is the admin login
+        private static bool IsStaffParticipant(int? memberId, HashSet<int> staffIds)
+            => memberId == null || staffIds.Contains(memberId.Value);
 
         // Room host (creator), or any Admin/Pastor
         private async Task<bool> IsRoomHostAsync(string roomCode)
@@ -291,10 +329,12 @@ namespace ChurchMinistry.Hubs
         public async Task RaiseHand(string roomCode, bool isRaised)
         {
             var p = await _db.MeetingParticipants
+                .Include(x => x.Member)
                 .FirstOrDefaultAsync(x => x.ConnectionId == Context.ConnectionId);
             if (p != null) { p.IsHandRaised = isRaised; await _db.SaveChangesAsync(); }
-            await Clients.Group(roomCode).SendAsync("HandRaised",
-                Context.ConnectionId, isRaised, p?.DisplayName ?? "Someone");
+            await HubAudience.SendAsync(Clients, roomCode, "HandRaised", staff => new object?[] {
+                Context.ConnectionId, isRaised,
+                (staff ? p?.Member?.StaffName : null) ?? p?.DisplayName ?? "Someone" });
         }
 
         // ── Chat ───────────────────────────────────────────────
@@ -303,6 +343,7 @@ namespace ChurchMinistry.Hubs
         {
             var p = await _db.MeetingParticipants
                 .Include(x => x.MeetingRoom)
+                .Include(x => x.Member)
                 .FirstOrDefaultAsync(x => x.ConnectionId == Context.ConnectionId);
             if (p == null || p.IsInWaitingRoom || string.IsNullOrWhiteSpace(message)) return;
             if (type != "prayer") type = "chat";
@@ -320,27 +361,26 @@ namespace ChurchMinistry.Hubs
             _db.MeetingMessages.Add(msg);
             await _db.SaveChangesAsync();
 
-            var photo = p.MemberId == null ? (p.IsHost ? MeetingAvatar.SiteLogo : null)
-                : await _db.Members.Where(m => m.Id == p.MemberId).Select(m => m.ProfilePhoto).FirstOrDefaultAsync();
-            var item = new SermonChat.Item(msg.SenderName, msg.Message, msg.Type, msg.SentAt,
+            var photo = p.MemberId == null ? (p.IsHost ? MeetingAvatar.SiteLogo : null) : p.Member?.ProfilePhoto;
+            var staffName = p.Member?.StaffName ?? msg.SenderName;
+            var item = new SermonChat.Item(msg.SenderName, staffName, msg.Message, msg.Type, msg.SentAt,
                 photo, SermonChat.FromMeeting, null, msg.MemberId);
 
-            // Room members find their own message by connectionId
-            await Clients.Group(roomCode).SendAsync("ReceiveMessage", new
+            // Room members find their own message by connectionId; staff see the real name
+            await HubAudience.SendAsync(Clients, roomCode, "ReceiveMessage", staff => new object?[] { new
             {
                 id = msg.Id,
-                senderName = msg.SenderName,
+                senderName = staff ? staffName : msg.SenderName,
                 message = msg.Message,
                 type = msg.Type,
                 sentAt = DateTime.SpecifyKind(msg.SentAt, DateTimeKind.Utc).ToString("o"),
                 source = SermonChat.FromMeeting,
                 connectionId = Context.ConnectionId
-            });
+            } });
 
             // Same conversation on the Live page of the sermon this room belongs to
             if (await SermonChat.SermonForRoomAsync(_db, roomCode) is int sermonId)
-                await _liveHub.Clients.Group($"livechat-{sermonId}")
-                    .SendAsync("LiveChatMessage", SermonChat.Payload(item, isOwn: false));
+                await SermonChat.SendAsync(_liveHub.Clients, $"livechat-{sermonId}", "LiveChatMessage", item);
         }
 
         // Chat so far, for someone entering the room: the room's messages, plus the Live page's
@@ -358,7 +398,7 @@ namespace ChurchMinistry.Hubs
                 .Select(m => (int?)m.Id).FirstOrDefaultAsync();
             var sermonId = await SermonChat.SermonForRoomAsync(_db, roomCode);
             var items = await SermonChat.LoadAsync(_db, sermonId, p.MeetingRoomId);
-            return items.Select(i => SermonChat.Payload(i, i.IsFrom(userId, memberId)));
+            return items.Select(i => SermonChat.Payload(i, i.IsFrom(userId, memberId), Context.User.IsStaff()));
         }
 
         // ── Reactions ──────────────────────────────────────────
@@ -393,8 +433,10 @@ namespace ChurchMinistry.Hubs
 
             // Announce to the room now that they're in, then give the admitted
             // person the participant list so they can connect to everyone
-            await AnnounceJoinAsync(roomCode, p, p.Member?.ProfilePhoto, false, p.ConnectionId);
-            var others = await GetActiveParticipantsAsync(p.MeetingRoomId, p.ConnectionId);
+            await AnnounceJoinAsync(roomCode, p, p.Member?.StaffName ?? p.DisplayName, p.Member?.ProfilePhoto, false, p.ConnectionId);
+            // The list goes to the admitted person: real names only if they are staff
+            var admittedIsStaff = IsStaffParticipant(p.MemberId, await StaffMemberIdsAsync(new[] { p.MemberId }));
+            var others = await GetActiveParticipantsAsync(p.MeetingRoomId, p.ConnectionId, admittedIsStaff);
             await Clients.Client(p.ConnectionId).SendAsync("Admitted", new
             {
                 participants = others,
@@ -414,7 +456,7 @@ namespace ChurchMinistry.Hubs
             await Clients.Client(targetConnectionId).SendAsync("Removed");
             // Cut their audio/video on the media server too, whatever their page does
             await _liveKit.RemoveParticipantAsync(_liveKit.RoomName(roomCode), targetConnectionId);
-            await Groups.RemoveFromGroupAsync(targetConnectionId, roomCode);
+            await HubAudience.LeaveAsync(Groups, targetConnectionId, roomCode);
             await Clients.Group(roomCode).SendAsync("PeerLeft", targetConnectionId, p?.IsHost ?? false);
             await Clients.Group(ViewersGroup(roomCode)).SendAsync("PeerLeft", targetConnectionId, p?.IsHost ?? false);
             await ClearSpotlightIfAsync(roomCode, targetConnectionId);
@@ -466,8 +508,8 @@ namespace ChurchMinistry.Hubs
                     .Select(s => s.Id).ToListAsync();
                 await _attendance.CloseSermonAttendanceAsync(sermonIds);
 
-                // The audio recorded while the sermon was live becomes its recording
-                foreach (var id in sermonIds) _recordings.QueueFinalize(id);
+                // What was recorded becomes the meeting's recording (and its sermon's)
+                _recordings.QueueFinalize(room.Id);
 
                 // Recurring: next week's meeting (its own room code) is created now
                 await _series.CreateNextAsync(room);
@@ -518,18 +560,17 @@ namespace ChurchMinistry.Hubs
         {
             var wasRecording = _recorders.TryGetValue(roomCode, out var holder) && holder == Context.ConnectionId;
             await HandleDisconnect(roomCode);
-            await Groups.RemoveFromGroupAsync(Context.ConnectionId, roomCode);
+            await HubAudience.LeaveAsync(Context, Groups, roomCode);
 
             // The recording host left: save what was recorded, unless a host has taken over
             // (or come back) by then. A dropped connection doesn't do this: that page may
             // reconnect and carry on recording.
             if (wasRecording)
             {
-                var sermonIds = await _db.Sermons
-                    .Where(s => s.MeetingRoomCode == roomCode)
-                    .Select(s => s.Id).ToListAsync();
-                foreach (var id in sermonIds)
-                    _recordings.QueueFinalize(id, () => _recorders.ContainsKey(roomCode));
+                var roomId = await _db.MeetingRooms.Where(r => r.RoomCode == roomCode)
+                    .Select(r => (int?)r.Id).FirstOrDefaultAsync();
+                if (roomId != null)
+                    _recordings.QueueFinalize(roomId.Value, () => _recorders.ContainsKey(roomCode));
             }
         }
 
@@ -555,8 +596,8 @@ namespace ChurchMinistry.Hubs
         }
 
         // ── Recording ─────────────────────────────────────────
-        // One host's page records the meeting's audio while its sermon is live (several
-        // hosts may be in the room: Admins and Pastors count as hosts too).
+        // One host's page records the meeting's audio when the meeting is set to record
+        // (several hosts may be in the room: Admins and Pastors count as hosts too).
         // Room code → the recording connection.
         private static readonly ConcurrentDictionary<string, string> _recorders = new();
 
@@ -581,6 +622,7 @@ namespace ChurchMinistry.Hubs
         {
             await ReleaseRecorderAsync(roomCode);
             var p = await _db.MeetingParticipants.AsNoTracking()
+                .Include(x => x.Member)
                 .FirstOrDefaultAsync(x => x.ConnectionId == Context.ConnectionId && x.LeftAt == null);
             // Only if the row still belongs to this connection: the same person may have just
             // rejoined on a new connection, which takes the row over
@@ -592,8 +634,8 @@ namespace ChurchMinistry.Hubs
                 // Include isHost so Live page knows if host left and should show "Starting Soon"
                 await Clients.OthersInGroup(roomCode).SendAsync("PeerLeft", Context.ConnectionId, p.IsHost);
                 await Clients.Group(ViewersGroup(roomCode)).SendAsync("PeerLeft", Context.ConnectionId, p.IsHost);
-                await Clients.Group(roomCode).SendAsync("SystemMessage",
-                    $"{p.DisplayName} left the meeting");
+                await HubAudience.SendAsync(Clients, roomCode, "SystemMessage", staff => new object?[] {
+                    $"{(staff ? p.Member?.StaffName : null) ?? p.DisplayName} left the meeting" });
                 await ClearSpotlightIfAsync(roomCode, Context.ConnectionId);
                 await BroadcastViewerCount(roomCode);
                 // The media room is left alone here: this also runs for a connection that is
@@ -640,7 +682,8 @@ namespace ChurchMinistry.Hubs
                 return;
 
             // A separate group from the meeting's, so meeting-only messages don't reach viewers
-            await Groups.AddToGroupAsync(Context.ConnectionId, ViewersGroup(roomCode));
+            // (and its staff/members half: see HubAudience)
+            await HubAudience.JoinAsync(Context, Groups, ViewersGroup(roomCode));
             var viewers = _roomViewers.GetOrAdd(roomCode, _ => new HashSet<string>());
             lock (viewers) { viewers.Add(Context.ConnectionId); }
 
@@ -649,7 +692,7 @@ namespace ChurchMinistry.Hubs
                 .Where(p => p.IsAdmitted)
                 .Select(p => new {
                     connectionId  = p.ConnectionId ?? "",
-                    displayName   = p.DisplayName,
+                    displayName   = p.Member?.NameFor(Context.User) ?? p.DisplayName,
                     photo         = MeetingAvatar.For(p.MemberId, p.Member?.ProfilePhoto, p.IsHost),
                     isHost        = p.IsHost,
                     isAdminPastor = p.IsHost   // IsHost covers host + admin for client purposes
@@ -674,7 +717,7 @@ namespace ChurchMinistry.Hubs
         [AllowAnonymous]
         public async Task LeaveAsViewer(string roomCode)
         {
-            await Groups.RemoveFromGroupAsync(Context.ConnectionId, ViewersGroup(roomCode));
+            await HubAudience.LeaveAsync(Context, Groups, ViewersGroup(roomCode));
             if (RemoveViewer(roomCode, Context.ConnectionId)) await BroadcastViewerCount(roomCode);
         }
 

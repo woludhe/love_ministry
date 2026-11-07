@@ -298,6 +298,33 @@ namespace ChurchMinistry.Data
                     }
                 }
             }
+
+            // ── 9. Mail Templates ──────────────────────────────────────
+            // Per-key check (not an all-or-nothing table-empty check) so a template added to the
+            // catalog later still gets seeded on installs that already have the table.
+            var churchName = config["Church:Name"] ?? "Our Church";
+            var churchAddress = config["Church:Address"] ?? "";
+            var logo = config["Church:Logo"];
+            var logoHtml = string.IsNullOrEmpty(logo) ? "" : $"<img src=\"{logo}\" alt=\"{churchName}\" style=\"max-height:48px;margin-bottom:.5rem\" />";
+            var configValues = new Dictionary<string, string>
+            {
+                ["CHURCHNAME"] = churchName,
+                ["CHURCHADDRESS"] = churchAddress,
+                ["LOGOHTML"] = logoHtml
+            };
+
+            foreach (var def in MailTemplateCatalog.All)
+            {
+                if (await db.MailTemplates.AnyAsync(t => t.Key == def.Key)) continue;
+                db.MailTemplates.Add(new MailTemplate
+                {
+                    Key = def.Key,
+                    Name = def.DisplayName,
+                    Subject = MailTemplateCatalog.Substitute(def.DefaultSubject, configValues),
+                    Body = MailTemplateCatalog.Substitute(def.DefaultBody, configValues)
+                });
+            }
+            await db.SaveChangesAsync();
         }
 
         // ── Helper: next occurrence of a weekday at a given time ──────

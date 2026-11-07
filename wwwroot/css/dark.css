@@ -450,6 +450,11 @@ html[data-theme="dark"] .prayer-wall-tab.active {
 html[data-theme="dark"] .prayed-own {
     background: var(--surface-2);
 }
+/* Prayer cards stay light (aliceblue) in dark mode, so the count needs dark text */
+html[data-theme="dark"] .prayer-count-wrap {
+    color: #374151;
+    font-weight: 600;
+}
 /* Views/Prayer/MarkAnswered.cshtml */
 html[data-theme="dark"] .share-preview {
     background: var(--surface-2);
@@ -479,3 +484,16 @@ html[data-theme="dark"] .devo-pop-close {
 html[data-theme="dark"] .devo-pop-summary {
     color: var(--text-s);
 }
+html[data-theme="dark"] .oneonone-declined { background: rgba(245,158,11,.15); color: #fcd34d; }
+html[data-theme="dark"] .btn-danger-soft { background: rgba(220,38,38,.15); color: #fca5a5; border-color: rgba(252,165,165,.4); }
+/* Meetings calendar: event tints that sit on a dark surface */
+html[data-theme="dark"] .fc-event.mc-prayer         { --mc: #c4b5fd; --mc-bg: rgba(139,92,246,.22); }
+html[data-theme="dark"] .fc-event.mc-biblestudy     { --mc: #93c5fd; --mc-bg: rgba(59,130,246,.22); }
+html[data-theme="dark"] .fc-event.mc-worship        { --mc: #f9a8d4; --mc-bg: rgba(236,72,153,.2); }
+html[data-theme="dark"] .fc-event.mc-youthservice   { --mc: #6ee7b7; --mc-bg: rgba(16,185,129,.2); }
+html[data-theme="dark"] .fc-event.mc-cellgroup      { --mc: #fcd34d; --mc-bg: rgba(245,158,11,.2); }
+html[data-theme="dark"] .fc-event.mc-generalservice { --mc: #d1d5db; --mc-bg: rgba(156,163,175,.2); }
+html[data-theme="dark"] .fc-event.mc-oneonone       { --mc: #7dd3fc; --mc-bg: rgba(14,165,233,.2); }
+html[data-theme="dark"] .meet-calendar .fc-daygrid-event.mc-repeat,
+html[data-theme="dark"] .meet-calendar .fc-timegrid-event.mc-repeat { background-image: repeating-linear-gradient(135deg, transparent 0 6px, rgba(0,0,0,.25) 6px 9px); }
+html[data-theme="dark"] .mc-dot { background: rgba(139,92,246,.3); border-left-color: #c4b5fd; }

@@ -123,7 +123,7 @@ namespace ChurchMinistry.Controllers
                 MemberId      = vm.IsAnonymous ? null : member?.Id,
                 AnonymousName = vm.IsAnonymous
                     ? (vm.AnonymousName ?? "Anonymous")
-                    : member?.FullName ?? "Anonymous"
+                    : member?.PublicName ?? "Anonymous"
             };
             _db.PrayerRequests.Add(request);
             await _db.SaveChangesAsync();

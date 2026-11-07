@@ -55,6 +55,7 @@ namespace ChurchMinistry.ViewComponents
             {
                 IsAuthenticated = true,
                 FullName = member?.FullName ?? user.UserName ?? "",
+                PublicName = member?.PublicName ?? user.UserName ?? "",
                 ProfilePhoto = member?.ProfilePhoto ?? "/images/avatar-default.png",
                 MembershipType = member?.MembershipType ?? MembershipType.Regular,
                 MemberStatus = member?.Status ?? MemberStatus.Active,
@@ -73,6 +74,8 @@ namespace ChurchMinistry.ViewComponents
     {
         public bool IsAuthenticated { get; set; }
         public string FullName { get; set; } = "";
+        /// <summary>"@Alias" when the member has set one, otherwise the real name.</summary>
+        public string PublicName { get; set; } = "";
         public string ProfilePhoto { get; set; } = "/images/avatar-default.png";
         public MembershipType MembershipType { get; set; } = MembershipType.Regular;
         public MemberStatus MemberStatus { get; set; } = MemberStatus.Active;

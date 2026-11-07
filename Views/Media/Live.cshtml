@@ -176,6 +176,10 @@
                                         title="Listen without video to save data">
                                     <i class="fas fa-headphones"></i> <span>Audio only</span>
                                 </button>
+                                <button class="live-action-btn" id="btnQuality" onclick="vq.openMenu(this)"
+                                        title="Video quality — lower keeps your phone cooler">
+                                    <i class="fas fa-sliders"></i> <span>Quality</span>
+                                </button>
                             }
 
                             @* Reactions button — between Share and Chat *@
@@ -315,7 +319,7 @@
                        style="display:none">
                         <i class="fas fa-heart"></i> Give Now
                     </a>
-                    <p class="giving-secure-note"><i class="fas fa-lock"></i> Secured by Flutterwave</p>
+                    <p class="giving-secure-note"><i class="fas fa-lock"></i> Secure payment</p>
                 </div>
             </div>
 
@@ -650,6 +654,7 @@
         <script src="~/js/wake-lock.js" asp-append-version="true"></script>
         <script src="~/js/audio-wave.js" asp-append-version="true"></script>
     }
+    <script src="~/js/video-quality.js" asp-append-version="true"></script>
     @if (Model != null && !isOnline)
     {
         <script src="~/js/live-player.js" asp-append-version="true"></script>
@@ -675,6 +680,9 @@
         // The meeting's audio/video comes from the LiveKit media server; this page only
         // watches (its token can't publish and keeps it hidden from the meeting)
         const mediaRoom = IS_ONLINE ? new LK.Room({ adaptiveStream: true, singlePeerConnection: false }) : null;
+        // How sharp the video is (wwwroot/js/video-quality.js): medium on phones by default,
+        // lower by itself when the phone gets hot or the battery is low
+        const vq = VideoQuality(LK, { room: mediaRoom, toast: m => showToast(m) });
         // Read-only hooks for automated tests
         window.__live = { mediaRoom, peerInfo };
 
@@ -855,7 +863,7 @@
                 .on(LK.RoomEvent.ParticipantDisconnected, p => { document.getElementById(`tile-${p.identity}`)?.remove(); reflow(); })
                 .on(LK.RoomEvent.TrackSubscribed, (track, pub, p) => {
                     if (track.kind === 'audio') { audioBox.appendChild(track.attach()); wave.addTrack(track.sid, track.mediaStreamTrack); }
-                    else showRemoteVideo(p.identity);
+                    else { vq.apply(pub); showRemoteVideo(p.identity); }
                 })
                 .on(LK.RoomEvent.TrackUnsubscribed, (track, pub, p) => {
                     if (track.kind === 'audio') { track.detach().forEach(el => el.remove()); wave.removeTrack(track.sid); }
@@ -931,6 +939,8 @@
             document.getElementById('reactionsBar')?.classList.remove('visible');
         }
         function showFloatingReaction(emoji) {
+            // Phones: a few at a time is enough (each one is an animation to draw)
+            if (vq.isMobile && document.querySelectorAll('.floating-reaction').length >= 3) return;
             const el = document.createElement('div'); el.className = 'floating-reaction'; el.textContent = emoji;
             el.style.left = (20 + Math.random() * 60) + '%'; el.style.bottom = '120px';
             document.body.appendChild(el); setTimeout(() => el.remove(), 2600);

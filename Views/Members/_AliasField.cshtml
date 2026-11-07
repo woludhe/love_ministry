@@ -1,0 +1,20 @@
+@model ChurchMinistry.ViewModels.MemberProfileViewModel
+@* Alias (public name) field, used on My Profile and Edit Profile. Checked in MembersController. *@
+<div class="form-group">
+    <label asp-for="Alias"></label>
+    <div class="alias-input">
+        <span class="alias-at">@@</span>
+        <input asp-for="Alias" class="form-control" maxlength="@MemberNames.MaxAlias" placeholder="Optional, e.g. SisterGrace" autocomplete="off" />
+    </div>
+    <span asp-validation-for="Alias" class="field-error"></span>
+    <small class="form-hint">
+        Shown to other members as <strong>@@alias</strong> instead of your real name in community, chats, live and meetings.
+    </small>
+</div>
+<style>
+    /* The at sign sits inside the box, before what the member types */
+    .alias-input { position: relative; }
+    .alias-input .alias-at { position: absolute; left: .8rem; top: 50%; transform: translateY(-50%);
+                             color: var(--text-s); font-weight: 700; pointer-events: none; }
+    .alias-input .form-control { padding-left: 1.8rem; }
+</style>

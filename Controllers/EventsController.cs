@@ -16,16 +16,17 @@ namespace ChurchMinistry.Controllers
         private readonly UserManager<ApplicationUser> _userManager;
         private readonly IPaymentService _payment;
         private readonly IEmailService _email;
+        private readonly IMailTemplateService _mailTemplates;
         private readonly IConfiguration _config;
         private readonly IWebHostEnvironment _env;
         private readonly IActivityService _activity;
 
         public EventsController(ApplicationDbContext db, UserManager<ApplicationUser> um,
-            IPaymentService payment, IEmailService email,
+            IPaymentService payment, IEmailService email, IMailTemplateService mailTemplates,
             IConfiguration config, IWebHostEnvironment env, IActivityService activity)
         {
             _db = db; _userManager = um; _payment = payment;
-            _email = email; _config = config; _env = env; _activity = activity;
+            _email = email; _mailTemplates = mailTemplates; _config = config; _env = env; _activity = activity;
         }
 
         private async Task<Member?> GetMemberAsync()
@@ -315,25 +316,36 @@ namespace ChurchMinistry.Controllers
                             $"{ev.Title} (paid UGX {payment.Amount:N0})", ev.Id, oncePerDay: true);
 
                     // Email
-                    var emailBody = fullyPaid
-                        ? $@"<h2>Payment Complete! 🎉</h2>
-                             <p>Hi {registration.Name}, your payment of UGX {registration.AmountPaid:N0}
-                             for <strong>{ev.Title}</strong> is fully paid. You're confirmed!</p>"
-                        : $@"<h2>Partial Payment Received</h2>
-                             <p>Hi {registration.Name}, we received UGX {payment.Amount:N0}.
-                             Your remaining balance is UGX {(registration.TotalAmount - registration.AmountPaid):N0}.</p>";
-
                     if (!string.IsNullOrEmpty(registration.Email))
-                        await _email.SendEmailAsync(registration.Email,
-                            $"{(fullyPaid ? "Payment Confirmed" : "Partial Payment Received")} - {ev.Title}",
-                            emailBody, registration.Name);
+                    {
+                        var (subject, body) = fullyPaid
+                            ? await _mailTemplates.RenderAsync("EventPaymentFull", new Dictionary<string, string>
+                              {
+                                  ["NAME"] = registration.Name,
+                                  ["EVENTTITLE"] = ev.Title,
+                                  ["AMOUNTPAID"] = registration.AmountPaid.ToString("N0")
+                              })
+                            : await _mailTemplates.RenderAsync("EventPaymentPartial", new Dictionary<string, string>
+                              {
+                                  ["NAME"] = registration.Name,
+                                  ["EVENTTITLE"] = ev.Title,
+                                  ["AMOUNTRECEIVED"] = payment.Amount.ToString("N0"),
+                                  ["BALANCE"] = (registration.TotalAmount - registration.AmountPaid).ToString("N0")
+                              });
+                        await _email.SendEmailAsync(registration.Email, subject, body, registration.Name);
+                    }
 
                     // Also email behalf person
                     if (registration.IsBehalf && !string.IsNullOrEmpty(registration.BehalfEmail))
-                        await _email.SendEmailAsync(registration.BehalfEmail,
-                            $"Event Registration - {ev.Title}",
-                            $"<p>Hi {registration.BehalfName}, you have been registered for <strong>{ev.Title}</strong> by {registration.Name}.</p>",
-                            registration.BehalfName);
+                    {
+                        var (subject, body) = await _mailTemplates.RenderAsync("EventBehalfRegistration", new Dictionary<string, string>
+                        {
+                            ["BEHALFNAME"] = registration.BehalfName ?? "",
+                            ["EVENTTITLE"] = ev.Title,
+                            ["REGISTRANTNAME"] = registration.Name
+                        });
+                        await _email.SendEmailAsync(registration.BehalfEmail, subject, body, registration.BehalfName);
+                    }
 
                     TempData["Success"] = fullyPaid
                         ? "Payment complete! You are fully registered."
@@ -607,17 +619,16 @@ namespace ChurchMinistry.Controllers
         private async Task SendConfirmationEmailAsync(ChurchEvent ev,
             string name, string email, string? extra = null)
         {
-            var body = $@"
-              <h2>Registration Confirmed 🎉</h2>
-              <p>Hi {name}, your registration for <strong>{ev.Title}</strong> is confirmed.</p>
-              {(extra != null ? $"<p><em>{extra}</em></p>" : "")}
-              <table>
-                <tr><td><b>Date:</b></td><td>{ev.StartDate:dddd, dd MMMM yyyy}</td></tr>
-                <tr><td><b>Time:</b></td><td>{ev.StartDate:h:mm tt}</td></tr>
-                {(ev.Location != null ? $"<tr><td><b>Location:</b></td><td>{ev.Location}</td></tr>" : "")}
-              </table>";
-            await _email.SendEmailAsync(email,
-                $"Registration Confirmed - {ev.Title}", body, name);
+            var (subject, body) = await _mailTemplates.RenderAsync("EventRegistrationConfirmation", new Dictionary<string, string>
+            {
+                ["NAME"] = name,
+                ["EVENTTITLE"] = ev.Title,
+                ["EVENTDATE"] = ev.StartDate.ToString("dddd, dd MMMM yyyy"),
+                ["EVENTTIME"] = ev.StartDate.ToString("h:mm tt"),
+                ["EXTRANOTE"] = extra != null ? $"<p><em>{extra}</em></p>" : "",
+                ["EVENTLOCATIONROW"] = ev.Location != null ? $"<tr><td><b>Location:</b></td><td>{ev.Location}</td></tr>" : ""
+            });
+            await _email.SendEmailAsync(email, subject, body, name);
         }
     }
 }

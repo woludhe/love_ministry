@@ -23,13 +23,17 @@ namespace ChurchMinistry.Services
         Task SendEmailAsync(string to, string subject, string htmlBody, string? name = null);
         Task SendBulkAsync(List<string> recipients, string subject, string htmlBody);
         Task SendReceiptAsync(Giving giving, Member? member);
-        Task SendWelcomeAsync(Member member);
+        Task SendWelcomeAsync(Member member, string portalLink);
     }
 
     public class EmailService : IEmailService
     {
         private readonly IConfiguration _config;
-        public EmailService(IConfiguration config) { _config = config; }
+        private readonly IMailTemplateService _mailTemplates;
+        public EmailService(IConfiguration config, IMailTemplateService mailTemplates)
+        {
+            _config = config; _mailTemplates = mailTemplates;
+        }
 
         public async Task SendEmailAsync(string to, string subject, string htmlBody, string? name = null)
         {
@@ -38,7 +42,7 @@ namespace ChurchMinistry.Services
             message.From.Add(new MailboxAddress(settings["FromName"], settings["FromEmail"]));
             message.To.Add(new MailboxAddress(name ?? to, to));
             message.Subject = subject;
-            message.Body = new TextPart("html") { Text = WrapInTemplate(subject, htmlBody) };
+            message.Body = new TextPart("html") { Text = await WrapInTemplateAsync(htmlBody) };
 
             using var client = new SmtpClient();
             // EnableSsl: port 465 uses TLS from the start; other ports (587) upgrade with STARTTLS.
@@ -64,40 +68,85 @@ namespace ChurchMinistry.Services
         {
             var email = member?.Email ?? giving.AnonymousName ?? "";
             if (string.IsNullOrEmpty(email)) return;
-            var html = $@"
-                <h2>Giving Receipt</h2>
-                <p>Thank you for your generosity!</p>
-                <table>
-                    <tr><td><b>Amount:</b></td><td>{giving.Currency} {giving.Amount:N2}</td></tr>
-                    <tr><td><b>Type:</b></td><td>{giving.GivingType}</td></tr>
-                    <tr><td><b>Method:</b></td><td>{giving.PaymentMethod}</td></tr>
-                    <tr><td><b>Date:</b></td><td>{giving.GivingDate:dd MMM yyyy}</td></tr>
-                    <tr><td><b>Reference:</b></td><td>{giving.TransactionId}</td></tr>
-                </table>";
-            await SendEmailAsync(email, "Your Giving Receipt", html, member?.FullName);
+            var (subject, body) = await _mailTemplates.RenderAsync("GivingReceipt", new Dictionary<string, string>
+            {
+                ["CURRENCY"] = giving.Currency,
+                ["AMOUNT"] = giving.Amount.ToString("N2"),
+                ["GIVINGTYPE"] = giving.GivingType.ToString(),
+                ["PAYMENTMETHOD"] = giving.PaymentMethod.ToString(),
+                ["GIVINGDATE"] = giving.GivingDate.ToString("dd MMM yyyy"),
+                ["TRANSACTIONID"] = giving.TransactionId ?? ""
+            });
+            await SendEmailAsync(email, subject, body, member?.FullName);
         }
 
-        public async Task SendWelcomeAsync(Member member)
+        public async Task SendWelcomeAsync(Member member, string portalLink)
         {
-            var html = $@"
-                <h2>Welcome to our Church Family, {member.FirstName}!</h2>
-                <p>We are so glad you've joined us. Your membership has been confirmed.</p>
-                <p>You can now access your member portal, view sermons, submit prayer requests and connect with our community.</p>
-                <a href='#' style='background:#6366f1;color:white;padding:12px 24px;border-radius:6px;text-decoration:none;'>Visit Member Portal</a>";
-            await SendEmailAsync(member.Email, "Welcome to Love Fellowship Ministries!", html, member.FullName);
+            var (subject, body) = await _mailTemplates.RenderAsync("Welcome", new Dictionary<string, string>
+            {
+                ["FIRSTNAME"] = member.FirstName,
+                ["PORTALLINK"] = portalLink
+            });
+            await SendEmailAsync(member.Email, subject, body, member.FullName);
         }
 
-        private string WrapInTemplate(string subject, string body) => $@"
-<!DOCTYPE html><html><body style='font-family:sans-serif;max-width:600px;margin:auto;padding:20px'>
-<div style='background:#6366f1;padding:20px;border-radius:8px 8px 0 0;text-align:center'>
-  <h1 style='color:white;margin:0'>Love Fellowship Ministries</h1>
-</div>
-<div style='border:1px solid #e5e7eb;padding:30px;border-radius:0 0 8px 8px'>
-{body}
-<hr style='margin:24px 0'/>
-<p style='color:#6b7280;font-size:12px;text-align:center'>Love Fellowship Ministries | Kampala, Uganda<br/>
-<a href='#' style='color:#6366f1'>Unsubscribe</a></p>
-</div></body></html>";
+        private async Task<string> WrapInTemplateAsync(string body)
+        {
+            var (_, wrapped) = await _mailTemplates.RenderAsync(MailTemplateCatalog.MasterLayoutKey,
+                new Dictionary<string, string> { ["BODY"] = body });
+            return wrapped;
+        }
+    }
+
+    // ─── Mail Template Service ───
+    // Renders a system email's subject/body from its DB-stored (Admin/Pastor-editable) template,
+    // substituting %TOKEN% placeholders. See Models/MailTemplateCatalog.cs for the fixed set of
+    // templates, their default wording and their placeholder legends.
+    public interface IMailTemplateService
+    {
+        Task<(string Subject, string Body)> RenderAsync(string key, IDictionary<string, string> values);
+        Task ResetToDefaultAsync(int id);
+        void InvalidateCache(string key);
+    }
+
+    public class MailTemplateService : IMailTemplateService
+    {
+        private readonly ApplicationDbContext _db;
+        private readonly IMemoryCache _cache;
+        public MailTemplateService(ApplicationDbContext db, IMemoryCache cache) { _db = db; _cache = cache; }
+
+        private static string CacheKey(string key) => $"mailtemplate:{key}";
+
+        public async Task<(string Subject, string Body)> RenderAsync(string key, IDictionary<string, string> values)
+        {
+            var row = await _cache.GetOrCreateAsync(CacheKey(key), async _ =>
+                await _db.MailTemplates.AsNoTracking().FirstOrDefaultAsync(t => t.Key == key));
+
+            string subject, body;
+            if (row != null) { subject = row.Subject; body = row.Body; }
+            else
+            {
+                var def = MailTemplateCatalog.GetByKey(key)
+                    ?? throw new InvalidOperationException($"Unknown mail template key \"{key}\".");
+                subject = def.DefaultSubject; body = def.DefaultBody;
+            }
+            return (MailTemplateCatalog.Substitute(subject, values), MailTemplateCatalog.Substitute(body, values));
+        }
+
+        public async Task ResetToDefaultAsync(int id)
+        {
+            var row = await _db.MailTemplates.FindAsync(id);
+            var def = row == null ? null : MailTemplateCatalog.GetByKey(row.Key);
+            if (row == null || def == null) return;
+
+            row.Subject = def.DefaultSubject;
+            row.Body = def.DefaultBody;
+            row.UpdatedAt = DateTime.UtcNow;
+            await _db.SaveChangesAsync();
+            InvalidateCache(row.Key);
+        }
+
+        public void InvalidateCache(string key) => _cache.Remove(CacheKey(key));
     }
 
     // ─── QR Code Service ───
@@ -708,6 +757,7 @@ namespace ChurchMinistry.Services
             using var scope = _scopes.CreateScope();
             var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
             var email = scope.ServiceProvider.GetRequiredService<IEmailService>();
+            var mailTemplates = scope.ServiceProvider.GetRequiredService<IMailTemplateService>();
             var config = scope.ServiceProvider.GetRequiredService<IConfiguration>();
             var site = (config["Church:Website"] ?? "").TrimEnd('/');
 
@@ -737,12 +787,14 @@ namespace ChurchMinistry.Services
 
                 try
                 {
-                    await email.SendEmailAsync(r.Member.Email, "Your giving reminder",
-                        $@"<h2>Giving reminder</h2>
-                           <p>Hi {System.Net.WebUtility.HtmlEncode(r.Member.FirstName)}, your {what} is due.</p>
-                           <p><a href=""{site}{link}"" style=""display:inline-block;padding:.7rem 1.4rem;background:#6366f1;color:#fff;border-radius:8px;text-decoration:none"">Give now</a></p>
-                           <p style=""color:#6b7280;font-size:.85rem"">You asked us to remind you. You can <a href=""{site}/Giving/Reminders"">stop these reminders</a> any time.</p>",
-                        r.Member.FullName);
+                    var (subject, body) = await mailTemplates.RenderAsync("GivingReminder", new Dictionary<string, string>
+                    {
+                        ["FIRSTNAME"] = System.Net.WebUtility.HtmlEncode(r.Member.FirstName),
+                        ["GIFTDESCRIPTION"] = what,
+                        ["GIVELINK"] = $"{site}{link}",
+                        ["STOPLINK"] = $"{site}/Giving/Reminders"
+                    });
+                    await email.SendEmailAsync(r.Member.Email, subject, body, r.Member.FullName);
                 }
                 catch (Exception ex)
                 {
@@ -979,7 +1031,7 @@ namespace ChurchMinistry.Services
     {
         public const long MaxBytes = 200L * 1024 * 1024;
         public static readonly string[] Extensions = { ".mp3", ".m4a", ".aac", ".ogg", ".wav", ".webm" };
-        public static readonly string[] BuiltInTypes = { "sermons", "music" };
+        public static readonly string[] BuiltInTypes = { "sermons", "meetings", "music" };
 
         public static string Folder(IWebHostEnvironment env) => Path.Combine(env.WebRootPath, "uploads", "audio");
 
@@ -1052,26 +1104,30 @@ namespace ChurchMinistry.Services
     }
 
     // ─── Meeting recordings ───
-    // While a sermon is live, the host's Room page records the meeting's audio and sends a
-    // piece every 10 s. The pieces wait in App_Data/recordings/{sermonId}/{part}.{ext}/ until the
-    // meeting ends, the sermon stops being live, or the recording host leaves with no host taking
-    // over; then they become one file in the audio library's Sermons folder and the sermon's
-    // RecordingUrl. A part is one recorder run (the host refreshing the page starts a new one).
+    // A meeting set to record (Record this meeting ticked, or a sermon linked to it) is recorded
+    // by the host's Room page from start to end: a piece of audio every 10 s. The pieces wait in
+    // App_Data/recordings/meeting-{roomId}/{part}.{ext}/ until the meeting ends or the recording
+    // host leaves with no host taking over; then they become one file in the audio library's
+    // Meetings folder and the meeting's RecordingUrl. A sermon linked to the meeting gets that
+    // latest recording too. A part is one recorder run (the host refreshing the page starts a new
+    // one). Public meetings are named "title-date-time"; private ones get a random name, since
+    // the file is reachable by its link.
     public interface IRecordingService
     {
         // False when the part, piece number or format isn't valid
-        Task<bool> SaveChunkAsync(int sermonId, string partId, int seq, string ext, Stream data);
+        Task<bool> SaveChunkAsync(int roomId, string partId, int seq, string ext, Stream data);
         // True while this part has pieces waiting (it hasn't been finalized yet)
-        bool HasPart(int sermonId, string partId, string ext);
+        bool HasPart(int roomId, string partId, string ext);
         // Finalizes after a short wait, so the host's last piece can still arrive.
         // cancelIf is asked after the wait: true leaves the pieces for a later finalize.
-        void QueueFinalize(int sermonId, Func<bool>? cancelIf = null);
-        Task FinalizeAsync(int sermonId);
+        void QueueFinalize(int roomId, Func<bool>? cancelIf = null);
+        Task FinalizeAsync(int roomId);
     }
 
     public class RecordingService : IRecordingService
     {
         public static readonly string[] Formats = { "webm", "m4a" };
+        public const string MeetingsType = "meetings";   // the audio library folder
         private const int MaxChunks = 100_000;   // 10 s each: far longer than any service
         private static readonly TimeSpan FinalizeDelay = TimeSpan.FromSeconds(20);
         private static readonly SemaphoreSlim FinalizeLock = new(1, 1);
@@ -1088,19 +1144,19 @@ namespace ChurchMinistry.Services
             _db = db; _env = env; _config = config; _scopes = scopes; _logger = logger;
         }
 
-        private string SermonFolder(int sermonId) =>
-            Path.Combine(_env.ContentRootPath, "App_Data", "recordings", sermonId.ToString());
+        private string RoomFolder(int roomId) =>
+            Path.Combine(_env.ContentRootPath, "App_Data", "recordings", $"meeting-{roomId}");
 
-        private string? PartFolder(int sermonId, string partId, string ext) =>
+        private string? PartFolder(int roomId, string partId, string ext) =>
             Guid.TryParseExact(partId, "D", out _) && Formats.Contains(ext)
-                ? Path.Combine(SermonFolder(sermonId), $"{partId}.{ext}") : null;
+                ? Path.Combine(RoomFolder(roomId), $"{partId}.{ext}") : null;
 
-        public bool HasPart(int sermonId, string partId, string ext) =>
-            PartFolder(sermonId, partId, ext) is { } folder && Directory.Exists(folder);
+        public bool HasPart(int roomId, string partId, string ext) =>
+            PartFolder(roomId, partId, ext) is { } folder && Directory.Exists(folder);
 
-        public async Task<bool> SaveChunkAsync(int sermonId, string partId, int seq, string ext, Stream data)
+        public async Task<bool> SaveChunkAsync(int roomId, string partId, int seq, string ext, Stream data)
         {
-            var folder = PartFolder(sermonId, partId, ext);
+            var folder = PartFolder(roomId, partId, ext);
             if (folder == null || seq < 0 || seq >= MaxChunks) return false;
             Directory.CreateDirectory(folder);
             // A retried piece simply replaces itself
@@ -1109,7 +1165,7 @@ namespace ChurchMinistry.Services
             return true;
         }
 
-        public void QueueFinalize(int sermonId, Func<bool>? cancelIf = null)
+        public void QueueFinalize(int roomId, Func<bool>? cancelIf = null)
         {
             _ = Task.Run(async () =>
             {
@@ -1118,25 +1174,25 @@ namespace ChurchMinistry.Services
                     await Task.Delay(FinalizeDelay);
                     if (cancelIf?.Invoke() == true) return;
                     using var scope = _scopes.CreateScope();
-                    await scope.ServiceProvider.GetRequiredService<IRecordingService>().FinalizeAsync(sermonId);
+                    await scope.ServiceProvider.GetRequiredService<IRecordingService>().FinalizeAsync(roomId);
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogError(ex, "Finalizing the recording of sermon {SermonId} failed", sermonId);
+                    _logger.LogError(ex, "Finalizing the recording of meeting {RoomId} failed", roomId);
                 }
             });
         }
 
-        public async Task FinalizeAsync(int sermonId)
+        public async Task FinalizeAsync(int roomId)
         {
-            // The meeting ending and the sermon stopping can both ask at once
+            // The meeting ending and the recording host leaving can both ask at once
             await FinalizeLock.WaitAsync();
             try
             {
-                var root = SermonFolder(sermonId);
+                var root = RoomFolder(roomId);
                 if (!Directory.Exists(root)) return;
-                var sermon = await _db.Sermons.FindAsync(sermonId);
-                if (sermon == null) return;
+                var room = await _db.MeetingRooms.FindAsync(roomId);
+                if (room == null) return;
 
                 // Each part's pieces joined in order make a playable file
                 var parts = new List<string>();
@@ -1157,25 +1213,40 @@ namespace ChurchMinistry.Services
                 }
                 if (parts.Count == 0) { Directory.Delete(root, true); return; }
 
-                // The sermon went live more than once: the earlier recording comes first
-                var previous = AudioStore.IsLibraryUrl(_env, sermon.RecordingUrl)
-                    ? Path.Combine(_env.WebRootPath, sermon.RecordingUrl!.TrimStart('/').Replace('/', Path.DirectorySeparatorChar))
+                // Saved earlier in this meeting (the recording host left and came back): that
+                // recording comes first, and the joined file keeps its name
+                var previous = AudioStore.IsLibraryUrl(_env, room.RecordingUrl)
+                    ? Path.Combine(_env.WebRootPath, room.RecordingUrl!.TrimStart('/').Replace('/', Path.DirectorySeparatorChar))
                     : null;
                 var inputs = (previous != null ? new[] { previous } : Array.Empty<string>()).Concat(parts).ToList();
 
-                var folder = Path.Combine(AudioStore.Folder(_env), "sermons");
+                var folder = Path.Combine(AudioStore.Folder(_env), MeetingsType);
                 Directory.CreateDirectory(folder);
-                var stem = AudioStore.Slug(sermon.Title, 60);
-                if (stem.Length == 0) stem = "sermon";
-                stem += $"-{sermon.SermonDate:yyyy-MM-dd}";
+                string stem;
+                if (room.IsPublic)
+                {
+                    stem = AudioStore.Slug(room.Title, 60);
+                    if (stem.Length == 0) stem = "meeting";
+                    stem += $"-{(room.StartedAt ?? room.ScheduledAt ?? room.CreatedAt).ToLocalTime():yyyy-MM-dd-HHmm}";
+                }
+                else
+                    stem = Convert.ToHexString(System.Security.Cryptography.RandomNumberGenerator.GetBytes(16)).ToLowerInvariant();
 
                 string name;
                 var mp3 = Path.Combine(root, "recording.mp3");
                 if (await ConvertAsync(inputs, mp3))
                 {
-                    name = FreeName(folder, stem, ".mp3");
-                    File.Move(mp3, Path.Combine(folder, name));
-                    if (previous != null) File.Delete(previous);
+                    if (previous != null && Path.GetExtension(previous) == ".mp3" && Path.GetDirectoryName(previous) == folder)
+                    {
+                        name = Path.GetFileName(previous);
+                        File.Move(mp3, previous, overwrite: true);
+                    }
+                    else
+                    {
+                        name = FreeName(folder, stem, ".mp3");
+                        File.Move(mp3, Path.Combine(folder, name));
+                        if (previous != null) File.Delete(previous);
+                    }
                 }
                 else
                 {
@@ -1185,18 +1256,24 @@ namespace ChurchMinistry.Services
                     var ext = Path.GetExtension(longest);
                     name = FreeName(folder, stem, ext);
                     File.Move(longest, Path.Combine(folder, name));
-                    _logger.LogWarning("Recording of sermon {SermonId} saved without ffmpeg as {Name} ({Parts} part(s) recorded)",
-                        sermonId, name, parts.Count);
+                    _logger.LogWarning("Recording of meeting {RoomId} saved without ffmpeg as {Name} ({Parts} part(s) recorded)",
+                        roomId, name, parts.Count);
                 }
 
-                sermon.RecordingUrl = AudioStore.Url("sermons", name);
+                room.RecordingUrl = AudioStore.Url(MeetingsType, name);
+                // A sermon streamed through this meeting gets its latest recording (the one it
+                // had before stays in the audio library)
+                var sermons = await _db.Sermons
+                    .Where(s => s.IsOnlineMeeting && s.MeetingRoomCode == room.RoomCode).ToListAsync();
+                foreach (var s in sermons) s.RecordingUrl = room.RecordingUrl;
                 await _db.SaveChangesAsync();
 
                 // Only what went into this file: a host may have started a new part meanwhile
                 foreach (var dir in joinedDirs) dir.Delete(true);
                 foreach (var file in parts.Append(mp3).Where(File.Exists)) File.Delete(file);
                 if (!Directory.EnumerateFileSystemEntries(root).Any()) Directory.Delete(root);
-                _logger.LogInformation("Recording of sermon {SermonId} saved as {Url}", sermonId, sermon.RecordingUrl);
+                _logger.LogInformation("Recording of meeting {RoomId} saved as {Url} ({Sermons} sermon(s) updated)",
+                    roomId, room.RecordingUrl, sermons.Count);
             }
             finally
             {

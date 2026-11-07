@@ -1,0 +1,135 @@
+@using ChurchMinistry.Models
+@{
+    ViewData["Title"] = "One-on-One Requests";
+    Layout = "~/Views/Shared/_AdminDashboard_Layout.cshtml";
+    var pending = ViewBag.Pending as List<OneOnOneRequest> ?? new();
+    var others = ViewBag.Others as List<OneOnOneRequest> ?? new();
+    var pendingPager = (PagerModel)ViewBag.PendingPager;
+    var now = DateTime.UtcNow;
+    string Fmt(OneOnOneFormat f) => f == OneOnOneFormat.InPerson ? "In person" : f.ToString();
+}
+<div class="admin-main">
+    <div class="admin-topbar">
+        <h1>One-on-One Requests</h1>
+        <p class="meta">Members asking to meet @OneOnOneRequest.ApostleName.</p>
+    </div>
+
+    @if (!pending.Any())
+    {
+        <div class="ooa-empty">
+            <i class="fas fa-check-circle fa-3x"></i>
+            <h3>No requests waiting</h3>
+            <p>New One-on-One requests will appear here.</p>
+        </div>
+    }
+    else
+    {
+        <div class="section-label"><i class="fas fa-clock"></i> Waiting for a time · @pendingPager.Total</div>
+        <div class="ooa-list">
+            @foreach (var r in pending)
+            {
+                <div class="ooa-card">
+                    <div class="ooa-person">
+                        <img src="@(r.Member.ProfilePhoto ?? "/images/avatar-default.png")" alt="" />
+                        <div>
+                            <strong>@r.Member.StaffName</strong>
+                            <span class="meta">Asked @r.CreatedAt.ToLocalTime().ToString("ddd, dd MMM · h:mm tt") · prefers @Fmt(r.PreferredFormat).ToLower()</span>
+                        </div>
+                    </div>
+                    <p class="ooa-topic">@r.Topic</p>
+                    @if (r.PreferredTimesUtc.Any())
+                    {
+                        <div class="ooa-times">
+                            <i class="fas fa-calendar"></i>
+                            @foreach (var t in r.PreferredTimesUtc)
+                            {
+                                <span class="ooa-time @(t <= now ? "is-past" : "")">@t.ToLocalTime().ToString("ddd dd MMM, h:mm tt")</span>
+                            }
+                        </div>
+                    }
+                    <div class="ooa-actions">
+                        <a asp-action="Schedule" asp-route-id="@r.Id" class="btn btn-primary btn-sm"><i class="fas fa-calendar-plus"></i> Schedule</a>
+                        <button type="button" class="btn btn-outline btn-sm ooa-decline-btn" data-id="@r.Id">Decline</button>
+                        <form asp-action="Decline" asp-route-id="@r.Id" method="post" class="ooa-decline-form" id="decline-@r.Id" hidden>
+                            <input type="text" name="note" class="form-control" maxlength="1000" placeholder="Optional message to the member" />
+                            <button type="submit" class="btn btn-sm btn-danger-soft">Confirm decline</button>
+                        </form>
+                    </div>
+                </div>
+            }
+        </div>
+        <partial name="_Pager" model="pendingPager" />
+    }
+
+    @if (others.Any())
+    {
+        <div class="section-label" style="margin-top:2rem"><i class="fas fa-history"></i> Scheduled and past requests</div>
+        <div class="table-card">
+            <table class="data-table">
+                <thead><tr><th>Member</th><th>Topic</th><th>When</th><th>How</th><th>Status</th><th></th></tr></thead>
+                <tbody>
+                    @foreach (var r in others)
+                    {
+                        var upcoming = r.Status == OneOnOneStatus.Scheduled && r.ScheduledAt > now;
+                        <tr>
+                            <td class="cell-title"><strong>@r.Member.StaffName</strong></td>
+                            <td><span class="ooa-topic-short" title="@r.Topic">@r.Topic</span></td>
+                            <td>@r.ScheduledAt?.ToLocalTime().ToString("dd MMM yyyy, h:mm tt")</td>
+                            <td>
+                                @if (r.Format == OneOnOneFormat.Online && r.MeetingRoom != null)
+                                {
+                                    <a asp-controller="Meeting" asp-action="Room" asp-route-code="@r.MeetingRoom.RoomCode"><i class="fas fa-video"></i> @r.MeetingRoom.RoomCode</a>
+                                }
+                                else if (r.Format == OneOnOneFormat.InPerson)
+                                {
+                                    <span><i class="fas fa-location-dot"></i> @r.Location</span>
+                                }
+                                @if (r.Status == OneOnOneStatus.Scheduled && r.Privacy == OneOnOnePrivacy.Private)
+                                {
+                                    <br /><small class="meta">Private</small>
+                                }
+                            </td>
+                            <td>
+                                @switch (r.Status)
+                                {
+                                    case OneOnOneStatus.Scheduled when upcoming:
+                                        <span class="status-badge status-active">Scheduled</span>
+                                        break;
+                                    case OneOnOneStatus.Scheduled:
+                                        <span class="status-badge">Held</span>
+                                        break;
+                                    case OneOnOneStatus.Declined:
+                                        <span class="status-badge status-inactive">Declined</span>
+                                        break;
+                                    default:
+                                        <span class="status-badge status-inactive">Cancelled</span>
+                                        break;
+                                }
+                            </td>
+                            <td>
+                                @if (upcoming)
+                                {
+                                    <a asp-action="Schedule" asp-route-id="@r.Id" class="btn btn-outline btn-sm">Change</a>
+                                    @if (r.Privacy == OneOnOnePrivacy.Private && r.MeetingRoom != null)
+                                    {
+                                        <a asp-controller="Meeting" asp-action="Invite" asp-route-id="@r.MeetingRoom.Id" class="btn btn-outline btn-sm">Invite</a>
+                                    }
+                                }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+            <partial name="_Pager" model="(PagerModel)ViewBag.Pager" />
+        </div>
+    }
+</div>
+@section Scripts {
+    <script>
+        document.querySelectorAll('.ooa-decline-btn').forEach(b => b.addEventListener('click', () => {
+            const f = document.getElementById('decline-' + b.dataset.id);
+            f.hidden = !f.hidden;
+            if (!f.hidden) f.querySelector('input').focus();
+        }));
+    </script>
+}

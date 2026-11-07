@@ -4,6 +4,7 @@ using ChurchMinistry.Models;
 using ChurchMinistry.Services;
 using ChurchMinistry.ViewComponents;
 using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.StaticFiles;
 using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -46,6 +47,7 @@ builder.Services.AddSignalR(o =>
 });
 
 // ── Custom Services ──
+builder.Services.AddScoped<IMailTemplateService, MailTemplateService>();
 builder.Services.AddScoped<IEmailService, EmailService>();
 builder.Services.AddScoped<IQrCodeService, QrCodeService>();
 builder.Services.AddScoped<IPaymentService, PaymentService>();
@@ -77,7 +79,10 @@ if (!app.Environment.IsDevelopment())
     app.UseHsts();
 }
 app.UseHttpsRedirection();
-app.UseStaticFiles();
+// .apk isn't a type served by default; the Android app downloads from /downloads
+var contentTypes = new FileExtensionContentTypeProvider();
+contentTypes.Mappings[".apk"] = "application/vnd.android.package-archive";
+app.UseStaticFiles(new StaticFileOptions { ContentTypeProvider = contentTypes });
 app.UseRouting();
 app.UseSession();
 app.UseAuthentication();
@@ -86,6 +91,26 @@ app.MapHub<ChurchMinistry.Hubs.LiveSessionHub>("/liveSessionHub");
 app.UseAuthorization();
 
 // ── Routes ──
+// Proves the Android app belongs to this site, so it opens without Chrome's address bar.
+// An endpoint because static files skips dot-folders.
+app.MapGet("/.well-known/assetlinks.json", (IConfiguration config) =>
+{
+    var fingerprint = config["Android:Sha256Fingerprint"];
+    if (string.IsNullOrWhiteSpace(fingerprint)) return Results.Json(Array.Empty<object>());
+    return Results.Json(new[]
+    {
+        new
+        {
+            relation = new[] { "delegate_permission/common.handle_all_urls" },
+            target = new
+            {
+                @namespace = "android_app",
+                package_name = config["Android:PackageName"],
+                sha256_cert_fingerprints = new[] { fingerprint }
+            }
+        }
+    });
+});
 app.MapControllerRoute("default", "{controller=Home}/{action=Index}/{id?}");
 app.MapControllerRoute("meeting-room", "meeting/room/{code}", new { controller = "Meeting", action = "Room" });
 app.MapControllerRoute(

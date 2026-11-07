@@ -1,10 +1,14 @@
 @inject Microsoft.Extensions.Configuration.IConfiguration Config
+@inject ChurchMinistry.Data.ApplicationDbContext Db
+@using Microsoft.EntityFrameworkCore
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>@(ViewData["Title"] ?? @Config["Church:Name"])</title>
+    <link rel="manifest" href="~/site.webmanifest" />
+    <meta name="theme-color" content="#6366f1" />
     <script>/* Dark mode chosen in the dashboard menu; set before the page paints so it never flashes white */ try { if (localStorage.getItem("theme") === "dark") document.documentElement.dataset.theme = "dark"; } catch (e) { }</script>
     <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
     <link rel="stylesheet" href="~/css/dark.css" asp-append-version="true" />
@@ -89,7 +93,8 @@
                     <a asp-controller="Admin" asp-action="Events"><i class="fas fa-calendar"></i> Events</a>
                     @{
                         var navController = ViewContext.RouteData.Values["controller"]?.ToString();
-                        var inMeetings = navController == "MeetingApprovals" || navController == "MeetingRegister";
+                        var inMeetings = navController is "MeetingApprovals" or "MeetingRegister" or "OneOnOne";
+                        var oneOnOnePending = await Db.OneOnOneRequests.CountAsync(r => r.Status == ChurchMinistry.Models.OneOnOneStatus.Pending);
                     }
                     <details class="sidebar-group" open="@inMeetings">
                         <summary>
@@ -108,8 +113,17 @@
                            class="@(navController == "MeetingRegister" ? "active" : "")">
                             <i class="fas fa-book"></i> Meetings Register
                         </a>
+                        <a asp-controller="OneOnOne" asp-action="Index"
+                           class="@(navController == "OneOnOne" ? "active" : "")">
+                            <i class="fas fa-user-group"></i> One-on-One Requests
+                            @if (oneOnOnePending > 0)
+                            {
+                                <span class="notif-count" id="oneOnOneBadge" style="position:relative;top:auto;right:auto">@oneOnOnePending</span>
+                            }
+                        </a>
                     </details>
                     <a asp-controller="Admin" asp-action="Newsletters"><i class="fas fa-envelope"></i> Newsletter</a>
+                    <a asp-controller="Admin" asp-action="MailTemplates"><i class="fas fa-file-code"></i> Mail Templates</a>
                     @{
                         var navAction = ViewContext.RouteData.Values["action"]?.ToString();
                         var inReports = ViewContext.RouteData.Values["controller"]?.ToString() == "Admin"

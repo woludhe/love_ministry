@@ -3,8 +3,9 @@
 @* Sermon form, Audio option: pick from the Audio Library, upload a file, or paste a link *@
 @{
     var audioFiles = ViewBag.AudioFiles as List<AdminController.AudioFileInfo> ?? new();
-    // Sermons first, then the other types
-    var groups = audioFiles.GroupBy(f => f.TypeLabel)
+    // Only sermon uploads and meeting recordings belong here — not background music or other library audio
+    var groups = audioFiles.Where(f => f.Type == "sermons" || f.Type == "meetings")
+        .GroupBy(f => f.TypeLabel)
         .OrderBy(g => g.First().Type == "sermons" ? 0 : 1).ThenBy(g => g.Key);
 }
 <div class="form-group">

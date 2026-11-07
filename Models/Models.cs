@@ -36,6 +36,14 @@ namespace ChurchMinistry.Models
         [Required, MaxLength(100)] public string FirstName { get; set; } = "";
         [Required, MaxLength(100)] public string LastName { get; set; } = "";
         public string FullName => $"{FirstName} {LastName}";
+        // Optional public name, stored without the "@". Other members see "@Alias" instead of
+        // the real name; Admins and Pastors see "Real Name (@Alias)". See MemberNames.
+        [MaxLength(40)] public string? Alias { get; set; }
+        [NotMapped] public string PublicName => MemberNames.For(FirstName, LastName, Alias, staff: false);
+        [NotMapped] public string StaffName  => MemberNames.For(FirstName, LastName, Alias, staff: true);
+        /// <summary>The name to show this viewer: staff (Admin/Pastor) see the real name too</summary>
+        public string NameFor(System.Security.Claims.ClaimsPrincipal? viewer)
+            => MemberNames.For(FirstName, LastName, Alias, viewer.IsStaff());
         [Required, EmailAddress] public string Email { get; set; } = "";
         [Phone] public string? Phone { get; set; }
         public string? AlternatePhone { get; set; }
@@ -67,6 +75,56 @@ namespace ChurchMinistry.Models
         public ICollection<AttendanceRecord> AttendanceRecords { get; set; } = new List<AttendanceRecord>();
         public ICollection<Giving> Givings { get; set; } = new List<Giving>();
         public ICollection<PrayerRequest> PrayerRequests { get; set; } = new List<PrayerRequest>();
+    }
+
+    /// <summary>
+    /// How a member's name is shown. A member with an alias appears as "@Alias" to other
+    /// members, and as "Real Name (@Alias)" to Admins and Pastors ("staff").
+    /// </summary>
+    public static class MemberNames
+    {
+        public const int MaxAlias = 40;
+
+        public static string For(string? first, string? last, string? alias, bool staff)
+        {
+            var real = $"{first} {last}".Trim();
+            if (string.IsNullOrWhiteSpace(alias)) return real;
+            return staff && real.Length > 0 ? $"{real} (@{alias})" : "@" + alias;
+        }
+
+        /// <summary>Admin or Pastor: they see real names everywhere</summary>
+        public static bool IsStaff(this System.Security.Claims.ClaimsPrincipal? user)
+            => user != null && (user.IsInRole("Admin") || user.IsInRole("Pastor"));
+
+        // Titles an ordinary member can't put in an alias, so nobody can pose as church staff
+        private static readonly string[] ReservedWords =
+            { "pastor", "apostle", "bishop", "reverend", "rev", "prophet", "prophetess", "admin", "administrator", "evangelist", "deacon", "elder" };
+
+        /// <summary>
+        /// Tidies an alias typed by a member: trims it, drops leading "@" and squeezes spaces.
+        /// Blank becomes null (no alias).
+        /// </summary>
+        public static string? Normalize(string? alias)
+        {
+            if (alias == null) return null;
+            var a = System.Text.RegularExpressions.Regex.Replace(alias.Trim().TrimStart('@').Trim(), @"\s+", " ");
+            return a.Length == 0 ? null : a;
+        }
+
+        /// <summary>An error message for an alias's form, or null when it's fine (uniqueness is checked separately)</summary>
+        public static string? FormatError(string alias, bool forStaffMember)
+        {
+            if (alias.Length > MaxAlias) return $"An alias can be at most {MaxAlias} characters.";
+            if (!System.Text.RegularExpressions.Regex.IsMatch(alias, @"^[\p{L}\p{N}][\p{L}\p{N} ._-]*$"))
+                return "Use letters, numbers, spaces, dots, dashes or underscores, starting with a letter or number.";
+            if (!forStaffMember)
+            {
+                var words = System.Text.RegularExpressions.Regex.Split(alias.ToLowerInvariant(), @"[^\p{L}\p{N}]+");
+                if (words.Any(w => ReservedWords.Contains(w)) || alias.ToLowerInvariant().Contains("church office"))
+                    return "An alias can't include church titles such as Pastor, Apostle or Admin.";
+            }
+            return null;
+        }
     }
 
     public enum Gender { Male, Female, Other }
@@ -596,5 +654,19 @@ namespace ChurchMinistry.Models
         public Member Member { get; set; } = null!;
         [MaxLength(4000)] public string Text { get; set; } = "";
         public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
+    }
+
+    // ─────────────────────────────────────────────
+    // Mail templates (Admin/Pastor-editable system emails — see MailTemplateCatalog)
+    // ─────────────────────────────────────────────
+    public class MailTemplate
+    {
+        public int Id { get; set; }
+        [Required, MaxLength(60)] public string Key { get; set; } = "";
+        public string Name { get; set; } = "";
+        [Required] public string Subject { get; set; } = "";
+        [Required] public string Body { get; set; } = "";
+        public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
+        public int? UpdatedByMemberId { get; set; }
     }
 }
