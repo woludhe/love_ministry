@@ -1,4 +1,5 @@
 @model ChurchMinistry.Models.Sermon
+@inject Microsoft.Extensions.Configuration.IConfiguration OgConfig
 @{
     ViewData["Title"] = Model.Title;
     Layout = "~/Views/Shared/_Layout.cshtml";
@@ -11,35 +12,174 @@
     // Show the poster instead of a player
     var isUpcoming = Model.IsUpcoming;
     var isSignedIn = User.Identity?.IsAuthenticated == true;
+
+    // Reactions, prayer, questions, comments and notes (Media/Watch loads these)
+    var eng = ViewBag.Engagement as ChurchMinistry.ViewModels.SermonEngagementViewModel
+              ?? new ChurchMinistry.ViewModels.SermonEngagementViewModel { SermonId = Model.Id };
+    var canEngage = isSignedIn && eng.Me != null;   // staff without a member record just watch
+    var loginUrl = "/Account/Login?returnUrl=" + Uri.EscapeDataString($"/Media/Watch/{Model.Id}");
+    var testimonyUrl = "/Community/NewPost?category=Testimony&title=" + Uri.EscapeDataString($"Testimony: {Model.Title}");
+    var myMemberId = eng.Me?.Id;
+    var isStaffViewer = User.IsInRole("Admin") || User.IsInRole("Pastor");
+
+    // ── Hero banner (turns into the player when Play is pressed) ──
+    var heroYtId = ChurchMinistry.Services.MediaLinks.YouTubeVideoId(Model.VideoUrl);
+    var heroImage = !string.IsNullOrWhiteSpace(Model.ThumbnailUrl) ? Model.ThumbnailUrl
+                  : heroYtId != null ? $"https://img.youtube.com/vi/{heroYtId}/hqdefault.jpg"
+                  : null;
+    var hasVideo = !isUpcoming && !string.IsNullOrWhiteSpace(Model.VideoUrl);
+    var hasAudio = !isUpcoming && !hasVideo
+                   && (!string.IsNullOrEmpty(Model.AudioUrl) || (!Model.IsLive && !string.IsNullOrEmpty(Model.RecordingUrl)));
+    var canPlay = hasVideo || hasAudio;
+    var heroBadge = isUpcoming ? "Upcoming Sermon"
+                  : Model.IsLive ? "Live now"
+                  : !string.IsNullOrWhiteSpace(Model.SeriesName) ? Model.SeriesName
+                  : hasAudio ? "Audio Message" : "Sermon";
+    var heroBadgeIcon = isUpcoming ? "fa-hourglass-half" : Model.IsLive ? "fa-tower-broadcast" : hasAudio ? "fa-headphones" : "fa-play";
+    var shareUrl = "https://apostleenockmakoko.com" + Context.Request.Path;
+    var audioDownload = isSignedIn && !string.IsNullOrEmpty(Model.AudioUrl) ? Model.AudioUrl
+                      : isSignedIn && !Model.IsLive && !string.IsNullOrEmpty(Model.RecordingUrl) ? Model.RecordingUrl
+                      : null;
+    var showCommentsTab = eng.AllowComments;
+    var showNotesTab = canEngage;
+}
+
+@section meta {
+    @* Rich link preview (WhatsApp, Facebook, X, Telegram…) built from the sermon's thumbnail.
+       Crawlers need absolute URLs, so relative /uploads paths are prefixed with this site's origin. *@
+    @{
+        var origin = $"{Context.Request.Scheme}://{Context.Request.Host}";
+        string Abs(string u) => Uri.TryCreate(u, UriKind.Absolute, out var a) && (a.Scheme == "http" || a.Scheme == "https")
+            ? u : origin + (u.StartsWith("/") ? u : "/" + u);
+
+        var ogYtId = ChurchMinistry.Services.MediaLinks.YouTubeVideoId(Model.VideoUrl);
+        var ogImage = !string.IsNullOrWhiteSpace(Model.ThumbnailUrl) ? Abs(Model.ThumbnailUrl)
+                    : ogYtId != null ? $"https://img.youtube.com/vi/{ogYtId}/hqdefault.jpg"
+                    : Abs(OgConfig["Church:Logo"] ?? "/images/logo.png");
+
+        var siteName = OgConfig["Church:Name"] ?? "";
+        var ogDesc = !string.IsNullOrWhiteSpace(Model.Description) ? Model.Description.Trim()
+                   : string.Join(" · ", new[] { Model.Speaker, Model.ScriptureReference, Model.SermonDate.ToString("dd MMMM yyyy") }
+                                         .Where(s => !string.IsNullOrWhiteSpace(s)));
+        ogDesc = System.Text.RegularExpressions.Regex.Replace(ogDesc, @"\s+", " ");
+        if (ogDesc.Length > 200) ogDesc = ogDesc[..197].TrimEnd() + "…";
+        var ogUrl = origin + Context.Request.Path;
+    }
+    <meta name="description" content="@ogDesc" />
+    <link rel="canonical" href="@ogUrl" />
+    <meta property="og:type" content="@(Model.DeliveryMode == "audio" ? "music.song" : "video.other")" />
+    <meta property="og:site_name" content="@siteName" />
+    <meta property="og:title" content="@Model.Title" />
+    <meta property="og:description" content="@ogDesc" />
+    <meta property="og:url" content="@ogUrl" />
+    <meta property="og:image" content="@ogImage" />
+    @if (ogImage.StartsWith("https://"))
+    {
+        <meta property="og:image:secure_url" content="@ogImage" />
+    }
+    <meta property="og:image:alt" content="@Model.Title" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="@Model.Title" />
+    <meta name="twitter:description" content="@ogDesc" />
+    <meta name="twitter:image" content="@ogImage" />
 }
 
 <div class="watch-page">
+
+    @* {{-- ── Breadcrumb + share ── --}} *@
+    <div class="watch-topbar">
+        <nav class="watch-crumbs" aria-label="Breadcrumb">
+            <a href="/" title="Home"><i class="fas fa-home"></i><span class="sr-only">Home</span></a>
+            <i class="fas fa-chevron-right crumb-sep" aria-hidden="true"></i>
+            <a href="/Media">Sermons</a>
+            <i class="fas fa-chevron-right crumb-sep" aria-hidden="true"></i>
+            <span class="crumb-current" aria-current="page">@Model.Title</span>
+        </nav>
+        <div class="watch-share">
+            <span>Share:</span>
+            <a href="https://www.facebook.com/sharer/sharer.php?u=@Uri.EscapeDataString(shareUrl)"
+               target="_blank" rel="noopener" class="share-btn fb" title="Share on Facebook"><i class="fab fa-facebook-f"></i></a>
+            <a href="https://wa.me/?text=@Uri.EscapeDataString(Model.Title + " " + shareUrl)"
+               target="_blank" rel="noopener" class="share-btn wa" title="Share on WhatsApp"><i class="fab fa-whatsapp"></i></a>
+            <button type="button" class="share-btn more" data-share title="More ways to share"><i class="fas fa-ellipsis-h"></i></button>
+        </div>
+    </div>
+
     <div class="watch-layout">
 
-        @* {{-- ── Video column ── --}} *@
+        @* {{-- ── Main column ── --}} *@
         <div class="video-col">
 
-            @* {{-- Player wrapper --}} *@
-            <div class="video-player-wrap" id="playerWrap">
+            @* {{-- Hero banner over the player: Play swaps it for the player --}} *@
+            <div class="video-player-wrap @(canPlay ? "" : "no-media")" id="playerWrap">
+
+                <div class="watch-hero" id="watchHero">
+                    @if (heroImage != null)
+                    {
+                        <img class="hero-bg" src="@heroImage" alt="" />
+                    }
+                    <div class="hero-shade"></div>
+                    <div class="hero-content">
+                        <span class="hero-badge"><i class="fas @heroBadgeIcon"></i> @heroBadge</span>
+                        <h1 class="hero-title">@Model.Title</h1>
+                        <p class="hero-meta">
+                            @if (!string.IsNullOrWhiteSpace(Model.Speaker))
+                            {
+                                <span><i class="fas fa-user"></i> @Model.Speaker</span>
+                            }
+                            <span><i class="fas fa-calendar-alt"></i> @Model.SermonDate.ToString("dd MMMM yyyy")</span>
+                            <span><i class="fas fa-eye"></i> @Model.ViewCount views</span>
+                        </p>
+                        @if (!string.IsNullOrEmpty(Model.ScriptureReference))
+                        {
+                            <p class="hero-scripture"><i class="fas fa-book-open"></i> @Model.ScriptureReference</p>
+                        }
+                        <div class="hero-cta">
+                            @if (isUpcoming)
+                            {
+                                <span class="hero-play static" aria-hidden="true"><i class="fas fa-hourglass-half"></i></span>
+                                <span class="hero-cta-sep" aria-hidden="true"></span>
+                                <span class="hero-cta-text">
+                                    <strong>@Model.SermonDate.ToString("dddd, dd MMMM yyyy")</strong>
+                                    <small><i class="fas fa-clock"></i> @Model.SermonDate.ToString("h:mm tt")</small>
+                                </span>
+                            }
+                            else if (canPlay)
+                            {
+                                <button type="button" class="hero-play" id="heroPlay" aria-label="@(hasAudio ? "Listen to" : "Watch") @Model.Title">
+                                    <i class="fas fa-play"></i>
+                                </button>
+                                <span class="hero-cta-sep" aria-hidden="true"></span>
+                                <span class="hero-cta-text">
+                                    <strong>@(hasAudio ? "Listen" : "Watch / Listen")</strong>
+                                    <small>Be inspired by God's Word</small>
+                                </span>
+                            }
+                            else if (Model.IsLive)
+                            {
+                                <a class="hero-play" href="/Media/Live" aria-label="Join the live service"><i class="fas fa-tower-broadcast"></i></a>
+                                <span class="hero-cta-sep" aria-hidden="true"></span>
+                                <span class="hero-cta-text">
+                                    <strong>Join Live</strong>
+                                    <small>This message is streaming now</small>
+                                </span>
+                            }
+                            else
+                            {
+                                <span class="hero-play static" aria-hidden="true"><i class="fas fa-microphone-alt"></i></span>
+                                <span class="hero-cta-sep" aria-hidden="true"></span>
+                                <span class="hero-cta-text">
+                                    <strong>Recording coming soon</strong>
+                                    <small>Check back to watch or listen</small>
+                                </span>
+                            }
+                        </div>
+                    </div>
+                </div>
 
                 @if (isUpcoming)
                 {
-                    <div class="upcoming-poster">
-                        @if (!string.IsNullOrEmpty(Model.ThumbnailUrl))
-                        {
-                            <img src="@Model.ThumbnailUrl" alt="@Model.Title" />
-                        }
-                        else
-                        {
-                            <div class="upcoming-poster-placeholder"><i class="fas fa-church"></i></div>
-                        }
-                        <div class="upcoming-poster-info">
-                            <span class="upcoming-when">
-                                <i class="fas fa-calendar"></i> @Model.SermonDate.ToString("dddd, dd MMMM yyyy")
-                                &nbsp;<i class="fas fa-clock"></i> @Model.SermonDate.ToString("h:mm tt")
-                            </span>
-                        </div>
-                    </div>
+                    @* {{-- Only the banner until it happens --}} *@
                 }
                 else if (!string.IsNullOrWhiteSpace(Model.VideoUrl))
                 {
@@ -157,107 +297,487 @@
 
             </div>@* {{-- /playerWrap --}} *@
 
-            @* {{-- Sermon details --}} *@
-            <div class="sermon-details">
-                <div class="sermon-details-header">
-                    <div>
-                        @if (isUpcoming)
-                        {
-                            <span class="upcoming-badge"><i class="fas fa-hourglass-half"></i> Upcoming Sermon</span>
-                        }
-                        <h1>@Model.Title</h1>
-                        @if (!string.IsNullOrEmpty(Model.SeriesName))
-                        {
-                            <span class="tag">@Model.SeriesName</span>
-                        }
-                        <p class="meta" style="margin-top:.5rem">
-                            <i class="fas fa-user"></i> @Model.Speaker &nbsp;
-                            <i class="fas fa-calendar"></i> @Model.SermonDate.ToString("dd MMMM yyyy") &nbsp;
-                            <i class="fas fa-eye"></i> @Model.ViewCount views
-                        </p>
-                        @if (!string.IsNullOrEmpty(Model.ScriptureReference))
-                        {
-                            <p class="scripture">
-                                <i class="fas fa-book-open"></i> @Model.ScriptureReference
-                            </p>
-                        }
-                    </div>
-                    <div class="share-row">
-                        <span style="font-size:.82rem;color:var(--text-s)">Share:</span>
-                        <a href="https://www.facebook.com/sharer/sharer.php?u=@Uri.EscapeDataString("https://apostleenockmakoko.com" + Context.Request.Path)"
-                           target="_blank" class="share-btn fb"><i class="fab fa-facebook"></i></a>
-                        <a href="https://wa.me/?text=@Uri.EscapeDataString(Model.Title + " https://apostleenockmakoko.com" + Context.Request.Path)"
-                           target="_blank" class="share-btn wa"><i class="fab fa-whatsapp"></i></a>
-                    </div>
-                </div>
-                @if (!string.IsNullOrEmpty(Model.Description))
+            @* Reactions, right under the player. Guests are sent to Login and come back here. *@
+            <div class="react-row" id="reactRow">
+                @if (canEngage)
                 {
-                    <p class="sermon-description">@Model.Description</p>
+                    <button type="button" class="engage-btn react @(eng.Amened ? "on" : "")" data-kind="Amen" aria-pressed="@(eng.Amened ? "true" : "false")" title="Amen">
+                        <span aria-hidden="true">🙏</span> Amen <span class="engage-count" data-count="Amen">@eng.AmenCount</span>
+                    </button>
+                    <button type="button" class="engage-btn react @(eng.Blessed ? "on" : "")" data-kind="Blessed" aria-pressed="@(eng.Blessed ? "true" : "false")" title="I was blessed">
+                        <i class="fas fa-heart"></i> Blessed <span class="engage-count" data-count="Blessed">@eng.BlessedCount</span>
+                    </button>
                 }
-                @if (!string.IsNullOrEmpty(Model.Tags))
+                else if (isSignedIn)
                 {
-                    <div class="sermon-tags">
-                        @foreach (var tag in Model.Tags.Split(','))
-                        {
-                            <span class="tag">@tag.Trim()</span>
-                        }
-                    </div>
+                    @* Signed in without a member profile (e.g. the seeded admin): counts only *@
+                    <span class="engage-btn static"><span aria-hidden="true">🙏</span> Amen <span class="engage-count">@eng.AmenCount</span></span>
+                    <span class="engage-btn static"><i class="fas fa-heart"></i> Blessed <span class="engage-count">@eng.BlessedCount</span></span>
                 }
-                @* {{-- Downloading is for signed-in members only --}} *@
-                @if (isSignedIn && !string.IsNullOrEmpty(Model.AudioUrl))
+                else
                 {
-                    <div class="audio-download-row">
-                        <a href="@Model.AudioUrl" class="btn btn-outline btn-sm">
-                            <i class="fas fa-headphones"></i> Listen / Download Audio
-                        </a>
-                    </div>
-                }
-                else if (isSignedIn && !Model.IsLive && !string.IsNullOrEmpty(Model.RecordingUrl))
-                {
-                    <div class="audio-download-row">
-                        <a href="@Model.RecordingUrl" class="btn btn-outline btn-sm" download>
-                            <i class="fas fa-download"></i> Download Audio
-                        </a>
-                    </div>
+                    <a class="engage-btn" href="@loginUrl" title="Sign in to say Amen">
+                        <span aria-hidden="true">🙏</span> Amen <span class="engage-count">@eng.AmenCount</span>
+                    </a>
+                    <a class="engage-btn" href="@loginUrl" title="Sign in to say you were blessed">
+                        <i class="fas fa-heart"></i> Blessed <span class="engage-count">@eng.BlessedCount</span>
+                    </a>
                 }
             </div>
+
+            @* {{-- Respond to the sermon. Guests are sent to Login and come back here. --}} *@
+            <div class="engage-bar" id="engageBar">
+                @if (canEngage)
+                {
+                    <button type="button" class="engage-btn primary" data-open="prayDialog"><i class="fas fa-praying-hands"></i> Request Prayer</button>
+                    <button type="button" class="engage-btn" data-open="askDialog"><i class="fas fa-question-circle"></i> Ask a Question</button>
+                    <a class="engage-btn" href="@testimonyUrl" target="_blank" rel="noopener"><i class="fas fa-star"></i> Share a Testimony</a>
+                    <a class="engage-btn" href="/Giving/Give" target="_blank" rel="noopener"><i class="fas fa-hand-holding-heart"></i> Give</a>
+                    <a class="engage-btn" href="/Members/Dashboard#one-on-one" target="_blank" rel="noopener"><i class="fas fa-user-friends"></i> One-on-One</a>
+                }
+                else if (!isSignedIn)
+                {
+                    <a class="engage-btn primary" href="@loginUrl"><i class="fas fa-praying-hands"></i> Request Prayer</a>
+                    <a class="engage-btn" href="@loginUrl"><i class="fas fa-question-circle"></i> Ask a Question</a>
+                    <a class="engage-btn" href="@loginUrl"><i class="fas fa-star"></i> Share a Testimony</a>
+                    <a class="engage-btn" href="/Giving/Give" target="_blank" rel="noopener"><i class="fas fa-hand-holding-heart"></i> Give</a>
+                    <a class="engage-btn" href="@loginUrl"><i class="fas fa-user-friends"></i> One-on-One</a>
+                }
+                else
+                {
+                    @* Signed in without a member profile (e.g. the seeded admin) *@
+                    <a class="engage-btn" href="/Giving/Give" target="_blank" rel="noopener"><i class="fas fa-hand-holding-heart"></i> Give</a>
+                }
+                @* {{-- Downloading is for signed-in members only --}} *@
+                @if (audioDownload != null)
+                {
+                    <a class="engage-btn" href="@audioDownload" download><i class="fas fa-download"></i> Download Audio</a>
+                }
+            </div>
+            <div class="engage-msg" id="engageMsg" role="status" hidden></div>
+
+            @Html.AntiForgeryToken()
+
+            @* {{-- About this message --}} *@
+            @if (!string.IsNullOrEmpty(Model.Description) || !string.IsNullOrEmpty(Model.Tags))
+            {
+                <section class="watch-card about-card">
+                    <h2 class="card-title"><i class="fas fa-align-left"></i> About this message</h2>
+                    @if (!string.IsNullOrEmpty(Model.Description))
+                    {
+                        <p class="sermon-description" id="sermonDescription">@Model.Description.Trim()</p>
+                        <button type="button" class="read-more" id="readMore" hidden>Read more</button>
+                    }
+                    @if (!string.IsNullOrEmpty(Model.Tags))
+                    {
+                        <div class="sermon-tags">
+                            @foreach (var tag in Model.Tags.Split(',', StringSplitOptions.RemoveEmptyEntries))
+                            {
+                                <span class="tag">@tag.Trim()</span>
+                            }
+                        </div>
+                    }
+                </section>
+            }
+
+            @* {{-- Comments and private notes, as tabs --}} *@
+            @if (showCommentsTab || showNotesTab)
+            {
+                <section class="watch-card tabs-card" id="comments">
+                    <div class="watch-tabs" role="tablist">
+                        @if (showCommentsTab)
+                        {
+                            <button type="button" class="watch-tab active" role="tab" id="tab-comments" aria-controls="panel-comments" aria-selected="true">
+                                <i class="fas fa-comments"></i> <span>Comments (<span id="commentCount">@eng.Comments.Count</span>)</span>
+                            </button>
+                        }
+                        @if (showNotesTab)
+                        {
+                            <button type="button" class="watch-tab @(showCommentsTab ? "" : "active")" role="tab" id="tab-notes" aria-controls="panel-notes" aria-selected="@(showCommentsTab ? "false" : "true")">
+                                <i class="fas fa-file-alt"></i> My Sermon Notes
+                            </button>
+                            <span class="notes-private" id="notesPrivate" @(showCommentsTab ? "hidden" : "")><i class="fas fa-lock"></i> Only you can see these</span>
+                        }
+                    </div>
+
+                    @if (showCommentsTab)
+                    {
+                        <div class="watch-panel" role="tabpanel" id="panel-comments" aria-labelledby="tab-comments">
+                            @if (canEngage)
+                            {
+                                <form class="sc-form" id="commentForm">
+                                    <img src="@(eng.Me!.ProfilePhoto ?? "/images/avatar-default.png")" alt="" class="sc-avatar" />
+                                    <div class="sc-form-body">
+                                        <textarea name="content" class="form-control" rows="3" maxlength="@ChurchMinistry.Models.SermonComment.MaxLength"
+                                                  placeholder="Share what blessed you, or encourage others…" required></textarea>
+                                        <div class="sc-form-actions">
+                                            <span class="sc-error" id="commentError" role="alert"></span>
+                                            <button type="submit" class="btn btn-primary sc-post"><i class="fas fa-paper-plane"></i> Post</button>
+                                        </div>
+                                    </div>
+                                </form>
+                            }
+                            else if (!isSignedIn)
+                            {
+                                <p class="sc-signin"><a href="@loginUrl">Sign in</a> to join the conversation.</p>
+                            }
+                            <div class="sc-list" id="commentList">
+                                @foreach (var c in eng.Comments)
+                                {
+                                    <partial name="_SermonComment" model="@(new ChurchMinistry.ViewModels.SermonCommentViewModel { Comment = c, CanDelete = isStaffViewer || c.MemberId == myMemberId })" />
+                                }
+                            </div>
+                            @if (eng.Comments.Count == 0)
+                            {
+                                <div class="sc-empty" id="commentEmpty">
+                                    <span class="sc-empty-icon" aria-hidden="true"><i class="fas fa-comments"></i></span>
+                                    <strong>No comments yet.</strong>
+                                    <span>Be the first to share what blessed you.</span>
+                                </div>
+                            }
+                        </div>
+                    }
+                    @if (showNotesTab)
+                    {
+                        <div class="watch-panel" role="tabpanel" id="panel-notes" aria-labelledby="tab-notes" @(showCommentsTab ? "hidden" : "")>
+                            <textarea id="sermonNote" class="form-control" rows="7" maxlength="20000"
+                                      placeholder="Key points, scriptures, what God is saying to you…">@eng.MyNote</textarea>
+                            <div class="notes-status" id="noteStatus" aria-live="polite"></div>
+                        </div>
+                    }
+                </section>
+            }
         </div>
 
-        @* {{-- ── Sidebar: static recommendations (always visible) ── --}} *@
+        @* {{-- ── Sidebar ── --}} *@
         <aside class="watch-sidebar">
-            <h3 class="sidebar-heading">More Sermons</h3>
-            @foreach (var s in recommended)
+            <section class="watch-card side-card">
+                <h2 class="card-title"><i class="fas fa-info-circle"></i> Sermon Details</h2>
+                <ul class="detail-list">
+                    <li>
+                        <i class="fas fa-calendar-alt"></i>
+                        <div><small>@(isUpcoming ? "Scheduled for" : "Published on")</small><strong>@Model.SermonDate.ToString("dd MMMM yyyy")</strong></div>
+                    </li>
+                    <li>
+                        <i class="fas fa-eye"></i>
+                        <div><small>Views</small><strong>@Model.ViewCount</strong></div>
+                    </li>
+                    @if (!string.IsNullOrWhiteSpace(Model.Speaker))
+                    {
+                        <li>
+                            <i class="fas fa-user"></i>
+                            <div><small>Speaker</small><strong>@Model.Speaker</strong></div>
+                        </li>
+                    }
+                    @if (!string.IsNullOrWhiteSpace(Model.SeriesName))
+                    {
+                        <li>
+                            <i class="fas fa-layer-group"></i>
+                            <div><small>Series</small><strong>@Model.SeriesName</strong></div>
+                        </li>
+                    }
+                    @if (!string.IsNullOrWhiteSpace(Model.ScriptureReference))
+                    {
+                        <li>
+                            <i class="fas fa-book-open"></i>
+                            <div><small>Scripture</small><strong>@Model.ScriptureReference</strong></div>
+                        </li>
+                    }
+                </ul>
+                <div class="side-divider"></div>
+                <h2 class="card-title"><i class="fas fa-share-alt"></i> Key Actions</h2>
+                <button type="button" class="share-this" data-share><i class="fas fa-share"></i> Share This Sermon</button>
+                <div class="share-toast" role="status" hidden>Link copied</div>
+            </section>
+
+            @if (recommended.Count > 0)
             {
-                <a class="sidebar-reco-card" href="/Media/Watch/@s.Id">
-                    <div class="sidebar-reco-thumb">
-                        @if (!string.IsNullOrEmpty(s.ThumbnailUrl))
+                <section class="watch-card side-card">
+                    <div class="card-title-row">
+                        <h2 class="card-title"><i class="fas fa-play-circle"></i> Related Sermons</h2>
+                        <a href="/Media" class="view-all">View All <i class="fas fa-arrow-right"></i></a>
+                    </div>
+                    <div class="related-list">
+                        @foreach (var s in recommended)
                         {
-                            <img src="@s.ThumbnailUrl" alt="@s.Title" />
-                        }
-                        else
-                        {
-                            <div class="sidebar-reco-placeholder">
-                                <i class="fas fa-play-circle"></i>
-                            </div>
+                            <a class="related-item" href="/Media/Watch/@s.Id">
+                                <span class="related-thumb">
+                                    @if (!string.IsNullOrEmpty(s.ThumbnailUrl))
+                                    {
+                                        <img src="@s.ThumbnailUrl" alt="" loading="lazy" />
+                                    }
+                                    else
+                                    {
+                                        <i class="fas fa-play-circle"></i>
+                                    }
+                                </span>
+                                <span class="related-info">
+                                    <strong>@s.Title</strong>
+                                    <small><i class="fas fa-calendar-alt"></i> @s.SermonDate.ToString("dd MMMM yyyy")</small>
+                                    <small><i class="fas fa-eye"></i> @s.ViewCount</small>
+                                </span>
+                            </a>
                         }
                     </div>
-                    <div class="sidebar-reco-info">
-                        <p class="sidebar-reco-title">@s.Title</p>
-                        <p class="sidebar-reco-meta">@s.Speaker · @s.SermonDate.ToString("dd MMM yyyy")</p>
-                    </div>
-                </a>
+                </section>
             }
-            <a asp-controller="Media" asp-action="Index" class="btn btn-outline btn-sm btn-full"
-               style="margin-top:1rem">
-                <i class="fas fa-th-large"></i> All Sermons
-            </a>
+
+            @if (!isSignedIn)
+            {
+                <section class="stay-card">
+                    <span class="stay-icon" aria-hidden="true"><i class="fas fa-users"></i></span>
+                    <div>
+                        <h2>Stay Connected</h2>
+                        <p>Join our community for more inspiring messages.</p>
+                    </div>
+                    <a href="/Account/Register" class="stay-btn">Register <i class="fas fa-arrow-right"></i></a>
+                </section>
+            }
         </aside>
 
     </div>
 </div>
 
+@if (canEngage)
+{
+    <dialog class="engage-dialog" id="prayDialog" aria-labelledby="prayTitle">
+        <form method="dialog" class="engage-dialog-form" data-action="/Media/Pray/@Model.Id">
+            <div class="engage-dialog-head">
+                <h3 id="prayTitle"><i class="fas fa-praying-hands"></i> Request prayer</h3>
+                <button type="button" class="engage-dialog-close" data-close aria-label="Close"><i class="fas fa-xmark"></i></button>
+            </div>
+            <p class="engage-dialog-sub">Our pastors and prayer team will stand with you. We'll note that you were watching "@Model.Title".</p>
+            <textarea name="Request" class="form-control" rows="5" required placeholder="How can we pray for you?"></textarea>
+            <div class="engage-dialog-row">
+                <label for="prayCategory">Category</label>
+                <select name="Category" id="prayCategory" class="form-control">
+                    @foreach (var cat in Enum.GetValues<ChurchMinistry.Models.PrayerCategory>())
+                    {
+                        <option value="@cat">@cat</option>
+                    }
+                </select>
+            </div>
+            @* The hidden "false" after each box is what's sent when it's unticked (the first value wins) *@
+            <label class="engage-check"><input type="checkbox" name="IsPublic" value="true" checked /> Share on the Prayer Wall so others can pray too</label>
+            <input type="hidden" name="IsPublic" value="false" />
+            <label class="engage-check"><input type="checkbox" name="IsAnonymous" value="true" /> Post anonymously</label>
+            <input type="hidden" name="IsAnonymous" value="false" />
+            <div class="engage-dialog-error" role="alert"></div>
+            <div class="engage-dialog-actions">
+                <button type="button" class="btn btn-outline btn-sm" data-close>Cancel</button>
+                <button type="submit" class="btn btn-primary btn-sm"><i class="fas fa-paper-plane"></i> Send request</button>
+            </div>
+        </form>
+    </dialog>
+
+    <dialog class="engage-dialog" id="askDialog" aria-labelledby="askTitle">
+        <form method="dialog" class="engage-dialog-form" data-action="/Media/Ask/@Model.Id">
+            <div class="engage-dialog-head">
+                <h3 id="askTitle"><i class="fas fa-question-circle"></i> Ask a question</h3>
+                <button type="button" class="engage-dialog-close" data-close aria-label="Close"><i class="fas fa-xmark"></i></button>
+            </div>
+            <p class="engage-dialog-sub">Your question goes to the Pastor and is posted in Community (Pastor Q&amp;A), so others can learn from the answer too.</p>
+            <textarea name="question" class="form-control" rows="5" required maxlength="4000" placeholder="What would you like to ask about this message?"></textarea>
+            <div class="engage-dialog-error" role="alert"></div>
+            <div class="engage-dialog-actions">
+                <button type="button" class="btn btn-outline btn-sm" data-close>Cancel</button>
+                <button type="submit" class="btn btn-primary btn-sm"><i class="fas fa-paper-plane"></i> Send question</button>
+            </div>
+        </form>
+    </dialog>
+}
+
 @section Scripts {
     <script src="~/js/audio-wave.js" asp-append-version="true"></script>
+    <script>
+        // ── Banner, tabs, sharing, "Read more" ──
+        (() => {
+            // Play: the banner fades away and the player (already loaded underneath) starts
+            const wrap = document.getElementById('playerWrap');
+            document.getElementById('heroPlay')?.addEventListener('click', () => {
+                wrap.classList.add('playing');
+                const media = document.getElementById('htmlPlayer');
+                if (media) { media.play().catch(() => {}); return; }
+                if (document.getElementById('ytPlayer')) {
+                    if (window.__ytPlayer?.playVideo) window.__ytPlayer.playVideo();
+                    else window.__ytPlayWanted = true;   // the YouTube API isn't ready yet: it plays on ready
+                }
+                // Facebook: its own play button is now in view
+            });
+
+            // Comments / My Sermon Notes tabs
+            const tabs = [...document.querySelectorAll('.watch-tab')];
+            const lockNote = document.getElementById('notesPrivate');
+            tabs.forEach(tab => tab.addEventListener('click', () => {
+                tabs.forEach(t => {
+                    const on = t === tab;
+                    t.classList.toggle('active', on);
+                    t.setAttribute('aria-selected', on);
+                    document.getElementById(t.getAttribute('aria-controls')).hidden = !on;
+                });
+                if (lockNote) lockNote.hidden = tab.id !== 'tab-notes';
+                if (tab.id === 'tab-notes') document.getElementById('sermonNote')?.focus();
+            }));
+
+            // Share: the phone's share sheet, or copy the link
+            const shareUrl = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(shareUrl));
+            const shareTitle = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Model.Title));
+            const toast = document.querySelector('.share-toast');
+            const showToast = text => {
+                if (!toast) return;
+                toast.textContent = text; toast.hidden = false;
+                clearTimeout(showToast.t); showToast.t = setTimeout(() => toast.hidden = true, 2500);
+            };
+            const copy = async text => {
+                try { await navigator.clipboard.writeText(text); return true; } catch { }
+                const ta = Object.assign(document.createElement('textarea'), { value: text });
+                ta.style.cssText = 'position:fixed;opacity:0';
+                document.body.appendChild(ta); ta.select();
+                const ok = document.execCommand('copy'); ta.remove();
+                return ok;
+            };
+            document.querySelectorAll('[data-share]').forEach(btn => btn.addEventListener('click', async () => {
+                if (navigator.share) {
+                    try { await navigator.share({ title: shareTitle, url: shareUrl }); } catch { }
+                    return;
+                }
+                showToast(await copy(shareUrl) ? 'Link copied' : shareUrl);
+            }));
+
+            // Long descriptions fold to a few lines. Measured once the page (and the styles that
+            // come after this script) has loaded.
+            const desc = document.getElementById('sermonDescription');
+            const more = document.getElementById('readMore');
+            if (desc && more) {
+                more.addEventListener('click', () => {
+                    const folded = desc.classList.toggle('folded');
+                    more.textContent = folded ? 'Read more' : 'Show less';
+                });
+                document.addEventListener('DOMContentLoaded', () => {
+                    desc.classList.add('folded');
+                    if (desc.scrollHeight > desc.clientHeight + 2) more.hidden = false;
+                    else desc.classList.remove('folded');
+                });
+            }
+        })();
+    </script>
+    <script>
+        // ── Engagement: reactions, prayer, questions, comments, notes ──
+        (() => {
+            const token = document.querySelector('input[name="__RequestVerificationToken"]')?.value ?? '';
+            const sermonId = @Model.Id;
+            const post = (url, data) => fetch(url, {
+                method: 'POST', body: data, headers: { 'RequestVerificationToken': token }
+            });
+            const errorOf = async res => {
+                try { return (await res.json()).error; } catch { return null; }
+            };
+            const msg = document.getElementById('engageMsg');
+            const flash = html => {
+                if (!msg) return;
+                msg.innerHTML = html; msg.hidden = false;
+                clearTimeout(flash.t); flash.t = setTimeout(() => msg.hidden = true, 9000);
+            };
+
+            // Amen / Blessed
+            document.querySelectorAll('.engage-btn.react').forEach(btn => btn.addEventListener('click', async () => {
+                btn.disabled = true;
+                const data = new FormData(); data.append('kind', btn.dataset.kind);
+                try {
+                    const res = await post(`/Media/React/${sermonId}`, data);
+                    if (!res.ok) return;
+                    const r = await res.json();
+                    document.querySelector('[data-count="Amen"]').textContent = r.amen;
+                    document.querySelector('[data-count="Blessed"]').textContent = r.blessed;
+                    document.querySelectorAll('.engage-btn.react').forEach(b => {
+                        const on = r.mine.includes(b.dataset.kind);
+                        b.classList.toggle('on', on); b.setAttribute('aria-pressed', on);
+                    });
+                } finally { btn.disabled = false; }
+            }));
+
+            // Pray / Ask pop-ups
+            document.querySelectorAll('[data-open]').forEach(b => b.addEventListener('click', () =>
+                document.getElementById(b.dataset.open)?.showModal()));
+            document.querySelectorAll('.engage-dialog').forEach(dlg => {
+                dlg.querySelectorAll('[data-close]').forEach(b => b.addEventListener('click', () => dlg.close()));
+                dlg.addEventListener('click', e => { if (e.target === dlg) dlg.close(); });   // backdrop
+                const form = dlg.querySelector('form');
+                form.addEventListener('submit', async e => {
+                    e.preventDefault();
+                    const err = form.querySelector('.engage-dialog-error');
+                    const submit = form.querySelector('[type=submit]');
+                    err.textContent = ''; submit.disabled = true;
+                    try {
+                        const res = await post(form.dataset.action, new FormData(form));
+                        if (!res.ok) { err.textContent = await errorOf(res) ?? 'Something went wrong. Please try again.'; return; }
+                        const r = await res.json();
+                        form.reset(); dlg.close();
+                        flash(dlg.id === 'prayDialog'
+                            ? '<i class="fas fa-check-circle"></i> Your prayer request was sent. We are praying with you. <a href="/Prayer/MyRequests">My prayer requests</a>'
+                            : `<i class="fas fa-check-circle"></i> Your question was sent to the Pastor. <a href="${r.url}">View it in Community</a>`);
+                    } catch { err.textContent = 'Could not send. Check your connection and try again.'; }
+                    finally { submit.disabled = false; }
+                });
+            });
+
+            // Notes: saved a moment after typing stops (and when leaving the page)
+            const note = document.getElementById('sermonNote');
+            if (note) {
+                const status = document.getElementById('noteStatus');
+                let timer = null, saved = note.value;
+                const save = async () => {
+                    clearTimeout(timer); timer = null;
+                    if (note.value === saved) return;
+                    const value = note.value;
+                    status.textContent = 'Saving…';
+                    const data = new FormData(); data.append('note', value);
+                    try {
+                        const res = await post(`/Media/SaveNote/${sermonId}`, data);
+                        if (res.ok) { saved = value; status.textContent = 'Saved'; }
+                        else status.textContent = 'Not saved, will try again';
+                    } catch { status.textContent = 'Not saved, will try again'; }
+                };
+                note.addEventListener('input', () => { status.textContent = ''; clearTimeout(timer); timer = setTimeout(save, 1200); });
+                note.addEventListener('blur', save);
+                window.addEventListener('pagehide', () => {
+                    if (note.value === saved) return;
+                    const data = new FormData(); data.append('note', note.value);
+                    fetch(`/Media/SaveNote/${sermonId}`, { method: 'POST', body: data, keepalive: true, headers: { 'RequestVerificationToken': token } });
+                });
+            }
+
+            // Comments
+            const list = document.getElementById('commentList');
+            const count = document.getElementById('commentCount');
+            const form = document.getElementById('commentForm');
+            form?.addEventListener('submit', async e => {
+                e.preventDefault();
+                const err = document.getElementById('commentError');
+                const submit = form.querySelector('[type=submit]');
+                err.textContent = ''; submit.disabled = true;
+                try {
+                    const res = await post(`/Media/Comment/${sermonId}`, new FormData(form));
+                    if (!res.ok) { err.textContent = await errorOf(res) ?? 'Could not post. Please try again.'; return; }
+                    list.insertAdjacentHTML('afterbegin', await res.text());
+                    document.getElementById('commentEmpty')?.remove();
+                    count.textContent = +count.textContent + 1;
+                    form.reset();
+                } catch { err.textContent = 'Could not post. Check your connection and try again.'; }
+                finally { submit.disabled = false; }
+            });
+            list?.addEventListener('click', async e => {
+                const del = e.target.closest('.sc-delete');
+                if (!del || !confirm('Delete this comment?')) return;
+                const data = new FormData(); data.append('commentId', del.dataset.id);
+                const res = await post('/Media/DeleteComment', data);
+                if (res.ok) {
+                    del.closest('.sc-item').remove();
+                    count.textContent = Math.max(0, +count.textContent - 1);
+                }
+            });
+        })();
+    </script>
     <script>
         // Audio sermons: waveform under the poster while it plays
         (() => {
@@ -384,6 +904,8 @@
                 ytPlayer = new YT.Player('ytPlayer', {
                     events: {
                         onReady: () => {
+                            window.__ytPlayer = ytPlayer;   // the banner's Play button starts it
+                            if (window.__ytPlayWanted) ytPlayer.playVideo();
                             // Poll every second once playing
                             pollTimer = setInterval(() => {
                                 if (!ytPlayer) return;
@@ -423,502 +945,287 @@
     </script>
 
     <style>
+        /* ═══ Sermon page: purple hero, pill actions, tabbed comments/notes, card sidebar ═══ */
+        .sr-only { position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap; }
+
         /* ── Layout ─────────────────────────────────── */
-        .watch-page {
-            max-width: 1280px;
-            margin: 0 auto;
-            padding: 1.5rem;
-        }
+        .watch-page { max-width:1280px; margin:0 auto; padding:1.25rem 1.5rem 2rem; }
+        .watch-layout { display:grid; grid-template-columns:minmax(0,1fr) 360px; gap:1.75rem; align-items:start; }
+        .video-col { display:flex; flex-direction:column; gap:1.25rem; min-width:0; }
+        .watch-sidebar { display:flex; flex-direction:column; gap:1.25rem; min-width:0; }
 
-        .watch-layout {
-            display: grid;
-            grid-template-columns: 1fr 320px;
-            gap: 2rem;
-        }
+        /* ── Breadcrumb + share ─────────────────────── */
+        .watch-topbar { display:flex; align-items:center; justify-content:space-between; gap:.75rem 1.5rem; flex-wrap:wrap; margin-bottom:1rem; }
+        .watch-crumbs { display:flex; align-items:center; gap:.7rem; min-width:0; font-size:1rem; color:var(--text-s); }
+        .watch-crumbs a { color:var(--text); text-decoration:none; font-weight:500; }
+        .watch-crumbs a:hover { color:var(--purple); }
+        .watch-crumbs .fa-home { font-size:1.2rem; color:var(--text); }
+        .crumb-sep { font-size:.7rem; color:var(--text-s); }
+        .crumb-current { color:var(--purple); font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:40ch; }
+        .watch-share { display:flex; align-items:center; gap:.55rem; font-size:.9rem; color:var(--text-s); }
+        .share-btn { width:36px; height:36px; border-radius:50%; display:inline-flex; align-items:center; justify-content:center;
+                     color:#fff; font-size:.95rem; border:none; cursor:pointer; transition:transform .15s, opacity .15s; text-decoration:none; }
+        .share-btn:hover { color:#fff; transform:translateY(-1px); opacity:.9; }
+        .share-btn.fb { background:#1877f2; }
+        .share-btn.wa { background:#25d366; }
+        .share-btn.more { background:var(--surface-2); color:var(--text); }
+        .share-btn.more:hover { color:var(--purple); }
+        .share-btn:focus-visible, .share-this:focus-visible { outline:2px solid var(--purple); outline-offset:2px; }
 
-        .video-col {
-            display: flex;
-            flex-direction: column;
-            gap: 1.25rem;
-            min-width: 0;
-        }
+        /* ── Hero banner / player ───────────────────── */
+        .video-player-wrap { position:relative; border-radius:20px; overflow:hidden; background:#1e1b4b; box-shadow:0 18px 40px -18px rgba(49,46,129,.55); }
+        .video-player-wrap.playing { aspect-ratio:16/9; background:#000; }
+        /* The players sit underneath the banner until Play */
+        .video-player-wrap > iframe,
+        .video-player-wrap > video { position:absolute; inset:0; width:100%; height:100%; border:0; }
+        .video-player-wrap > video { object-fit:contain; background:#000; }
 
-        /* ── Player ─────────────────────────────────── */
-        .video-player-wrap {
-            position: relative;
-            background: #000;
-            border-radius: var(--radius);
-            overflow: hidden;
-            aspect-ratio: 16/9;
-        }
+        .watch-hero { position:relative; z-index:5; min-height:clamp(300px, 31vw, 360px); display:flex; align-items:center;
+                      background:radial-gradient(circle at 85% 20%, rgba(167,139,250,.45), transparent 45%),
+                                 linear-gradient(120deg, #1e1b4b 0%, #312e81 45%, #4f46e5 100%);
+                      transition:opacity .35s ease; }
+        .video-player-wrap.playing .watch-hero { position:absolute; inset:0; opacity:0; pointer-events:none; }
+        .hero-bg { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; }
+        .hero-shade { position:absolute; inset:0;
+                      background:linear-gradient(90deg, rgba(23,20,64,.97) 0%, rgba(36,31,100,.9) 38%, rgba(49,46,129,.45) 68%, rgba(49,46,129,.05) 100%); }
+        .hero-content { position:relative; padding:2rem 2.25rem; color:#fff; max-width:min(100%, 640px); }
+        .hero-badge { display:inline-flex; align-items:center; gap:.5rem; padding:.45rem 1rem; border-radius:999px;
+                      background:rgba(99,102,241,.85); color:#fff; font-size:.92rem; font-weight:600; }
+        .hero-title { margin:.9rem 0 .6rem; color:#fff; font-size:clamp(1.6rem, 3.3vw, 2.7rem); font-weight:800; line-height:1.12; letter-spacing:-.01em; }
+        .hero-meta { display:flex; flex-wrap:wrap; align-items:center; gap:.4rem 0; margin:0; font-size:.98rem; color:rgba(255,255,255,.92); }
+        .hero-meta span { display:inline-flex; align-items:center; gap:.5rem; }
+        .hero-meta span + span::before { content:""; width:1px; height:18px; background:rgba(255,255,255,.35); margin:0 .9rem; }
+        .hero-meta i { opacity:.9; }
+        .hero-scripture { margin:.55rem 0 0; font-size:.9rem; color:rgba(255,255,255,.8); }
+        .hero-scripture i { margin-right:.4rem; }
+        .hero-cta { display:flex; align-items:center; gap:1.25rem; margin-top:1.6rem; }
+        .hero-play { width:78px; height:78px; flex-shrink:0; border-radius:50%; display:inline-flex; align-items:center; justify-content:center;
+                     background:#4f46e5; border:4px solid #fff; color:#fff; font-size:1.65rem; cursor:pointer; text-decoration:none;
+                     box-shadow:0 10px 30px rgba(79,70,229,.55); transition:transform .15s, background .15s; }
+        .hero-play i.fa-play { margin-left:5px; }
+        .hero-play:hover { transform:scale(1.06); background:#6366f1; color:#fff; }
+        .hero-play:focus-visible { outline:3px solid #c7d2fe; outline-offset:3px; }
+        .hero-play.static { cursor:default; background:rgba(99,102,241,.6); font-size:1.4rem; }
+        .hero-play.static:hover { transform:none; }
+        .hero-cta-sep { width:1px; height:60px; background:rgba(255,255,255,.35); }
+        .hero-cta-text { display:flex; flex-direction:column; gap:.2rem; }
+        .hero-cta-text strong { font-size:1.08rem; color:#fff; }
+        .hero-cta-text small { font-size:.9rem; color:rgba(255,255,255,.8); }
 
-            .video-player-wrap iframe {
-                position: absolute;
-                inset: 0;
-                width: 100%;
-                height: 100%;
-            }
+        /* ── Audio-only (after Play): poster over a blurred copy of itself ── */
+        .audio-only-wrap { position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:1rem;
+                           padding:1.25rem 1.25rem 4.25rem; overflow:hidden; background:radial-gradient(circle at 50% 40%, #312e81, #0f0f13 70%); }
+        .audio-poster-bg { position:absolute; inset:-20px; background-size:cover; background-position:center; filter:blur(24px) brightness(.4); }
+        .audio-thumb { position:relative; max-width:min(60%, 320px); max-height:60%; min-height:0; border-radius:14px; box-shadow:0 18px 50px rgba(0,0,0,.55); object-fit:cover; }
+        .audio-poster-icon { position:relative; width:96px; height:96px; border-radius:50%; display:flex; align-items:center; justify-content:center;
+                             font-size:2.4rem; color:#fff; background:rgba(99,102,241,.85); }
+        .audio-wave { position:relative; flex-shrink:0; width:min(80%, 320px); height:56px; }
+        .audio-player-bar { position:absolute; left:1rem; right:1rem; bottom:.9rem; width:calc(100% - 2rem); }
 
-        /* ── Audio-only ─────────────────────────────── */
-        /* Same look as the Live page's audio only mode: poster over a blurred copy of itself */
-        .audio-only-wrap {
-            position: absolute;
-            inset: 0;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            gap: 1rem;
-            padding: 1.25rem 1.25rem 4.25rem;
-            overflow: hidden;
-            background: radial-gradient(circle at 50% 40%, #312e81, #0f0f13 70%);
-        }
+        /* ── "Up Next" panel (over the player near the end) ── */
+        .reco-panel { position:absolute; inset:0; background:rgba(10,8,35,.93); backdrop-filter:blur(4px); display:flex; flex-direction:column;
+                      padding:1.25rem; transform:translateY(100%); transition:transform .45s cubic-bezier(.4,0,.2,1); z-index:20; }
+        .reco-panel-visible { transform:translateY(0); }
+        .reco-panel-header { display:flex; align-items:center; gap:.75rem; margin-bottom:1rem; flex-wrap:wrap; }
+        .reco-panel-title { display:flex; align-items:center; gap:.45rem; font-size:.95rem; font-weight:700; color:#fff; flex:1; }
+        .reco-countdown { font-size:.82rem; color:rgba(255,255,255,.55); background:rgba(255,255,255,.08); padding:.25rem .65rem; border-radius:100px; }
+        .reco-dismiss { display:flex; align-items:center; gap:.35rem; background:rgba(255,255,255,.08); border:1px solid rgba(255,255,255,.15);
+                        color:rgba(255,255,255,.7); border-radius:8px; padding:.35rem .75rem; font-size:.78rem; cursor:pointer; transition:all .15s; }
+        .reco-dismiss:hover { background:rgba(255,255,255,.15); color:#fff; }
+        .reco-cards { display:grid; grid-template-columns:repeat(3, 1fr); gap:.75rem; flex:1; }
+        .reco-card { display:flex; flex-direction:column; gap:.5rem; background:rgba(255,255,255,.06); border:1px solid rgba(255,255,255,.1);
+                     border-radius:10px; overflow:hidden; text-decoration:none; transition:all .2s; }
+        .reco-card:hover { background:rgba(255,255,255,.12); border-color:rgba(99,102,241,.5); transform:translateY(-2px); }
+        .reco-thumb-wrap { aspect-ratio:16/9; overflow:hidden; }
+        .reco-thumb { width:100%; height:100%; object-fit:cover; }
+        .reco-thumb-placeholder { width:100%; height:100%; background:#1e1b4b; display:flex; align-items:center; justify-content:center;
+                                  color:rgba(255,255,255,.3); font-size:1.5rem; }
+        .reco-card-info { padding:.5rem .65rem .65rem; }
+        .reco-card-title { font-size:.82rem; font-weight:600; color:rgba(255,255,255,.9); line-height:1.4; margin:.25rem 0;
+                           display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
+        .reco-card-meta { font-size:.7rem; color:rgba(255,255,255,.45); }
+        .reco-autoplay-bar { height:3px; background:rgba(255,255,255,.1); border-radius:100px; margin-top:.85rem; overflow:hidden; }
+        .reco-autoplay-fill { height:100%; width:0%; background:#6366f1; border-radius:100px; transition:width 1s linear; }
 
-        .audio-poster-bg {
-            position: absolute;
-            inset: -20px;
-            background-size: cover;
-            background-position: center;
-            filter: blur(24px) brightness(.4);
-        }
+        /* ── Reactions (under the banner) ───────────── */
+        .react-row { display:flex; flex-wrap:wrap; align-items:center; gap:.5rem; margin-top:-.4rem; }
+        .react-row .engage-btn { padding:.45rem .95rem; font-size:.88rem; background:var(--white); border-color:var(--border); }
+        .engage-btn.react.on { background:var(--purple-l); border-color:var(--purple); color:var(--purple); }
+        .engage-btn.react[data-kind="Blessed"].on i { color:#e11d48; }
+        .engage-count { font-weight:700; min-width:1ch; color:var(--text-s); }
+        .engage-btn.react.on .engage-count { color:inherit; }
 
-        .audio-thumb {
-            position: relative;
-            max-width: min(60%, 320px);
-            max-height: 60%;
-            min-height: 0;
-            border-radius: 14px;
-            box-shadow: 0 18px 50px rgba(0,0,0,.55);
-            object-fit: cover;
-        }
+        /* ── Action pills ───────────────────────────── */
+        .engage-bar { display:flex; flex-wrap:wrap; align-items:center; gap:.6rem; }
+        .engage-btn { display:inline-flex; align-items:center; gap:.55rem; padding:.78rem 1.1rem; border-radius:999px;
+                      border:1px solid transparent; background:var(--purple-l); color:var(--text); font-size:.95rem; font-weight:700;
+                      cursor:pointer; text-decoration:none; line-height:1.2; transition:background .15s, border-color .15s, color .15s, transform .15s; }
+        .engage-btn i { color:var(--purple); font-size:1.05em; }
+        .engage-btn:hover { border-color:var(--purple); color:var(--purple); transform:translateY(-1px); }
+        .engage-btn:focus-visible { outline:2px solid var(--purple); outline-offset:2px; }
+        .engage-btn.primary { background:linear-gradient(135deg, #4338ca, #4f46e5); color:#fff; box-shadow:0 8px 20px -8px rgba(79,70,229,.7); }
+        .engage-btn.primary i { color:#fff; }
+        .engage-btn.primary:hover { color:#fff; border-color:transparent; filter:brightness(1.08); }
+        .engage-btn.static { cursor:default; }
+        .engage-btn.static:hover { border-color:var(--border); color:var(--text); transform:none; }
+        .engage-btn:disabled { opacity:.6; }
+        .engage-msg { padding:.75rem 1rem; border-radius:12px; background:var(--purple-l); color:var(--text); font-size:.9rem; }
+        .engage-msg i { color:var(--purple); margin-right:.3rem; }
+        .engage-msg a { font-weight:600; margin-left:.35rem; }
 
-        .audio-poster-icon {
-            position: relative;
-            width: 96px;
-            height: 96px;
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 2.4rem;
-            color: white;
-            background: rgba(99,102,241,.85);
-        }
+        /* ── Cards ───────────────────────────────────── */
+        .watch-card { background:var(--white); border:1px solid var(--border); border-radius:18px; padding:1.4rem 1.5rem;
+                      box-shadow:0 10px 30px -18px rgba(49,46,129,.35); }
+        .card-title { display:flex; align-items:center; gap:.65rem; margin:0; font-size:1.12rem; font-weight:800; color:var(--text); }
+        .card-title i { color:var(--purple); font-size:1.3rem; }
+        .card-title-row { display:flex; align-items:center; justify-content:space-between; gap:.75rem; margin-bottom:1rem; }
+        .view-all { font-size:.9rem; font-weight:600; color:var(--purple); text-decoration:none; white-space:nowrap; }
+        .view-all:hover { color:var(--purple-d); }
 
-        .audio-wave {
-            position: relative;
-            flex-shrink: 0;
-            width: min(80%, 320px);
-            height: 56px;
-        }
+        /* About this message */
+        .about-card .card-title { margin-bottom:.6rem; }
+        .sermon-description { margin:0; font-size:.95rem; line-height:1.75; color:var(--text-s); white-space:pre-line; overflow-wrap:anywhere; }
+        .sermon-description.folded { display:-webkit-box; -webkit-line-clamp:6; -webkit-box-orient:vertical; overflow:hidden; }
+        .read-more { margin-top:.4rem; padding:0; border:none; background:none; color:var(--purple); font-weight:700; font-size:.9rem; cursor:pointer; }
+        .sermon-tags { display:flex; flex-wrap:wrap; gap:.4rem; margin-top:.9rem; }
 
-        .audio-player-bar {
-            position: absolute;
-            left: 1rem;
-            right: 1rem;
-            bottom: .9rem;
-            width: calc(100% - 2rem);
-        }
+        /* ── Tabs: Comments / My Sermon Notes ───────── */
+        .tabs-card { padding:0; }
+        .watch-tabs { display:flex; align-items:center; flex-wrap:wrap; gap:0 1.75rem; padding:0 1.5rem; border-bottom:1px solid var(--border); }
+        .watch-tab { display:inline-flex; align-items:center; gap:.6rem; padding:1.15rem .3rem; border:none; background:none; cursor:pointer;
+                     font-size:1rem; font-weight:700; color:var(--text-s); box-shadow:inset 0 -3px 0 transparent; transition:color .15s, box-shadow .15s; }
+        .watch-tab i { font-size:1.1rem; }
+        .watch-tab:hover { color:var(--text); }
+        .watch-tab.active { color:var(--purple); box-shadow:inset 0 -3px 0 var(--purple); }
+        .watch-tab:focus-visible { outline:2px solid var(--purple); outline-offset:-2px; border-radius:6px; }
+        .notes-private { margin-left:auto; font-size:.85rem; color:var(--text-s); display:inline-flex; align-items:center; gap:.45rem; }
+        .notes-private[hidden] { display:none; }
+        .watch-panel { padding:1.4rem 1.5rem 1.6rem; }
+        .watch-panel textarea { resize:vertical; line-height:1.6; }
+        .notes-status { font-size:.78rem; color:var(--text-s); min-height:1.4rem; padding-top:.4rem; }
 
-        /* ── Upcoming sermon poster ─────────────────── */
-        .upcoming-poster {
-            position: absolute;
-            inset: 0;
-            background: #000;
-        }
+        /* Comments */
+        .sc-form { display:flex; gap:1rem; margin-bottom:1.25rem; }
+        .sc-form-body { flex:1; min-width:0; }
+        .sc-form textarea { border-radius:12px; }
+        .sc-form-actions { display:flex; justify-content:flex-end; align-items:center; gap:.75rem; margin-top:.65rem; }
+        .sc-post { border-radius:12px; padding:.65rem 1.4rem; font-weight:700; display:inline-flex; align-items:center; gap:.5rem; }
+        .sc-error { color:#dc2626; font-size:.82rem; margin-right:auto; }
+        .sc-signin { font-size:.92rem; color:var(--text-s); margin:0 0 1rem; }
+        .sc-signin a { font-weight:700; }
+        .sc-empty { display:flex; flex-direction:column; align-items:center; text-align:center; gap:.35rem; padding:1.25rem 0 .5rem; }
+        .sc-empty-icon { width:84px; height:84px; border-radius:50%; display:flex; align-items:center; justify-content:center; margin-bottom:.6rem;
+                         background:var(--purple-l); color:var(--purple); font-size:2.2rem; }
+        .sc-empty strong { font-size:1.1rem; color:var(--text); }
+        .sc-empty span:last-child { font-size:.95rem; color:var(--text-s); }
+        .sc-list { display:flex; flex-direction:column; gap:1rem; }
+        .sc-item { display:flex; gap:.75rem; }
+        .sc-avatar { width:48px; height:48px; border-radius:50%; object-fit:cover; flex-shrink:0; }
+        .sc-item .sc-avatar { width:40px; height:40px; }
+        .sc-body { flex:1; min-width:0; background:var(--surface-2); border-radius:14px; padding:.65rem .9rem; }
+        .sc-head { display:flex; flex-wrap:wrap; align-items:center; gap:.4rem .6rem; font-size:.86rem; }
+        .sc-staff { font-size:.72rem; font-weight:700; color:var(--purple); background:var(--purple-l); padding:.1rem .5rem; border-radius:999px; }
+        .sc-time { font-size:.76rem; color:var(--text-s); }
+        .sc-delete { margin-left:auto; border:none; background:none; color:var(--text-s); cursor:pointer; padding:.15rem .3rem; border-radius:6px; }
+        .sc-delete:hover { color:#dc2626; }
+        .sc-text { margin:.3rem 0 0; font-size:.92rem; line-height:1.6; white-space:pre-line; overflow-wrap:anywhere; }
 
-            /* Show the whole poster, letterboxed on black */
-            .upcoming-poster img,
-            .upcoming-poster-placeholder {
-                width: 100%;
-                height: 100%;
-                object-fit: contain;
-            }
+        /* ── Sidebar cards ───────────────────────────── */
+        .side-card .card-title { margin-bottom:1rem; }
+        .detail-list { list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:1rem; }
+        .detail-list li { display:flex; align-items:center; gap:1rem; }
+        .detail-list i { width:30px; text-align:center; font-size:1.45rem; color:var(--purple); flex-shrink:0; }
+        .detail-list small { display:block; font-size:.85rem; color:var(--text-s); }
+        .detail-list strong { display:block; font-size:1.02rem; color:var(--text); overflow-wrap:anywhere; }
+        .side-divider { height:1px; background:var(--border); margin:1.25rem 0; }
+        .share-this { width:100%; display:flex; align-items:center; justify-content:center; gap:.6rem; padding:.85rem 1rem; border-radius:12px;
+                      border:1.5px solid var(--purple); background:var(--purple-l); color:var(--purple); font-size:1rem; font-weight:700; cursor:pointer;
+                      transition:background .15s, color .15s; }
+        .share-this:hover { background:var(--purple); color:var(--on-accent); }
+        .share-toast { position:fixed; left:50%; bottom:24px; transform:translateX(-50%); z-index:1000; padding:.65rem 1.2rem; border-radius:999px;
+                       background:#111827; color:#fff; font-size:.9rem; font-weight:600; box-shadow:0 10px 30px rgba(0,0,0,.3); }
 
-        .upcoming-poster-placeholder {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 4rem;
-            color: rgba(255,255,255,.35);
-            background: linear-gradient(135deg, #1a1a2e, #3a2a5e);
-        }
+        .related-list { display:flex; flex-direction:column; gap:1rem; }
+        .related-item { display:flex; align-items:center; gap:1rem; text-decoration:none; color:var(--text); border-radius:12px; transition:transform .15s; }
+        .related-item:hover { color:var(--text); transform:translateX(3px); }
+        .related-item:hover strong { color:var(--purple); }
+        .related-thumb { width:96px; height:72px; flex-shrink:0; border-radius:12px; overflow:hidden; background:var(--purple-l);
+                         display:flex; align-items:center; justify-content:center; color:var(--purple); font-size:1.4rem; }
+        .related-thumb img { width:100%; height:100%; object-fit:cover; }
+        .related-info { display:flex; flex-direction:column; gap:.2rem; min-width:0; }
+        .related-info strong { font-size:1rem; font-weight:700; line-height:1.3; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; transition:color .15s; }
+        .related-info small { font-size:.84rem; color:var(--text-s); display:flex; align-items:center; gap:.4rem; }
 
-        .upcoming-poster-info {
-            position: absolute;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            display: flex;
-            flex-wrap: wrap;
-            align-items: center;
-            gap: .5rem 1rem;
-            padding: 2.5rem 1.25rem 1rem;
-            color: #fff;
-            font-size: .9rem;
-            background: linear-gradient(transparent, rgba(0,0,0,.8));
-        }
+        .stay-card { position:relative; overflow:hidden; display:grid; grid-template-columns:auto 1fr; gap:.4rem 1rem; align-items:center;
+                     padding:1.4rem 1.4rem 1.2rem; border-radius:18px; border:1px solid var(--border);
+                     background:linear-gradient(135deg, var(--purple-l) 0%, var(--white) 140%); }
+        .stay-card::after { content:""; position:absolute; left:-10%; right:-10%; bottom:-40px; height:80px; border-radius:50%;
+                            background:var(--purple); opacity:.08; }
+        .stay-icon { font-size:2.2rem; color:var(--purple); }
+        .stay-card h2 { margin:0 0 .25rem; font-size:1.15rem; font-weight:800; color:var(--purple); }
+        .stay-card p { margin:0; font-size:.9rem; color:var(--text-s); line-height:1.45; }
+        .stay-btn { grid-column:1 / -1; justify-self:end; position:relative; z-index:1; display:inline-flex; align-items:center; gap:.5rem;
+                    padding:.6rem 1.1rem; border-radius:10px; background:linear-gradient(135deg, #3730a3, #4f46e5); color:#fff; font-weight:700;
+                    font-size:.92rem; text-decoration:none; }
+        .stay-btn:hover { color:#fff; filter:brightness(1.1); }
 
-        .upcoming-badge {
-            display: inline-flex;
-            align-items: center;
-            gap: .4rem;
-            padding: .3rem .75rem;
-            border-radius: 999px;
-            background: #f5a623;
-            color: #1a1a1a;
-            font-size: .78rem;
-            font-weight: 700;
-            text-transform: uppercase;
-            letter-spacing: .04em;
-        }
-
-        .sermon-details-header .upcoming-badge {
-            margin-bottom: .5rem;
-        }
-
-        /* ── Recommendation panel (overlay on video) ─ */
-        .reco-panel {
-            position: absolute;
-            inset: 0;
-            background: rgba(10,8,35,.93);
-            backdrop-filter: blur(4px);
-            display: flex;
-            flex-direction: column;
-            padding: 1.25rem;
-            transform: translateY(100%);
-            transition: transform .45s cubic-bezier(.4,0,.2,1);
-            z-index: 20;
-        }
-
-        .reco-panel-visible {
-            transform: translateY(0);
-        }
-
-        .reco-panel-header {
-            display: flex;
-            align-items: center;
-            gap: .75rem;
-            margin-bottom: 1rem;
-            flex-wrap: wrap;
-        }
-
-        .reco-panel-title {
-            display: flex;
-            align-items: center;
-            gap: .45rem;
-            font-size: .95rem;
-            font-weight: 700;
-            color: white;
-            flex: 1;
-        }
-
-        .reco-countdown {
-            font-size: .82rem;
-            color: rgba(255,255,255,.55);
-            background: rgba(255,255,255,.08);
-            padding: .25rem .65rem;
-            border-radius: 100px;
-        }
-
-        .reco-dismiss {
-            display: flex;
-            align-items: center;
-            gap: .35rem;
-            background: rgba(255,255,255,.08);
-            border: 1px solid rgba(255,255,255,.15);
-            color: rgba(255,255,255,.7);
-            border-radius: 8px;
-            padding: .35rem .75rem;
-            font-size: .78rem;
-            cursor: pointer;
-            transition: all .15s;
-        }
-
-            .reco-dismiss:hover {
-                background: rgba(255,255,255,.15);
-                color: white;
-            }
-
-        /* ── Reco cards (inside overlay) ────────────── */
-        .reco-cards {
-            display: grid;
-            grid-template-columns: repeat(3, 1fr);
-            gap: .75rem;
-            flex: 1;
-        }
-
-        .reco-card {
-            display: flex;
-            flex-direction: column;
-            gap: .5rem;
-            background: rgba(255,255,255,.06);
-            border: 1px solid rgba(255,255,255,.1);
-            border-radius: 10px;
-            overflow: hidden;
-            text-decoration: none;
-            transition: all .2s;
-        }
-
-            .reco-card:hover {
-                background: rgba(255,255,255,.12);
-                border-color: rgba(99,102,241,.5);
-                transform: translateY(-2px);
-            }
-
-        .reco-thumb-wrap {
-            aspect-ratio: 16/9;
-            overflow: hidden;
-        }
-
-        .reco-thumb {
-            width: 100%;
-            height: 100%;
-            object-fit: cover;
-        }
-
-        .reco-thumb-placeholder {
-            width: 100%;
-            height: 100%;
-            background: #1e1b4b;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            color: rgba(255,255,255,.3);
-            font-size: 1.5rem;
-        }
-
-        .reco-card-info {
-            padding: .5rem .65rem .65rem;
-        }
-
-        .reco-card-title {
-            font-size: .82rem;
-            font-weight: 600;
-            color: rgba(255,255,255,.9);
-            line-height: 1.4;
-            margin: .25rem 0;
-            display: -webkit-box;
-            -webkit-line-clamp: 2;
-            -webkit-box-orient: vertical;
-            overflow: hidden;
-        }
-
-        .reco-card-meta {
-            font-size: .7rem;
-            color: rgba(255,255,255,.45);
-        }
-
-        /* ── Auto-play progress bar ─────────────────── */
-        .reco-autoplay-bar {
-            height: 3px;
-            background: rgba(255,255,255,.1);
-            border-radius: 100px;
-            margin-top: .85rem;
-            overflow: hidden;
-        }
-
-        .reco-autoplay-fill {
-            height: 100%;
-            width: 0%;
-            background: #6366f1;
-            border-radius: 100px;
-            transition: width 1s linear;
-        }
-
-        /* ── Sermon details ─────────────────────────── */
-        .sermon-details {
-            background: var(--white);
-            border: 1px solid var(--border);
-            border-radius: var(--radius);
-            padding: 1.5rem;
-            box-shadow: var(--shadow);
-        }
-
-        .sermon-details-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: flex-start;
-            gap: 1rem;
-            flex-wrap: wrap;
-            margin-bottom: 1rem;
-        }
-
-        .sermon-details h1 {
-            font-size: 1.25rem;
-            font-weight: 800;
-            margin-bottom: .4rem;
-        }
-
-        .sermon-description {
-            font-size: .92rem;
-            line-height: 1.75;
-            color: var(--text-s);
-            margin-top: .75rem;
-        }
-
-        .sermon-tags {
-            display: flex;
-            flex-wrap: wrap;
-            gap: .4rem;
-            margin-top: .75rem;
-        }
-
-        .audio-download-row {
-            margin-top: 1rem;
-        }
-
-        /* ── Sidebar ─────────────────────────────────── */
-        .watch-sidebar {
-            display: flex;
-            flex-direction: column;
-            gap: .6rem;
-        }
-
-        .sidebar-heading {
-            font-size: .88rem;
-            font-weight: 700;
-            color: var(--text-s);
-            text-transform: uppercase;
-            letter-spacing: .06em;
-            margin-bottom: .4rem;
-        }
-
-        .sidebar-reco-card {
-            display: flex;
-            gap: .75rem;
-            padding: .75rem;
-            background: var(--white);
-            border: 1px solid var(--border);
-            border-radius: var(--radius);
-            text-decoration: none;
-            color: var(--text);
-            transition: all .15s;
-            box-shadow: var(--shadow);
-        }
-
-            .sidebar-reco-card:hover {
-                box-shadow: var(--shadow-m);
-                border-color: var(--purple);
-                color: var(--text);
-                transform: translateX(2px);
-            }
-
-        .sidebar-reco-thumb {
-            width: 88px;
-            height: 55px;
-            border-radius: 6px;
-            overflow: hidden;
-            flex-shrink: 0;
-        }
-
-            .sidebar-reco-thumb img {
-                width: 100%;
-                height: 100%;
-                object-fit: cover;
-            }
-
-        .sidebar-reco-placeholder {
-            width: 100%;
-            height: 100%;
-            background: var(--purple-l);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            color: var(--purple);
-            font-size: 1.1rem;
-        }
-
-        .sidebar-reco-title {
-            font-size: .85rem;
-            font-weight: 700;
-            line-height: 1.4;
-            display: -webkit-box;
-            -webkit-line-clamp: 2;
-            -webkit-box-orient: vertical;
-            overflow: hidden;
-        }
-
-        .sidebar-reco-meta {
-            font-size: .73rem;
-            color: var(--text-s);
-            margin-top: .2rem;
-        }
-
-        .share-row {
-            display: flex;
-            align-items: center;
-            gap: .5rem;
-            flex-shrink: 0;
-        }
-
-        .share-btn {
-            width: 32px;
-            height: 32px;
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            color: white;
-            font-size: .85rem;
-            transition: opacity .15s;
-        }
-
-            .share-btn:hover {
-                opacity: .8;
-                color: white;
-            }
-
-            .share-btn.fb {
-                background: #1877f2;
-            }
-
-            .share-btn.wa {
-                background: #25d366;
-            }
+        /* ── Pray / Ask pop-ups ── */
+        .engage-dialog { width:min(520px, calc(100vw - 32px)); margin:auto; padding:0; border:none; border-radius:14px;
+                         box-shadow:0 24px 60px rgba(0,0,0,.25); background:var(--white); color:var(--text); }
+        .engage-dialog::backdrop { background:rgba(15,15,25,.55); }
+        .engage-dialog-form { display:flex; flex-direction:column; gap:.75rem; padding:1.1rem 1.2rem 1.2rem; }
+        .engage-dialog-head { display:flex; align-items:center; justify-content:space-between; gap:.75rem; }
+        .engage-dialog-head h3 { font-size:1.05rem; font-weight:800; margin:0; display:flex; align-items:center; gap:.5rem; }
+        .engage-dialog-head h3 i { color:var(--purple); }
+        .engage-dialog-close { width:32px; height:32px; border-radius:50%; border:none; background:none; color:var(--text-s); cursor:pointer; font-size:1rem; }
+        .engage-dialog-close:hover { background:var(--surface-2); color:var(--text); }
+        .engage-dialog-sub { margin:0; font-size:.85rem; color:var(--text-s); line-height:1.5; }
+        .engage-dialog-row { display:flex; align-items:center; gap:.6rem; }
+        .engage-dialog-row label { font-size:.85rem; font-weight:600; }
+        .engage-dialog-row select { flex:1; }
+        .engage-check { display:flex; align-items:center; gap:.5rem; font-size:.86rem; cursor:pointer; }
+        .engage-dialog-error { color:#dc2626; font-size:.84rem; }
+        .engage-dialog-error:empty { display:none; }
+        .engage-dialog-actions { display:flex; justify-content:flex-end; gap:.5rem; }
 
         /* ── Responsive ─────────────────────────────── */
         @@media (max-width: 1024px) {
-            .watch-layout {
-                grid-template-columns: 1fr;
-            }
-
-            .watch-sidebar {
-                display: grid;
-                grid-template-columns: repeat(auto-fill, minmax(240px,1fr));
-            }
-
-            .reco-cards {
-                grid-template-columns: repeat(2, 1fr);
-            }
+            .watch-layout { grid-template-columns:minmax(0,1fr); }
+            .watch-sidebar { display:grid; grid-template-columns:repeat(auto-fill, minmax(300px, 1fr)); align-items:start; }
+            .reco-cards { grid-template-columns:repeat(2, 1fr); }
         }
 
         @@media (max-width: 600px) {
-            /* The video stays edge to edge; the cards below keep a gutter */
-            .watch-page {
-                padding: 0 0 1.5rem;
-            }
-
-            .sermon-details,
-            .watch-sidebar {
-                margin: 0 1rem;
-            }
-
-            .sermon-details {
-                padding: 1.15rem;
-            }
-
-            .reco-cards {
-                grid-template-columns: 1fr;
-            }
-
-            .video-player-wrap {
-                border-radius: 0;
-            }
-
-            .reco-panel {
-                padding: .75rem;
-            }
+            /* The banner/player runs edge to edge; everything else keeps a gutter */
+            .watch-page { padding:0 0 1.5rem; }
+            .watch-topbar { padding:.75rem 1rem 0; margin-bottom:.75rem; }
+            .watch-crumbs { font-size:.9rem; gap:.5rem; }
+            .crumb-current { max-width:18ch; }
+            .video-player-wrap { border-radius:0; }
+            .watch-hero { min-height:0; }
+            .hero-content { padding:1.4rem 1.1rem 1.5rem; }
+            .hero-badge { font-size:.8rem; padding:.35rem .8rem; }
+            /* No dividers on a phone: a wrapped line would start with one */
+            .hero-meta { font-size:.85rem; gap:.3rem 1rem; }
+            .hero-meta span + span::before { display:none; }
+            .hero-cta { margin-top:1.15rem; gap:.9rem; }
+            .hero-play { width:62px; height:62px; font-size:1.3rem; border-width:3px; }
+            .hero-cta-sep { height:46px; }
+            .react-row, .engage-bar, .engage-msg, .watch-card, .stay-card { margin-left:1rem; margin-right:1rem; }
+            .watch-sidebar { display:flex; align-items:stretch; }
+            .engage-bar { gap:.5rem; }
+            .engage-btn { padding:.6rem 1rem; font-size:.86rem; gap:.45rem; }
+            .watch-card { padding:1.15rem; }
+            .tabs-card { padding:0; }
+            .watch-tabs { padding:0 1rem; gap:0 1rem; flex-wrap:nowrap; overflow-x:auto; }
+            .watch-tab { font-size:.86rem; padding:.95rem .1rem; gap:.45rem; white-space:nowrap; flex-shrink:0; }
+            .watch-tabs:has(.notes-private:not([hidden])) { flex-wrap:wrap; }
+            .notes-private { margin-left:0; width:100%; padding-bottom:.7rem; }
+            .watch-panel { padding:1.1rem 1rem 1.3rem; }
+            .sc-form { gap:.65rem; }
+            .sc-form .sc-avatar { width:38px; height:38px; }
+            .reco-cards { grid-template-columns:1fr; }
+            .reco-panel { padding:.75rem; }
         }
     </style>
 }

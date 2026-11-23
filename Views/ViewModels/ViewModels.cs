@@ -246,6 +246,8 @@ namespace ChurchMinistry.ViewModels
         public Devotional? Devotion { get; set; }        // today's, else the latest up to today
         public bool DevotionRead { get; set; }
         public List<TestimonyItem> Testimonies { get; set; } = new();
+        // A newsletter currently featured for today's date — takes over the lead story when set
+        public Newsletter? FeaturedNewsletter { get; set; }
     }
 
     // A Community testimony on My Daily, with its reaction and comment counts and first photo (if any)
@@ -317,6 +319,27 @@ namespace ChurchMinistry.ViewModels
         public string ReturnUrl { get; set; } = "";   // where a comment posted from this card returns to
     }
 
+    // Reactions, comments and the viewer's own note on the sermon Watch page
+    public class SermonEngagementViewModel
+    {
+        public int SermonId { get; set; }
+        public bool AllowComments { get; set; }
+        public int AmenCount { get; set; }
+        public int BlessedCount { get; set; }
+        public bool Amened { get; set; }
+        public bool Blessed { get; set; }
+        public Member? Me { get; set; }          // null for guests (and staff without a member record)
+        public string? MyNote { get; set; }
+        public List<SermonComment> Comments { get; set; } = new();
+    }
+
+    // One comment under a sermon (Views/Media/_SermonComment.cshtml)
+    public class SermonCommentViewModel
+    {
+        public SermonComment Comment { get; set; } = null!;
+        public bool CanDelete { get; set; }
+    }
+
     // ─── Prayer ───
     public class PrayerRequestViewModel
     {
@@ -340,6 +363,21 @@ namespace ChurchMinistry.ViewModels
         [Required] public string Body { get; set; } = "";
         public string? PreviewText { get; set; }
         public bool SendNow { get; set; }
+        [DataType(DataType.Date), Display(Name = "Featured From")] public DateTime? FeaturedFrom { get; set; }
+        [DataType(DataType.Date), Display(Name = "Featured Until")] public DateTime? FeaturedUntil { get; set; }
+    }
+
+    public class NewsletterEditViewModel
+    {
+        public int Id { get; set; }
+        [Required] public string Subject { get; set; } = "";
+        [Required] public string Body { get; set; } = "";
+        public string? PreviewText { get; set; }
+        public string? PhotoUrl { get; set; }   // current photo, for display only — replaced via the file input
+        public NewsletterStatus Status { get; set; }   // display only; still a Draft can be sent from here
+        public bool SendNow { get; set; }               // only meaningful while Status is Draft
+        [DataType(DataType.Date), Display(Name = "Featured From")] public DateTime? FeaturedFrom { get; set; }
+        [DataType(DataType.Date), Display(Name = "Featured Until")] public DateTime? FeaturedUntil { get; set; }
     }
 
     // ─── Devotionals ───

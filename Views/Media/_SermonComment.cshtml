@@ -1,0 +1,36 @@
+@model ChurchMinistry.ViewModels.SermonCommentViewModel
+@* One comment under a sermon on the Watch page. Also returned by Media/Comment for the page to insert. *@
+@{
+    var c = Model.Comment;
+    const string avatar = "/images/avatar-default.png";
+
+    // "Just now", "5 min", "3 h", "Yesterday", "12 Oct", "12 Oct 2025" (as on Community posts)
+    string Ago(DateTime utc)
+    {
+        var d = DateTime.UtcNow - utc;
+        if (d.TotalMinutes < 1) return "Just now";
+        if (d.TotalHours < 1) return $"{(int)d.TotalMinutes} min";
+        if (d.TotalDays < 1) return $"{(int)d.TotalHours} h";
+        if (d.TotalDays < 2) return "Yesterday";
+        var local = utc.ToLocalTime();
+        return local.Year == DateTime.Now.Year ? local.ToString("d MMM") : local.ToString("d MMM yyyy");
+    }
+}
+<div class="sc-item" id="comment-@c.Id">
+    <img src="@(c.Member.ProfilePhoto ?? avatar)" alt="" class="sc-avatar" />
+    <div class="sc-body">
+        <div class="sc-head">
+            <strong>@c.Member.NameFor(User)</strong>
+            @if (c.IsStaff)
+            {
+                <span class="sc-staff"><i class="fas fa-church"></i> @(c.StaffRole ?? "Pastor")</span>
+            }
+            <span class="sc-time" title="@c.CreatedAt.ToLocalTime().ToString("dddd d MMMM yyyy, h:mm tt")">@Ago(c.CreatedAt)</span>
+            @if (Model.CanDelete)
+            {
+                <button type="button" class="sc-delete" data-id="@c.Id" title="Delete comment"><i class="fas fa-trash-alt"></i></button>
+            }
+        </div>
+        <p class="sc-text">@c.Content</p>
+    </div>
+</div>

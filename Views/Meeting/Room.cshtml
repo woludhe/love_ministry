@@ -79,11 +79,15 @@
     .meet-main   { flex: 1; display: flex; flex-direction: column; overflow: hidden; position: relative; }
 
     /* ── Video grid ── */
-    .video-grid  { flex: 1; min-height: 0; display: grid; gap: 6px; padding: 10px; overflow: hidden;
+    .video-grid  { flex: 1; min-height: 0; display: grid; gap: 14px; padding: 10px; overflow: hidden;
                    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); align-content: center; }
     .video-grid.solo   { grid-template-columns: 1fr; }
     .video-grid.duo    { grid-template-columns: 1fr 1fr; }
-    .video-grid.trio   { grid-template-columns: repeat(3, 1fr); }
+    .video-grid.trio   { grid-template-columns: repeat(2, 1fr); grid-template-rows: repeat(2, 1fr); }
+    .video-grid.trio .video-tile:nth-child(3):not(.screenshare) {
+      grid-column: 1 / -1; width: calc((100% - 14px) / 2); margin: 0 auto;
+    }
+    .video-grid.trio .video-tile { aspect-ratio: auto; min-height: 0; }
     .video-grid.quad   { grid-template-columns: repeat(2, 1fr); grid-template-rows: repeat(2, 1fr); }
     /* 5+ tiles: columns/rows set by reflow() so every tile fits without clipping */
     .video-grid.many   { grid-template-columns: repeat(var(--cols, 3), minmax(0, 1fr));
@@ -127,8 +131,13 @@
     #musicChip { position:absolute; top:.75rem; right:.75rem; z-index:10; max-width:min(60%, 300px);
                  align-items:center; gap:.4rem; padding:.25rem .8rem; border-radius:100px;
                  background:rgba(0,0,0,.6); backdrop-filter:blur(6px); color:#fff;
-                 font-size:.75rem; font-weight:600; pointer-events:none; }
+                 font-size:.75rem; font-weight:600; }
     #musicChip i { color:#a5b4fc; flex-shrink:0; }
+    #musicChipListen { flex-shrink:0; width:20px; height:20px; border-radius:50%; border:none;
+                        background:transparent; color:#a5b4fc; display:flex; align-items:center;
+                        justify-content:center; cursor:pointer; padding:0; }
+    #musicChipListen:hover { color:#fff; }
+    #musicChipListen.active { background:#a5b4fc; color:#1e1b4b; }
     /* Audio only mode: covers the video grid; spotlight/music labels and verses stay on top */
     #audioOnlyStage { position:absolute; top:0; left:0; right:0; bottom:var(--controls-h, 80px); z-index:5;
                       display:flex; flex-direction:column; align-items:center; justify-content:center; gap:1rem;
@@ -310,6 +319,14 @@
       .video-grid.many { grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: none;
                          grid-auto-rows: auto; align-content: start; overflow-y: auto; }
       .video-grid.many .video-tile { aspect-ratio: 4/3; }
+      /* 2-4 people: one tile per row, scrollable, instead of squeezing side by side */
+      .video-grid.duo, .video-grid.trio, .video-grid.quad {
+        grid-template-columns: 1fr; grid-template-rows: none;
+        grid-auto-rows: auto; align-content: start; overflow-y: auto;
+      }
+      /* Undo the desktop pyramid's centered/narrowed bottom tile — full width like every other row here.
+         Specificity must match the desktop rule's :not(.screenshare) or this loses the tie. */
+      .video-grid.trio .video-tile:nth-child(3):not(.screenshare) { width: auto; margin: 0; }
     }
     /* Phones in landscape / short windows: shrink chrome so video + controls both fit */
     @@media (max-height: 500px) {
@@ -418,9 +435,14 @@
       <i class="fas fa-star"></i> <span id="spotlightName"></span>
     </div>
 
-    <!-- Background music: shows the song only; it isn't played in the room -->
-    <div id="musicChip" style="display:none" title="Background music for Live page viewers (not played in the meeting)">
+    <!-- Background music: shows the song; listen to it yourself only via the headphones toggle -->
+    <div id="musicChip" style="display:none">
       <i class="fas fa-music"></i> <span id="musicChipTitle"></span>
+      <button type="button" id="musicChipListen"
+              title="Listen with headphones — using speakers will send the music back into your mic"
+              aria-label="Listen to the background music (headphones only)">
+        <i class="fas fa-headphones"></i>
+      </button>
     </div>
 
     <!-- Verse overlay — projected from LiveSettings -->
@@ -929,7 +951,13 @@ async function stopRecording(){
   if(!recorder) return;
   rec.recorder=null;
   if(recorder.state!=='inactive')
-    await new Promise(done=>{recorder.addEventListener('stop',done,{once:true});recorder.stop();});
+    await new Promise(done=>{
+      recorder.addEventListener('stop',done,{once:true});
+      // Safari can lose the last piece, or never finish, when a paused recorder is stopped
+      try{if(recorder.state==='paused') recorder.resume();}catch{}
+      try{recorder.stop();}catch{done();}
+      setTimeout(done,4000);   // never hold up ending the meeting
+    });
   rec.sources.forEach(s=>s.disconnect()); rec.sources.clear();
   rec.ctx?.close().catch(()=>{}); rec.ctx=null; rec.dest=null;
   clearInterval(rec.timer);
@@ -961,7 +989,12 @@ async function recSend(){
 function toggleRecPause(){
   const r=rec.recorder;
   if(!r) return;
-  if(r.state==='recording') r.pause(); else if(r.state==='paused') r.resume();
+  if(r.state==='recording'){
+    // Upload everything recorded so far now, so nothing is waiting in the browser while paused
+    try{r.requestData();}catch{}
+    r.pause();
+  }
+  else if(r.state==='paused') r.resume();
   showRecUi();
 }
 function showRecUi(){
@@ -1237,14 +1270,16 @@ function muteAll(){conn.invoke('MuteAll',ROOM_CODE);}
 async function confirmEnd(){
   if(!confirm('End the meeting for everyone?')) return;
   // Send the last of the recording before the meeting closes
-  if(rec.recorder){toast('Saving the recording…');await stopRecording();}
-  conn.invoke('EndMeeting',ROOM_CODE);
+  try{if(rec.recorder){toast('Saving the recording…');await stopRecording();}}
+  finally{conn.invoke('EndMeeting',ROOM_CODE);}
 }
 async function leaveMeeting(){
   // Send the last of the recording first: leaving tells the server to save it
-  if(rec.recorder){toast('Saving the recording…');await stopRecording();}
-  room.disconnect();
-  conn.invoke('LeaveRoom',ROOM_CODE).then(()=>window.location.href='/Meeting');
+  try{if(rec.recorder){toast('Saving the recording…');await stopRecording();}}
+  finally{
+    room.disconnect();
+    conn.invoke('LeaveRoom',ROOM_CODE).then(()=>window.location.href='/Meeting');
+  }
 }
 
 // ── Sidebar ───────────────────────────────────────────────
@@ -1387,26 +1422,19 @@ if (liveConn) {
         if (!s.showVerseOverlay || !s.activeVerse)
             document.getElementById('verseOverlay').style.display = 'none';
     });
-    liveConn.on('MusicChanged', showMusic);
-    setInterval(renderMusicChip, 2000);   // the song changes on its own as the playlist runs
-}
-
-// Background music from Live Settings: named here, but only Live page viewers hear it
-// (playing it in the room would go back into the call through people's microphones)
-let musicState = null, musicSkew = 0;
-function showMusic(s) {
-    if (!s) return;
-    musicState = s;
-    musicSkew = (s.serverNow || Date.now()) - Date.now();
-    renderMusicChip();
-}
-function renderMusicChip() {
-    const chip = document.getElementById('musicChip');
-    if (!musicState || musicState.state === 'stopped' || !musicState.playlist?.length) { chip.style.display = 'none'; return; }
-    const pos = LiveMusicMath.positionNow(musicState, Date.now(), musicSkew);
-    const track = musicState.playlist[LiveMusicMath.locate(musicState.playlist, pos).index];
-    document.getElementById('musicChipTitle').textContent = (musicState.state === 'paused' ? 'Paused: ' : '') + track.title;
-    chip.style.display = 'flex';
+    // Background music from Live Settings: the chip always shows what's playing, but the
+    // audio itself stays off until the listener opts in below — playing it through speakers
+    // would send it back into the call through their own microphone.
+    LiveMusicPlayer.start(liveConn, null, { enabled: false });
+    document.getElementById('musicChipListen')?.addEventListener('click', e => {
+        const on = !LiveMusicPlayer.isEnabled();
+        LiveMusicPlayer.setEnabled(on);
+        e.currentTarget.classList.toggle('active', on);
+        e.currentTarget.title = on
+            ? "Stop listening (make sure you're on headphones, not speakers)"
+            : 'Listen with headphones — using speakers will send the music back into your mic';
+        if (on) toast('Playing for you only — use headphones so it doesn’t leak into your mic', 'info');
+    });
 }
 
 // Joins (or re-joins) the room, then re-sends our media state, since the
@@ -1464,7 +1492,7 @@ window.__meet = { room, peerInfo, get spotlightId(){return spotlightId;}, get my
                     `${s.activeVerse.reference} (${s.activeVerse.translation})`;
                 document.getElementById('verseOverlay').style.display = 'block';
             }
-            showMusic(s.music);
+            LiveMusicPlayer.setState(s.music);
         } catch {}
     }
 })();

@@ -291,6 +291,13 @@
                     <a asp-action="SermonAttendance" asp-route-id="@Model.Id">View attendance log</a>
                 </small>
             </div>
+            <div class="form-group checkbox-group">
+                <label><input asp-for="AllowComments" type="checkbox" /> Allow comments</label>
+                <small class="meta">
+                    Signed-in members can comment under the sermon. Turning this off hides the comments
+                    (they're kept, and come back if you turn it on again).
+                </small>
+            </div>
 
             <div style="display:flex;gap:.75rem;margin-top:1.5rem;flex-wrap:wrap">
                 <button type="submit" class="btn btn-primary">

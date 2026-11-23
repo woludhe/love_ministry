@@ -16,7 +16,7 @@
       <div class="newsletter-list">
         @foreach (ChurchMinistry.Models.Newsletter nl in ViewBag.Newsletters) {
           <div class="newsletter-item">
-            <h3>@nl.Subject</h3>
+            <h3><a asp-action="Details" asp-route-id="@nl.Id">@nl.Subject</a></h3>
             @if (nl.SentAt.HasValue) { <p class="meta"><i class="fas fa-calendar"></i> @nl.SentAt.Value.ToString("dd MMMM yyyy") &nbsp;·&nbsp; @nl.RecipientsCount recipients</p> }
             @if (!string.IsNullOrEmpty(nl.PreviewText)) { <p>@nl.PreviewText</p> }
           </div>

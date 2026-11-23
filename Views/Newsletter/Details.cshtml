@@ -1,0 +1,15 @@
+@model ChurchMinistry.Models.Newsletter
+@{
+    ViewData["Title"] = Model.Subject;
+    Layout = "~/Views/Shared/_Layout.cshtml";
+    var date = Model.SentAt ?? Model.CreatedAt;
+}
+
+<section class="page-header"><h1><i class="fas fa-envelope-open-text"></i> @Model.Subject</h1></section>
+<div class="container newsletter-detail-page" style="max-width:720px;margin:0 auto;padding:2rem 1rem">
+    <p class="meta"><i class="fas fa-calendar"></i> @date.ToString("dd MMMM yyyy")</p>
+    <div class="newsletter-body">
+        @Html.Raw(Model.Body)
+    </div>
+    <p style="margin-top:2rem"><a asp-action="Index"><i class="fas fa-arrow-left"></i> Back to Newsletter</a></p>
+</div>

@@ -1371,6 +1371,15 @@ namespace ChurchMinistry.Migrations
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime(6)");
 
+                    b.Property<DateTime?>("FeaturedFrom")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<DateTime?>("FeaturedUntil")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("PhotoUrl")
+                        .HasColumnType("longtext");
+
                     b.Property<string>("PreviewText")
                         .HasColumnType("longtext");
 
@@ -1748,6 +1757,9 @@ namespace ChurchMinistry.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("int");
 
+                    b.Property<bool>("AllowComments")
+                        .HasColumnType("tinyint(1)");
+
                     b.Property<string>("AudioUrl")
                         .HasColumnType("longtext");
 
@@ -1871,6 +1883,42 @@ namespace ChurchMinistry.Migrations
                     b.ToTable("SermonAttendances");
                 });
 
+            modelBuilder.Entity("ChurchMinistry.Models.SermonComment", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    b.Property<string>("Content")
+                        .IsRequired()
+                        .HasMaxLength(1000)
+                        .HasColumnType("varchar(1000)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<bool>("IsStaff")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<int>("MemberId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("SermonId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("StaffRole")
+                        .HasMaxLength(10)
+                        .HasColumnType("varchar(10)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("MemberId");
+
+                    b.HasIndex("SermonId", "CreatedAt");
+
+                    b.ToTable("SermonComments");
+                });
+
             modelBuilder.Entity("ChurchMinistry.Models.SermonNote", b =>
                 {
                     b.Property<int>("Id")
@@ -1890,13 +1938,47 @@ namespace ChurchMinistry.Migrations
                     b.Property<int>("SermonId")
                         .HasColumnType("int");
 
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("datetime(6)");
+
                     b.HasKey("Id");
 
                     b.HasIndex("MemberId");
 
-                    b.HasIndex("SermonId");
+                    b.HasIndex("SermonId", "MemberId")
+                        .IsUnique();
 
                     b.ToTable("SermonNotes");
+                });
+
+            modelBuilder.Entity("ChurchMinistry.Models.SermonReaction", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(10)
+                        .HasColumnType("varchar(10)");
+
+                    b.Property<int>("MemberId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("SermonId")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("MemberId");
+
+                    b.HasIndex("SermonId", "MemberId", "Kind")
+                        .IsUnique();
+
+                    b.ToTable("SermonReactions");
                 });
 
             modelBuilder.Entity("ChurchMinistry.Models.ServiceSession", b =>
@@ -2526,6 +2608,25 @@ namespace ChurchMinistry.Migrations
                     b.Navigation("Sermon");
                 });
 
+            modelBuilder.Entity("ChurchMinistry.Models.SermonComment", b =>
+                {
+                    b.HasOne("ChurchMinistry.Models.Member", "Member")
+                        .WithMany()
+                        .HasForeignKey("MemberId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("ChurchMinistry.Models.Sermon", "Sermon")
+                        .WithMany()
+                        .HasForeignKey("SermonId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Member");
+
+                    b.Navigation("Sermon");
+                });
+
             modelBuilder.Entity("ChurchMinistry.Models.SermonNote", b =>
                 {
                     b.HasOne("ChurchMinistry.Models.Member", "Member")
@@ -2536,6 +2637,25 @@ namespace ChurchMinistry.Migrations
 
                     b.HasOne("ChurchMinistry.Models.Sermon", "Sermon")
                         .WithMany("SermonNotes")
+                        .HasForeignKey("SermonId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Member");
+
+                    b.Navigation("Sermon");
+                });
+
+            modelBuilder.Entity("ChurchMinistry.Models.SermonReaction", b =>
+                {
+                    b.HasOne("ChurchMinistry.Models.Member", "Member")
+                        .WithMany()
+                        .HasForeignKey("MemberId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("ChurchMinistry.Models.Sermon", "Sermon")
+                        .WithMany()
                         .HasForeignKey("SermonId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();

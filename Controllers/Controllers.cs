@@ -744,6 +744,15 @@ namespace ChurchMinistry.Controllers
                     .AnyAsync(r => r.DevotionalId == vm.Devotion.Id && r.MemberId == member.Id);
 
             vm.Testimonies = await TopTestimoniesAsync(3);
+
+            // A newsletter featured for today takes over the lead story in place of the latest sermon
+            var now = DateTime.Now;
+            vm.FeaturedNewsletter = await _db.Newsletters
+                .Where(n => n.FeaturedFrom != null && n.FeaturedUntil != null
+                         && n.FeaturedFrom <= now && n.FeaturedUntil >= now)
+                .OrderByDescending(n => n.FeaturedFrom)
+                .FirstOrDefaultAsync();
+
             return View(vm);
         }
 
@@ -1529,9 +1538,14 @@ namespace ChurchMinistry.Controllers
             return Json(new { count, on = mine == null });
         }
 
-        // ?category=Testimony (My Daily's "Share your testimony") preselects the category
-        [HttpGet] public IActionResult NewPost(ForumCategory? category) =>
-            View(new ForumPostViewModel { Category = category ?? ForumCategory.General });
+        // ?category=Testimony (My Daily's "Share your testimony") preselects the category;
+        // ?title= prefills the title (the sermon page's "Share a testimony")
+        [HttpGet] public IActionResult NewPost(ForumCategory? category, string? title) =>
+            View(new ForumPostViewModel
+            {
+                Category = category ?? ForumCategory.General,
+                Title = title is { Length: > 0 } t ? (t.Length > 200 ? t[..200] : t) : ""
+            });
 
         // Up to ForumPostImage.MaxPerPost photos of up to 20 MB each, plus the text
         [HttpPost, ValidateAntiForgeryToken]
@@ -1663,6 +1677,14 @@ namespace ChurchMinistry.Controllers
                 .OrderByDescending(n => n.SentAt).ToPageAsync(pager);
             ViewBag.Pager = pager;
             return View();
+        }
+
+        [HttpGet]
+        public async Task<IActionResult> Details(int id)
+        {
+            var newsletter = await _db.Newsletters.FindAsync(id);
+            if (newsletter == null) return NotFound();
+            return View(newsletter);
         }
 
         [HttpGet] public IActionResult Unsubscribe(string token) => View(model: token);
@@ -2740,6 +2762,7 @@ namespace ChurchMinistry.Controllers
             sermon.Tags = updated.Tags;
             sermon.IsPublished = updated.IsPublished;
             sermon.TrackAttendance = updated.TrackAttendance;
+            sermon.AllowComments = updated.AllowComments;
             sermon.MeetingRoomCode = updated.MeetingRoomCode;
             sermon.LiveStreamUrl = updated.LiveStreamUrl;
             ApplyDeliveryMode(sermon, deliveryMode);
@@ -3000,11 +3023,22 @@ namespace ChurchMinistry.Controllers
 
         [HttpGet] public IActionResult ComposeNewsletter() => View(new NewsletterComposeViewModel());
 
-        [HttpPost]
-        public async Task<IActionResult> ComposeNewsletter(NewsletterComposeViewModel vm)
+        [HttpPost, ValidateAntiForgeryToken]
+        public async Task<IActionResult> ComposeNewsletter(NewsletterComposeViewModel vm, IFormFile? photo, [FromServices] IWebHostEnvironment env)
         {
+            ValidateFeatureWindow(vm.FeaturedFrom, vm.FeaturedUntil);
             if (!ModelState.IsValid) return View(vm);
+
             var newsletter = new Newsletter { Subject = vm.Subject, Body = vm.Body, PreviewText = vm.PreviewText };
+            (newsletter.FeaturedFrom, newsletter.FeaturedUntil) = NormalizeFeatureWindow(vm.FeaturedFrom, vm.FeaturedUntil);
+            if (photo != null)
+            {
+                var fn = $"{Guid.NewGuid()}{Path.GetExtension(photo.FileName)}";
+                var path = Path.Combine(env.WebRootPath, "uploads", fn);
+                using var s = new FileStream(path, FileMode.Create);
+                await photo.CopyToAsync(s);
+                newsletter.PhotoUrl = $"/uploads/{fn}";
+            }
             if (vm.SendNow)
             {
                 var subs = await _db.NewsletterSubscribers.Where(s => s.IsActive).Select(s => s.Email).ToListAsync();
@@ -3017,6 +3051,69 @@ namespace ChurchMinistry.Controllers
             await _db.SaveChangesAsync();
             TempData["Success"] = vm.SendNow ? $"Newsletter sent to {newsletter.RecipientsCount} subscribers!" : "Newsletter saved as draft.";
             return RedirectToAction("Newsletters");
+        }
+
+        [HttpGet]
+        public async Task<IActionResult> EditNewsletter(int id)
+        {
+            var n = await _db.Newsletters.FindAsync(id);
+            if (n == null) return NotFound();
+            return View(new NewsletterEditViewModel
+            {
+                Id = n.Id, Subject = n.Subject, Body = n.Body, PreviewText = n.PreviewText,
+                PhotoUrl = n.PhotoUrl, Status = n.Status,
+                FeaturedFrom = n.FeaturedFrom, FeaturedUntil = n.FeaturedUntil
+            });
+        }
+
+        [HttpPost, ValidateAntiForgeryToken]
+        public async Task<IActionResult> EditNewsletter(NewsletterEditViewModel vm, IFormFile? photo, [FromServices] IWebHostEnvironment env)
+        {
+            var n = await _db.Newsletters.FindAsync(vm.Id);
+            if (n == null) return NotFound();
+
+            ValidateFeatureWindow(vm.FeaturedFrom, vm.FeaturedUntil);
+            if (!ModelState.IsValid) { vm.PhotoUrl = n.PhotoUrl; vm.Status = n.Status; return View(vm); }
+
+            n.Subject = vm.Subject;
+            n.Body = vm.Body;
+            n.PreviewText = vm.PreviewText;
+            (n.FeaturedFrom, n.FeaturedUntil) = NormalizeFeatureWindow(vm.FeaturedFrom, vm.FeaturedUntil);
+            if (photo != null)
+            {
+                var fn = $"{Guid.NewGuid()}{Path.GetExtension(photo.FileName)}";
+                var path = Path.Combine(env.WebRootPath, "uploads", fn);
+                using var s = new FileStream(path, FileMode.Create);
+                await photo.CopyToAsync(s);
+                n.PhotoUrl = $"/uploads/{fn}";
+            }
+
+            var justSent = vm.SendNow && n.Status != NewsletterStatus.Sent;
+            if (justSent)
+            {
+                var subs = await _db.NewsletterSubscribers.Where(s => s.IsActive).Select(s => s.Email).ToListAsync();
+                await _email.SendBulkAsync(subs, n.Subject, n.Body);
+                n.Status = NewsletterStatus.Sent;
+                n.SentAt = DateTime.UtcNow;
+                n.RecipientsCount = subs.Count;
+            }
+            await _db.SaveChangesAsync();
+
+            TempData["Success"] = justSent
+                ? $"\"{n.Subject}\" was sent to {n.RecipientsCount} subscribers!"
+                : $"\"{n.Subject}\" was updated.";
+            return RedirectToAction("Newsletters");
+        }
+
+        // A date-only picker means "through the end of that day" — normalize to the actual
+        // instants so later "is it active" checks are plain DateTime comparisons.
+        private static (DateTime? From, DateTime? Until) NormalizeFeatureWindow(DateTime? from, DateTime? until) =>
+            (from?.Date, until?.Date.AddDays(1).AddTicks(-1));
+
+        private void ValidateFeatureWindow(DateTime? from, DateTime? until)
+        {
+            if (from != null && until != null && until.Value.Date < from.Value.Date)
+                ModelState.AddModelError("FeaturedUntil", "The end date can't be before the start date.");
         }
 
         // ── Events management ──

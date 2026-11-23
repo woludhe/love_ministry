@@ -290,6 +290,7 @@ namespace ChurchMinistry.Models
         public string? MeetingRoomCode { get; set; }   // links to MeetingRoom.RoomCode
         public bool IsOnlineMeeting { get; set; } = false;
         public bool TrackAttendance { get; set; } = false;
+        public bool AllowComments { get; set; } = true;   // members can comment on the Watch page
         public string? RecordingUrl { get; set; }   // audio recorded from its meeting room while live
 
         // Delivery mode derived from which delivery field is set: video | audio | live | meeting
@@ -319,6 +320,36 @@ namespace ChurchMinistry.Models
         public int MemberId { get; set; }
         public Member Member { get; set; } = null!;
         public string Note { get; set; } = "";
+        public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+        public DateTime? UpdatedAt { get; set; }
+    }
+
+    // A member's "Amen" or "Blessed" on a sermon: one of each per member per sermon, can be taken back
+    public class SermonReaction
+    {
+        public int Id { get; set; }
+        public int SermonId { get; set; }
+        public Sermon Sermon { get; set; } = null!;
+        public int MemberId { get; set; }
+        public Member Member { get; set; } = null!;
+        public SermonReactionKind Kind { get; set; } = SermonReactionKind.Amen;
+        public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    }
+
+    public enum SermonReactionKind { Amen, Blessed }
+
+    // A comment under a sermon (when the sermon allows comments)
+    public class SermonComment
+    {
+        public const int MaxLength = 1000;
+        public int Id { get; set; }
+        public int SermonId { get; set; }
+        public Sermon Sermon { get; set; } = null!;
+        public int MemberId { get; set; }
+        public Member Member { get; set; } = null!;
+        [Required, MaxLength(MaxLength)] public string Content { get; set; } = "";
+        public bool IsStaff { get; set; }          // written by an Admin or Pastor: shows a badge
+        [MaxLength(10)] public string? StaffRole { get; set; }   // "Pastor" or "Admin"
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     }
 
@@ -463,10 +494,16 @@ namespace ChurchMinistry.Models
         [Required, MaxLength(200)] public string Subject { get; set; } = "";
         [Required] public string Body { get; set; } = "";
         public string? PreviewText { get; set; }
+        public string? PhotoUrl { get; set; }   // shown on the newspaper lead story, if set
         public NewsletterStatus Status { get; set; } = NewsletterStatus.Draft;
         public DateTime? SentAt { get; set; }
         public int RecipientsCount { get; set; }
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+
+        // When set, this newsletter takes over My Daily's lead story in place of the latest
+        // sermon during this date range (inclusive). Both null = never featured.
+        public DateTime? FeaturedFrom { get; set; }
+        public DateTime? FeaturedUntil { get; set; }
     }
 
     public enum NewsletterStatus { Draft, Scheduled, Sent }

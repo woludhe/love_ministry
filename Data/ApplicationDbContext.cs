@@ -16,6 +16,8 @@ namespace ChurchMinistry.Data
         public DbSet<Giving> Givings => Set<Giving>();
         public DbSet<Sermon> Sermons => Set<Sermon>();
         public DbSet<SermonNote> SermonNotes => Set<SermonNote>();
+        public DbSet<SermonReaction> SermonReactions => Set<SermonReaction>();
+        public DbSet<SermonComment> SermonComments => Set<SermonComment>();
         public DbSet<ForumPost> ForumPosts => Set<ForumPost>();
         public DbSet<ForumReply> ForumReplies => Set<ForumReply>();
         public DbSet<ForumReaction> ForumReactions => Set<ForumReaction>();
@@ -137,6 +139,31 @@ namespace ChurchMinistry.Data
                     .HasForeignKey(r => r.MemberId).OnDelete(DeleteBehavior.Cascade);
                 e.Property(r => r.Kind).HasConversion<string>().HasMaxLength(10);
                 e.HasIndex(r => new { r.ForumPostId, r.MemberId, r.Kind }).IsUnique();
+            });
+
+            // Sermon engagement on the Watch page: all go with their sermon or member
+            builder.Entity<SermonNote>(e =>
+            {
+                e.HasIndex(n => new { n.SermonId, n.MemberId }).IsUnique();   // one note per member per sermon
+            });
+
+            builder.Entity<SermonReaction>(e =>
+            {
+                e.HasOne(r => r.Sermon).WithMany()
+                    .HasForeignKey(r => r.SermonId).OnDelete(DeleteBehavior.Cascade);
+                e.HasOne(r => r.Member).WithMany()
+                    .HasForeignKey(r => r.MemberId).OnDelete(DeleteBehavior.Cascade);
+                e.Property(r => r.Kind).HasConversion<string>().HasMaxLength(10);
+                e.HasIndex(r => new { r.SermonId, r.MemberId, r.Kind }).IsUnique();
+            });
+
+            builder.Entity<SermonComment>(e =>
+            {
+                e.HasOne(c => c.Sermon).WithMany()
+                    .HasForeignKey(c => c.SermonId).OnDelete(DeleteBehavior.Cascade);
+                e.HasOne(c => c.Member).WithMany()
+                    .HasForeignKey(c => c.MemberId).OnDelete(DeleteBehavior.Cascade);
+                e.HasIndex(c => new { c.SermonId, c.CreatedAt });
             });
 
             // Prayer

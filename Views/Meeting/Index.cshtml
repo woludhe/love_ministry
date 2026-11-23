@@ -65,6 +65,14 @@
                 </button>
             </form>
         }
+
+        // Admin/Pastor only — edit a meeting they don't host
+        async Task EditButton(MeetingRoom room)
+        {
+            <a asp-action="Edit" asp-route-id="@room.Id" class="meet-icon-btn" title="Edit meeting">
+                <i class="fas fa-pencil-alt"></i>
+            </a>
+        }
     }
 
     @* ── Cards / Calendar switch (remembered per browser; ?view=calendar links straight to it) ── *@
@@ -137,7 +145,7 @@
                                 <i class="fas fa-video"></i> Join Now
                             </a>
                             <span class="room-code-badge">@room.RoomCode</span>
-                            @if (isPrivileged) { await CancelButton(room); }
+                            @if (isPrivileged) { await EditButton(room); await CancelButton(room); }
                         </div>
                     </div>
                 }
@@ -168,13 +176,6 @@
                                 @if (!room.IsPublic)
                                 {
                                     <span class="meet-private-badge"><i class="fas fa-lock"></i> Private</span>
-                                }
-                                <a asp-action="Edit" asp-route-id="@room.Id"
-                                   class="meet-icon-btn" title="Edit meeting">
-                                    <i class="fas fa-pencil-alt"></i>
-                                </a>
-                                @if (!room.IsPublic)
-                                {
                                     <a asp-action="Invite" asp-route-id="@room.Id"
                                        class="meet-icon-btn meet-icon-btn-invite" title="Invite people">
                                         <i class="fas fa-user-plus"></i>
@@ -213,6 +214,7 @@
                                 <i class="fas fa-video"></i> @(room.Status == RoomStatus.Live ? "Join Now" : "Start Meeting")
                             </a>
                             <span class="room-code-badge">@room.RoomCode</span>
+                            @{ await EditButton(room); }
                             @if (isPrivileged) { await CancelButton(room); }
                         </div>
                     </div>
@@ -266,7 +268,7 @@
                                 <i class="fas fa-sign-in-alt"></i> Join
                             </a>
                             <span class="room-code-badge">@room.RoomCode</span>
-                            @if (isPrivileged) { await CancelButton(room); }
+                            @if (isPrivileged) { await EditButton(room); await CancelButton(room); }
                         </div>
                     </div>
                 }
@@ -288,9 +290,6 @@
                         <div style="display:flex;justify-content:space-between;align-items:flex-start">
                             <div class="meet-card-type @room.MeetingType.ToString().ToLower()">@room.MeetingType</div>
                             <div style="display:flex;gap:.35rem">
-                                <a asp-action="Edit" asp-route-id="@room.Id" class="meet-icon-btn meet-icon-btn-invite" title="Edit">
-                                    <i class="fas fa-pencil-alt"></i>
-                                </a>
                                 <a asp-action="Invite" asp-route-id="@room.Id" class="meet-icon-btn meet-icon-btn-invite" title="Invite">
                                     <i class="fas fa-user-plus"></i>
                                 </a>
@@ -328,6 +327,7 @@
                                 <i class="fas fa-video"></i> Open
                             </a>
                             <span class="room-code-badge">@room.RoomCode</span>
+                            @{ await EditButton(room); }
                             @if (isPrivileged) { await CancelButton(room); }
                         </div>
                     </div>
@@ -436,7 +436,7 @@
                                 <i class="fas fa-sign-in-alt"></i> Join
                             </a>
                             <span class="room-code-badge">@room.RoomCode</span>
-                            @if (isPrivileged) { await CancelButton(room); }
+                            @if (isPrivileged) { await EditButton(room); await CancelButton(room); }
                         </div>
                     </div>
                 }

@@ -79,41 +79,65 @@
 
     <div class="np-front">
 
-        @* ── Lead story: the latest sermon ── *@
+        @* ── Lead story: a featured newsletter, else the latest sermon ── *@
         <section class="np-lead">
-            <div class="np-kicker">Sermons</div>
-            @if (lead == null)
+            @if (Model.FeaturedNewsletter != null)
             {
-                <h2 class="np-headline">No sermons published yet</h2>
-                <p class="np-body">New messages from the pulpit will appear here. <a asp-controller="Media" asp-action="Index">Visit the sermon library &rarr;</a></p>
+                var nl = Model.FeaturedNewsletter;
+                var nlUrl = Url.Action("Details", "Newsletter", new { id = nl.Id });
+                var nlExcerpt = string.IsNullOrWhiteSpace(nl.PreviewText)
+                    ? Excerpt(System.Text.RegularExpressions.Regex.Replace(nl.Body, "<[^>]+>", " "), 420)
+                    : Excerpt(nl.PreviewText, 420);
+                <div class="np-kicker">Newsletter</div>
+                <h2 class="np-headline"><a href="@nlUrl">@nl.Subject</a></h2>
+                <p class="np-byline">
+                    <span>@((nl.SentAt ?? nl.CreatedAt).ToString("d MMMM yyyy"))</span>
+                </p>
+                @if (!string.IsNullOrEmpty(nl.PhotoUrl))
+                {
+                    <figure class="np-photo">
+                        <a href="@nlUrl"><img src="@nl.PhotoUrl" alt="@nl.Subject" /></a>
+                    </figure>
+                }
+                <p class="np-body np-dropcap">@nlExcerpt</p>
+                <a href="@nlUrl" class="np-more">Read the newsletter &rarr;</a>
             }
             else
             {
-                var leadUrl = lead.IsLive ? Url.Action("Live", "Media") : Url.Action("Watch", "Media", new { id = lead.Id });
-                <h2 class="np-headline"><a href="@leadUrl">@lead.Title</a></h2>
-                <p class="np-byline">
-                    @if (!string.IsNullOrEmpty(lead.Speaker)) { <span>By @lead.Speaker</span> }
-                    <span>@lead.SermonDate.ToString("d MMMM yyyy")</span>
-                    @if (!string.IsNullOrEmpty(lead.SeriesName)) { <span>Series: @lead.SeriesName</span> }
-                </p>
-                @if (!string.IsNullOrEmpty(lead.ThumbnailUrl))
+                <div class="np-kicker">Sermons</div>
+                @if (lead == null)
                 {
-                    <figure class="np-photo">
-                        <a href="@leadUrl"><img src="@lead.ThumbnailUrl" alt="@lead.Title" /></a>
-                        @if (!string.IsNullOrEmpty(lead.ScriptureReference))
-                        {
-                            <figcaption>Scripture: @lead.ScriptureReference</figcaption>
-                        }
-                    </figure>
+                    <h2 class="np-headline">No sermons published yet</h2>
+                    <p class="np-body">New messages from the pulpit will appear here. <a asp-controller="Media" asp-action="Index">Visit the sermon library &rarr;</a></p>
                 }
-                <p class="np-body np-dropcap">
-                    @(string.IsNullOrWhiteSpace(lead.Description)
-                        ? $"{(string.IsNullOrEmpty(lead.Speaker) ? "This week's message" : lead.Speaker + "'s latest message")} is now available to {(lead.DeliveryMode == "audio" ? "listen to" : "watch")} in the sermon library."
-                        : Excerpt(lead.Description, 420))
-                </p>
-                <a href="@leadUrl" class="np-more">
-                    @(lead.IsLive ? "Watch live" : lead.SermonDate > DateTime.UtcNow ? "Read more" : lead.DeliveryMode == "audio" ? "Listen now" : "Watch now") &rarr;
-                </a>
+                else
+                {
+                    var leadUrl = lead.IsLive ? Url.Action("Live", "Media") : Url.Action("Watch", "Media", new { id = lead.Id });
+                    <h2 class="np-headline"><a href="@leadUrl">@lead.Title</a></h2>
+                    <p class="np-byline">
+                        @if (!string.IsNullOrEmpty(lead.Speaker)) { <span>By @lead.Speaker</span> }
+                        <span>@lead.SermonDate.ToString("d MMMM yyyy")</span>
+                        @if (!string.IsNullOrEmpty(lead.SeriesName)) { <span>Series: @lead.SeriesName</span> }
+                    </p>
+                    @if (!string.IsNullOrEmpty(lead.ThumbnailUrl))
+                    {
+                        <figure class="np-photo">
+                            <a href="@leadUrl"><img src="@lead.ThumbnailUrl" alt="@lead.Title" /></a>
+                            @if (!string.IsNullOrEmpty(lead.ScriptureReference))
+                            {
+                                <figcaption>Scripture: @lead.ScriptureReference</figcaption>
+                            }
+                        </figure>
+                    }
+                    <p class="np-body np-dropcap">
+                        @(string.IsNullOrWhiteSpace(lead.Description)
+                            ? $"{(string.IsNullOrEmpty(lead.Speaker) ? "This week's message" : lead.Speaker + "'s latest message")} is now available to {(lead.DeliveryMode == "audio" ? "listen to" : "watch")} in the sermon library."
+                            : Excerpt(lead.Description, 420))
+                    </p>
+                    <a href="@leadUrl" class="np-more">
+                        @(lead.IsLive ? "Watch live" : lead.SermonDate > DateTime.UtcNow ? "Read more" : lead.DeliveryMode == "audio" ? "Listen now" : "Watch now") &rarr;
+                    </a>
+                }
             }
         </section>
 

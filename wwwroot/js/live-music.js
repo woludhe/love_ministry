@@ -53,6 +53,11 @@ const LiveMusicPlayer = (function () {
     let state = null, skew = 0, currentUrl = null, blocked = false, muted = false;
     let speaking = false, releaseTimer = null, fadeTimer = null;
     let onBlocked = () => { }, chip = null, chipTitle = null, chipMute = null;
+    // Off by default on the Live page's own player (always on there); callers that pass
+    // { enabled: false } to start() — e.g. the meeting room — only show the chip until
+    // the listener opts in via setEnabled(true), since playing through speakers would
+    // send the music back into the call through their microphone.
+    let enabled = true;
 
     const targetVolume = () => LiveMusicMath.duckedVolume(state?.volume, state?.duck, speaking);
 
@@ -95,9 +100,11 @@ const LiveMusicPlayer = (function () {
         const pos = LiveMusicMath.positionNow(state, Date.now(), skew);
         const { index, offset } = LiveMusicMath.locate(state.playlist, pos);
         const track = state.playlist[index];
+        showChip(track);
+        if (!enabled) { audio.pause(); return; }
+
         fadeTo(targetVolume());
         audio.muted = muted;
-        showChip(track);
 
         const seek = () => { try { audio.currentTime = offset; } catch { } };
         if (currentUrl !== track.url) {
@@ -124,6 +131,7 @@ const LiveMusicPlayer = (function () {
     return {
         start(liveConn, initial, options = {}) {
             onBlocked = options.onBlocked || onBlocked;
+            enabled = options.enabled !== false;   // default on, as before; the room opts out
             chip = document.getElementById('musicChip');
             chipTitle = document.getElementById('musicChipTitle');
             chipMute = document.getElementById('musicChipMute');
@@ -139,7 +147,15 @@ const LiveMusicPlayer = (function () {
         },
         // Call from a tap: browsers only allow sound after one
         unblock() { if (blocked) apply(); },
-        setSpeaking
-
+        setSpeaking,
+        // Paint/refresh from a state fetched separately from start() (e.g. the room's initial load)
+        setState,
+        // Opt in/out of actually playing the audio; the chip keeps showing the title either way
+        setEnabled(on) {
+            enabled = on;
+            if (!enabled) audio.pause();
+            apply();
+        },
+        isEnabled() { return enabled; }
     };
 })();
