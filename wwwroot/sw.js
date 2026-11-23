@@ -7,7 +7,7 @@ const VERSION = "v2";
 const STATIC_CACHE = "static-" + VERSION;
 const OFFLINE_URL = "/offline.html";
 const PRECACHE = [OFFLINE_URL, "/apple-touch-icon.png", "/android-chrome-192x192.png"];
-const STATIC_PREFIXES = ["/css/", "/js/", "/lib/", "/images/", "/splash/"];
+const STATIC_PREFIXES = ["/css/", "/js/", "/lib/", "/images/", "/splash/", "/fonts/"];
 const STATIC_FILES = ["/favicon.ico", "/apple-touch-icon.png", "/android-chrome-192x192.png", "/android-chrome-512x512.png"];
 
 self.addEventListener("install", (event) => {
