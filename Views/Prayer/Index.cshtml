@@ -60,13 +60,13 @@
         int? currentMemberId = ViewBag.CurrentMemberId as int?;
         bool isLoggedIn     = User.Identity?.IsAuthenticated == true;
     }
-    <div class="prayer-grid">
+    <div class="prayer-grid" id="prayerGrid">
         @foreach (PrayerRequest pr in (ViewBag.Requests ?? new List<PrayerRequest>()))
         {
             bool alreadyPrayed = isLoggedIn && prayedIds.Contains(pr.Id);
             bool isOwnRequest  = isLoggedIn && pr.MemberId == currentMemberId;
 
-            <div class="prayer-card @(pr.IsAnswered ? "answered" : "")">
+            <div class="prayer-card @(pr.IsAnswered ? "answered" : "")" data-id="@pr.Id">
                 @if (pr.IsAnswered)
                 {
                     <div class="answered-banner">
@@ -130,7 +130,13 @@
             </div>
         }
     </div>
-    <partial name="_Pager" model="(PagerModel)ViewBag.Pager" />
+    @* Without JavaScript these page links still work; with it they are hidden and the next 20 load as you scroll *@
+    <div id="prayerPager"><partial name="_Pager" model="(PagerModel)ViewBag.Pager" /></div>
+    <div class="prayer-more" id="prayerMore" hidden>
+        <span class="prayer-more-loading"><i class="fas fa-spinner fa-spin"></i> Loading more prayers…</span>
+        <button type="button" class="btn btn-outline btn-sm prayer-more-retry" hidden>Couldn't load more. Tap to try again</button>
+        <span class="prayer-more-end" hidden>You've reached the end of the prayer wall</span>
+    </div>
 
     @{
         var requests = ViewBag.Requests as List<PrayerRequest> ?? new List<PrayerRequest>();
@@ -173,6 +179,103 @@ async function prayFor(id, btn) {
         btn.textContent = '🙏 Pray';
     }
 }
+
+// ── Prayer Wall layout + "load more as you scroll" ──
+// Cards go one by one into the shortest column, so each card keeps its own height and
+// newly loaded prayers are added at the bottom without the earlier ones moving.
+// The next 20 load from the pager's "next page" link when you get near the end.
+(function () {
+    const grid = document.getElementById('prayerGrid');
+    if (!grid) return;
+    const MIN_COL = 260, GAP = 16;
+    let cols = [];
+    let cards = Array.from(grid.querySelectorAll(':scope > .prayer-card'));
+    const seen = new Set(cards.map(c => c.dataset.id));
+
+    function columnCount() {
+        return Math.max(1, Math.floor((grid.clientWidth + GAP) / (MIN_COL + GAP)));
+    }
+
+    function shortest() {
+        return cols.reduce((a, b) => (b.offsetHeight < a.offsetHeight ? b : a));
+    }
+
+    function layout() {
+        const n = columnCount();
+        if (cols.length === n) return;
+        grid.classList.add('js-masonry');
+        cols = [];
+        grid.replaceChildren();
+        for (let i = 0; i < n; i++) {
+            const col = document.createElement('div');
+            col.className = 'prayer-col';
+            grid.appendChild(col);
+            cols.push(col);
+        }
+        cards.forEach(c => shortest().appendChild(c));
+    }
+
+    function add(card) {
+        cards.push(card);
+        shortest().appendChild(card);
+    }
+
+    layout();
+    let resizeTimer;
+    window.addEventListener('resize', () => { clearTimeout(resizeTimer); resizeTimer = setTimeout(layout, 150); });
+
+    // ── Infinite scroll ──
+    const pager = document.getElementById('prayerPager');
+    const more = document.getElementById('prayerMore');
+    const loadingEl = more.querySelector('.prayer-more-loading');
+    const retryEl = more.querySelector('.prayer-more-retry');
+    const endEl = more.querySelector('.prayer-more-end');
+    const nextOf = doc => {
+        const a = doc.querySelector('#prayerPager a[aria-label="Next page"]');
+        return a ? a.getAttribute('href') : null;
+    };
+    let nextUrl = nextOf(document);
+    if (!nextUrl || !('IntersectionObserver' in window)) return;   // one page only, or old browser: keep the page links
+
+    pager.hidden = true;
+    more.hidden = false;
+    let busy = false;
+
+    async function loadMore() {
+        if (busy || !nextUrl) return;
+        busy = true;
+        loadingEl.hidden = false; retryEl.hidden = true;
+        try {
+            const res = await fetch(nextUrl, { headers: { 'X-Requested-With': 'fetch' } });
+            if (!res.ok) throw new Error(res.status);
+            const doc = new DOMParser().parseFromString(await res.text(), 'text/html');
+            doc.querySelectorAll('#prayerGrid > .prayer-card').forEach(card => {
+                if (seen.has(card.dataset.id)) return;   // a new prayer was posted meanwhile and shifted the pages
+                seen.add(card.dataset.id);
+                add(document.importNode(card, true));
+            });
+            nextUrl = nextOf(doc);
+            if (!nextUrl) {
+                observer.disconnect();
+                loadingEl.hidden = true;
+                endEl.hidden = false;
+            }
+        } catch (e) {
+            loadingEl.hidden = true;
+            retryEl.hidden = false;
+        } finally {
+            busy = false;
+        }
+        // Still near the bottom (tall screen, short cards)? Keep going.
+        if (nextUrl && retryEl.hidden && more.getBoundingClientRect().top < window.innerHeight + 600) loadMore();
+    }
+
+    const observer = new IntersectionObserver(entries => {
+        if (entries.some(e => e.isIntersecting)) loadMore();
+    }, { rootMargin: '600px 0px' });
+    observer.observe(more);
+    retryEl.addEventListener('click', loadMore);
+})();
 </script>
 <style>
 .prayer-wall-topbar  { display:flex; justify-content:space-between; align-items:center;

@@ -2,7 +2,7 @@
 @using ChurchMinistry.Models
 @{
     ViewData["Title"] = "My Prayer Requests";
-    Layout = "~/Views/Shared/_Layout.cshtml";
+    Layout = "~/Views/Shared/_MemberDashboard_Layout.cshtml";
     PrayerCategory? category = ViewBag.Category;
     string? status           = ViewBag.Status;
 }
@@ -73,7 +73,7 @@
 
         <div style="display:flex;gap:.6rem">
             <a asp-action="Submit" class="btn btn-primary btn-sm">
-                <i class="fas fa-plus"></i> New Request
+                <i class="fas fa-plus"></i> New Prayer Request
             </a>
             <a asp-action="Index" class="btn btn-outline btn-sm">
                 <i class="fas fa-globe"></i> Prayer Wall

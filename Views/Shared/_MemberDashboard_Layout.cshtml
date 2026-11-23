@@ -76,7 +76,7 @@
                     <a asp-controller="Members" asp-action="Attendance" class="@Active(At("Members", "Attendance"))"><i class="fas fa-calendar-check"></i> Attendance</a>
                     <a asp-controller="Giving" asp-action="Give" class="@Active(At("Giving") && action != "Reminders")"><i class="fas fa-hand-holding-heart"></i> Give</a>
                     <a asp-controller="Giving" asp-action="Reminders" class="@Active(At("Giving", "Reminders"))"><i class="fas fa-bell"></i> Giving Pledges</a>
-                    <a asp-controller="Prayer" asp-action="Submit" class="@Active(At("Prayer", "Submit"))"><i class="fas fa-hands-praying"></i> Prayer Request</a>
+                    <a asp-controller="Prayer" asp-action="MyRequests" class="@Active(At("Prayer", "MyRequests", "Submit", "MarkAnswered", "Testify"))"><i class="fas fa-hands-praying"></i> Prayer Request</a>
                     <a asp-controller="Community" asp-action="Index" class="@Active(At("Community") && action != "Chat")"><i class="fas fa-comments"></i> Community @await Component.InvokeAsync("NavUnread", new { place = "community" })</a>
                     <a asp-controller="Community" asp-action="Chat" class="@Active(At("Community", "Chat"))"><i class="fas fa-comment-dots"></i> Live Chat @await Component.InvokeAsync("NavUnread", new { place = "chat" })</a>
                     <a asp-controller="Members" asp-action="Directory" class="@Active(At("Members", "Directory", "ViewProfile"))"><i class="fas fa-address-book"></i> Directory</a>
@@ -110,7 +110,7 @@
                 <ul>
                     <li><a asp-controller="Media" asp-action="Index">Sermons</a></li>
                     <li><a asp-controller="Events" asp-action="Index">Events</a></li>
-                    <li><a asp-controller="Prayer" asp-action="Submit">Prayer Request</a></li>
+                    <li><a asp-controller="Prayer" asp-action="MyRequests">Prayer Request</a></li>
                     <li><a asp-controller="Giving" asp-action="Give">Give Online</a></li>
                     <li><a asp-controller="Newsletter" asp-action="Index">Newsletter</a></li>
                 </ul>

@@ -15,6 +15,12 @@
     <p>We believe in the power of prayer. Our church family will intercede for you.</p>
 </section>
 <div class="form-page">
+    @if (User.Identity?.IsAuthenticated == true)
+    {
+        <div class="submit-prayer-links">
+            <a asp-action="MyRequests" class="btn btn-outline btn-sm"><i class="fas fa-list"></i> My Prayer Requests</a>
+        </div>
+    }
     <form asp-action="Submit" method="post">
         <div asp-validation-summary="All" class="validation-summary"></div>
         <div class="form-group">
@@ -42,4 +48,7 @@
 </div>
 @section Scripts {
     <script>function toggleAnon(cb) { document.getElementById('anonNameGroup').style.display = cb.checked ? 'block' : 'none'; }</script>
+    <style>
+        .submit-prayer-links { display: flex; justify-content: flex-end; margin-bottom: 1rem; }
+    </style>
 }

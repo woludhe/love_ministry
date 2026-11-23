@@ -44,7 +44,8 @@ namespace ChurchMinistry.Controllers
             else
                 q = q.Where(p => !p.IsAnswered);
 
-            var pager = new PagerModel(page, "requests");
+            // 20 at a time; the Prayer Wall loads the next 20 by itself as you scroll (see Views/Prayer/Index.cshtml)
+            var pager = new PagerModel(page, "requests") { PageSize = 20 };
             ViewBag.Requests      = await q.OrderByDescending(p => p.CreatedAt).ToPageAsync(pager);
             ViewBag.Pager         = pager;
             ViewBag.Category      = category;
