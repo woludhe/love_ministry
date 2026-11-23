@@ -1056,8 +1056,6 @@ img {
     margin-bottom: 1rem;
     color: #10659f;
     font-family: "Gloria Hallelujah", cursive;
-    text-decoration: underline;
-    text-decoration-color: red;
 }
 
 .prayer-footer {
@@ -1066,6 +1064,11 @@ img {
     align-items: center;
     border-top: 1px solid var(--border);
     padding-top: .75rem;
+}
+
+/* "3 praying" count in the prayer card footer */
+.prayer-count-wrap {
+    font-size: .8rem;
 }
 
 .btn-pray {
