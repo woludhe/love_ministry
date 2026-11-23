@@ -3264,5 +3264,135 @@ namespace ChurchMinistry.Controllers
 
             return View(vm);
         }
+
+        // ── Reports: prayer requests ──
+        public async Task<IActionResult> PrayerReport(
+            string? period, DateTime? from, DateTime? to, string? month, int? year,
+            PrayerCategory? category, string? visibility)
+        {
+            var vm = new PrayerReportViewModel
+            {
+                Period = period ?? "all", From = from, To = to, Month = month, Year = year,
+                Category = category, Visibility = visibility
+            };
+
+            // Period → local date window [start, end) → UTC (dates are stored in UTC)
+            DateTime? start = null, end = null;
+            switch (vm.Period)
+            {
+                case "range":
+                    start = from?.Date;
+                    end = to?.Date.AddDays(1);
+                    vm.PeriodLabel = $"{from:dd MMM yyyy} – {to:dd MMM yyyy}";
+                    break;
+                case "month" when DateTime.TryParseExact(month + "-01", "yyyy-MM-dd",
+                        null, System.Globalization.DateTimeStyles.None, out var m):
+                    start = m;
+                    end = m.AddMonths(1);
+                    vm.PeriodLabel = m.ToString("MMMM yyyy");
+                    break;
+                case "year" when year.HasValue:
+                    start = new DateTime(year.Value, 1, 1);
+                    end = start.Value.AddYears(1);
+                    vm.PeriodLabel = year.Value.ToString();
+                    break;
+                default:
+                    vm.Period = "all";
+                    vm.PeriodLabel = "All time";
+                    break;
+            }
+            DateTime? startUtc = start.HasValue ? DateTime.SpecifyKind(start.Value, DateTimeKind.Local).ToUniversalTime() : null;
+            DateTime? endUtc = end.HasValue ? DateTime.SpecifyKind(end.Value, DateTimeKind.Local).ToUniversalTime() : null;
+            bool InPeriod(DateTime utc) => (!startUtc.HasValue || utc >= startUtc) && (!endUtc.HasValue || utc < endUtc);
+
+            // Category / visibility apply to everything; the period is applied per metric below
+            var all = _db.PrayerRequests.AsQueryable();
+            if (category.HasValue) all = all.Where(p => p.Category == category);
+            if (visibility == "public") all = all.Where(p => p.IsPublic);
+            if (visibility == "private") all = all.Where(p => !p.IsPublic);
+
+            var rows = await all
+                .Select(p => new
+                {
+                    p.Id, p.MemberId, p.Category, p.IsAnonymous, p.IsPublic, p.IsAnswered,
+                    HasTestimony = p.AnswerTestimony != null && p.AnswerTestimony != "",
+                    p.PrayerCount, p.CreatedAt, p.AnsweredAt
+                })
+                .ToListAsync();
+            var posted = rows.Where(r => InPeriod(r.CreatedAt)).ToList();
+
+            vm.Posted = posted.Count;
+            vm.Answered = posted.Count(r => r.IsAnswered);
+            vm.WithTestimony = posted.Count(r => r.IsAnswered && r.HasTestimony);
+            vm.StillActive = posted.Count(r => !r.IsAnswered);
+            vm.NotYetPrayedFor = posted.Count(r => !r.IsAnswered && r.PrayerCount == 0);
+            vm.Anonymous = posted.Count(r => r.IsAnonymous);
+            vm.Private = posted.Count(r => !r.IsPublic);
+            vm.MembersWhoPosted = posted.Where(r => r.MemberId != null).Select(r => r.MemberId).Distinct().Count();
+            var answerDays = posted.Where(r => r.IsAnswered && r.AnsweredAt.HasValue)
+                .Select(r => (r.AnsweredAt!.Value - r.CreatedAt).TotalDays).ToList();
+            vm.AvgDaysToAnswer = answerDays.Count > 0 ? answerDays.Average() : null;
+            vm.AnsweredDuringPeriod = rows.Count(r => r.IsAnswered && r.AnsweredAt.HasValue && InPeriod(r.AnsweredAt.Value));
+
+            // "Pray" clicks made during the period on these prayers
+            var ids = rows.Select(r => r.Id).ToList();
+            var prayed = await _db.PrayerInteractions
+                .Where(i => i.Type == "prayed" && ids.Contains(i.PrayerRequestId))
+                .Select(i => new { i.PrayerRequestId, i.MemberId, i.CreatedAt })
+                .ToListAsync();
+            prayed = prayed.Where(i => InPeriod(i.CreatedAt)).ToList();
+            vm.PrayersOffered = prayed.Count;
+            vm.MembersWhoPrayed = prayed.Where(i => i.MemberId != null).Select(i => i.MemberId).Distinct().Count();
+
+            var categoryOf = rows.ToDictionary(r => r.Id, r => r.Category);
+            var prayedByCategory = prayed.GroupBy(i => categoryOf[i.PrayerRequestId]).ToDictionary(g => g.Key, g => g.Count());
+            vm.ByCategory = Enum.GetValues<PrayerCategory>()
+                .Select(c => new PrayerCategoryRow
+                {
+                    Category = c,
+                    Posted = posted.Count(r => r.Category == c),
+                    Answered = posted.Count(r => r.Category == c && r.IsAnswered),
+                    WithTestimony = posted.Count(r => r.Category == c && r.IsAnswered && r.HasTestimony),
+                    PrayersOffered = prayedByCategory.GetValueOrDefault(c)
+                })
+                .Where(r => r.Posted > 0 || r.PrayersOffered > 0 || category == r.Category)
+                .OrderByDescending(r => r.Posted)
+                .ToList();
+
+            // Month by month: posted (by posting date) and answered (by answer date).
+            // All time → from the first prayer; capped at the last 24 months.
+            var firstLocal = rows.Count > 0 ? rows.Min(r => r.CreatedAt).ToLocalTime() : DateTime.Now;
+            var monthFrom = new DateTime((start ?? firstLocal).Year, (start ?? firstLocal).Month, 1);
+            var lastDay = (end ?? DateTime.Now.AddDays(1)).AddDays(-1);
+            var monthTo = new DateTime(lastDay.Year, lastDay.Month, 1);
+            if (monthTo > new DateTime(DateTime.Now.Year, DateTime.Now.Month, 1)) monthTo = new DateTime(DateTime.Now.Year, DateTime.Now.Month, 1);
+            if (monthFrom < monthTo.AddMonths(-23)) monthFrom = monthTo.AddMonths(-23);
+            for (var mo = monthFrom; mo <= monthTo; mo = mo.AddMonths(1))
+            {
+                var mEnd = mo.AddMonths(1);
+                bool InMonth(DateTime utc) { var l = utc.ToLocalTime(); return l >= mo && l < mEnd; }
+                vm.ByMonth.Add(new PrayerMonthRow
+                {
+                    Month = mo,
+                    Posted = rows.Count(r => InMonth(r.CreatedAt)),
+                    Answered = rows.Count(r => r.IsAnswered && r.AnsweredAt.HasValue && InMonth(r.AnsweredAt.Value)),
+                    Testimonies = rows.Count(r => r.IsAnswered && r.HasTestimony && r.AnsweredAt.HasValue && InMonth(r.AnsweredAt.Value))
+                });
+            }
+
+            // Lists (prayers posted in the period)
+            var postedIds = posted.Select(r => r.Id).ToList();
+            var postedQ = _db.PrayerRequests.Include(p => p.Member).Where(p => postedIds.Contains(p.Id));
+            vm.MostPrayedFor = await postedQ.Where(p => p.PrayerCount > 0)
+                .OrderByDescending(p => p.PrayerCount).ThenByDescending(p => p.CreatedAt).Take(5).ToListAsync();
+            vm.Testimonies = await postedQ.Where(p => p.IsAnswered && p.AnswerTestimony != null && p.AnswerTestimony != "")
+                .OrderByDescending(p => p.AnsweredAt).Take(5).ToListAsync();
+            vm.Waiting = await postedQ.Where(p => !p.IsAnswered && p.PrayerCount == 0)
+                .OrderBy(p => p.CreatedAt).Take(5).ToListAsync();
+
+            var firstYear = Math.Min(firstLocal.Year, DateTime.Now.Year);
+            vm.Years = Enumerable.Range(firstYear, DateTime.Now.Year - firstYear + 1).Reverse().ToList();
+            return View(vm);
+        }
     }
 }

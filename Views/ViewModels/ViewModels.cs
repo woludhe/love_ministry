@@ -545,4 +545,62 @@ namespace ChurchMinistry.ViewModels
         public int Guests { get; set; }
         public TimeSpan AverageDuration { get; set; }
     }
+
+    // ─── Reports: prayer requests ───
+    // The period picks prayers by the date they were posted; "answered/prayed during the period"
+    // figures use the date of the answer / the "Pray" click instead.
+    public class PrayerReportViewModel
+    {
+        // Filters
+        public string Period { get; set; } = "all";      // all | range | month | year
+        public DateTime? From { get; set; }
+        public DateTime? To { get; set; }
+        public string? Month { get; set; }               // "yyyy-MM"
+        public int? Year { get; set; }
+        public ChurchMinistry.Models.PrayerCategory? Category { get; set; }
+        public string? Visibility { get; set; }          // public | private
+        public string? PeriodLabel { get; set; }
+        public List<int> Years { get; set; } = new();
+
+        // Prayers posted in the period
+        public int Posted { get; set; }
+        public int Answered { get; set; }
+        public int WithTestimony { get; set; }
+        public int StillActive { get; set; }
+        public int NotYetPrayedFor { get; set; }         // active, nobody has clicked Pray
+        public int Anonymous { get; set; }
+        public int Private { get; set; }
+        public int MembersWhoPosted { get; set; }
+        public double? AvgDaysToAnswer { get; set; }
+        public double AnswerRate => Posted == 0 ? 0 : 100.0 * Answered / Posted;
+
+        // Activity during the period (any prayer, whenever it was posted)
+        public int AnsweredDuringPeriod { get; set; }
+        public int PrayersOffered { get; set; }          // "Pray" clicks
+        public int MembersWhoPrayed { get; set; }
+
+        public List<PrayerCategoryRow> ByCategory { get; set; } = new();
+        public List<PrayerMonthRow> ByMonth { get; set; } = new();
+        public List<ChurchMinistry.Models.PrayerRequest> MostPrayedFor { get; set; } = new();
+        public List<ChurchMinistry.Models.PrayerRequest> Testimonies { get; set; } = new();
+        public List<ChurchMinistry.Models.PrayerRequest> Waiting { get; set; } = new();   // oldest active with no prayers
+    }
+
+    public class PrayerCategoryRow
+    {
+        public ChurchMinistry.Models.PrayerCategory Category { get; set; }
+        public int Posted { get; set; }
+        public int Answered { get; set; }
+        public int WithTestimony { get; set; }
+        public int PrayersOffered { get; set; }
+        public double AnswerRate => Posted == 0 ? 0 : 100.0 * Answered / Posted;
+    }
+
+    public class PrayerMonthRow
+    {
+        public DateTime Month { get; set; }              // first day of the month (local)
+        public int Posted { get; set; }
+        public int Answered { get; set; }                // answered in that month
+        public int Testimonies { get; set; }             // answered with a testimony in that month
+    }
 }

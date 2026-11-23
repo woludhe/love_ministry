@@ -6075,3 +6075,60 @@ body {
 [data-theme="dark"] .a2hs-banner {
     background: var(--surface-2);
 }
+
+/* ── Admin reports (Sermon Attendance, Prayer Requests): header, filters, stat tiles ── */
+.report-header h1 { font-size: 1.4rem; font-weight: 800; margin: 0 0 .25rem; }
+.report-header .meta { margin: 0 0 1.25rem; }
+
+.report-filters {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: .75rem;
+    background: var(--white);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 1rem;
+    margin-bottom: 1.25rem;
+}
+
+.rf-field { display: flex; flex-direction: column; gap: .3rem; min-width: 140px; }
+.rf-field.rf-wide { min-width: 220px; flex: 1; }
+.rf-field label { font-size: .75rem; font-weight: 600; color: var(--text-s); }
+.rf-field .form-control { padding: .5rem .65rem; font-size: .85rem; }
+.rf-actions { display: flex; gap: .4rem; }
+
+.report-stats {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: .75rem;
+    margin-bottom: .75rem;
+}
+
+.report-stat {
+    background: var(--white);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: .9rem 1rem;
+    font-size: .8rem;
+    font-weight: 600;
+    color: var(--text-s);
+}
+
+    .report-stat span {
+        display: block;
+        font-size: 1.4rem;
+        font-weight: 800;
+        color: var(--text);
+        font-variant-numeric: tabular-nums;
+    }
+
+    .report-stat small {
+        display: block;
+        margin-top: .15rem;
+        font-size: .72rem;
+        font-weight: 500;
+    }
+
+.report-section-title { font-size: 1rem; font-weight: 700; margin: 0 0 .75rem; }
+.report-empty { padding: 1rem 0; margin: 0; }

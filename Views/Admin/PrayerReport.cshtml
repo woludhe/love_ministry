@@ -1,0 +1,382 @@
+@model ChurchMinistry.ViewModels.PrayerReportViewModel
+@{
+    ViewData["Title"] = "Prayer Requests Report";
+    Layout = "~/Views/Shared/_AdminDashboard_Layout.cshtml";
+
+    string Who(PrayerRequest p) => p.IsAnonymous ? "Anonymous"
+        : p.Member?.NameFor(User) ?? (string.IsNullOrWhiteSpace(p.AnonymousName) ? "Guest" : p.AnonymousName);
+    string Short(string? s, int n = 110) => string.IsNullOrEmpty(s) ? "" : (s.Length > n ? s[..(n - 1)] + "…" : s);
+    string Days(double d) => d < 1 ? "< 1 day" : $"{Math.Round(d)} day{(Math.Round(d) == 1 ? "" : "s")}";
+    string Ago(DateTime utc) { var d = (DateTime.UtcNow - utc).TotalDays; return d < 1 ? "today" : Days(d) + " ago"; }
+
+    var chartData = new
+    {
+        labels = Model.ByMonth.Select(m => m.Month.ToString("MMM yy")).ToArray(),
+        posted = Model.ByMonth.Select(m => m.Posted).ToArray(),
+        answered = Model.ByMonth.Select(m => m.Answered).ToArray(),
+        testimonies = Model.ByMonth.Select(m => m.Testimonies).ToArray()
+    };
+}
+
+<div class="admin-main">
+    <div class="report-header">
+        <div>
+            <h1>Prayer Requests</h1>
+            <p class="meta">Prayers posted, answered and prayed for · <strong>@Model.PeriodLabel</strong></p>
+        </div>
+    </div>
+
+    @* {{-- Filters --}} *@
+    <form method="get" class="report-filters">
+        <div class="rf-field">
+            <label>Period</label>
+            <select name="period" class="form-control" id="periodSelect">
+                <option value="all" selected="@(Model.Period == "all")">All time</option>
+                <option value="range" selected="@(Model.Period == "range")">Date range</option>
+                <option value="month" selected="@(Model.Period == "month")">Month</option>
+                <option value="year" selected="@(Model.Period == "year")">Year</option>
+            </select>
+        </div>
+        <div class="rf-field" data-period="range">
+            <label>From</label>
+            <input type="date" name="from" class="form-control" value="@Model.From?.ToString("yyyy-MM-dd")" />
+        </div>
+        <div class="rf-field" data-period="range">
+            <label>To</label>
+            <input type="date" name="to" class="form-control" value="@Model.To?.ToString("yyyy-MM-dd")" />
+        </div>
+        <div class="rf-field" data-period="month">
+            <label>Month</label>
+            <input type="month" name="month" class="form-control" value="@(Model.Month ?? DateTime.Now.ToString("yyyy-MM"))" />
+        </div>
+        <div class="rf-field" data-period="year">
+            <label>Year</label>
+            <select name="year" class="form-control">
+                @foreach (var y in Model.Years)
+                {
+                    <option value="@y" selected="@(Model.Year == y)">@y</option>
+                }
+            </select>
+        </div>
+        <div class="rf-field">
+            <label>Category</label>
+            <select name="category" class="form-control">
+                <option value="">All categories</option>
+                @foreach (var c in Enum.GetValues<PrayerCategory>())
+                {
+                    <option value="@c" selected="@(Model.Category == c)">@c</option>
+                }
+            </select>
+        </div>
+        <div class="rf-field">
+            <label>Visibility</label>
+            <select name="visibility" class="form-control">
+                <option value="">Public &amp; private</option>
+                <option value="public" selected="@(Model.Visibility == "public")">Public (Prayer Wall)</option>
+                <option value="private" selected="@(Model.Visibility == "private")">Private</option>
+            </select>
+        </div>
+        <div class="rf-actions">
+            <button type="submit" class="btn btn-primary btn-sm"><i class="fas fa-filter"></i> Apply</button>
+            <a asp-action="PrayerReport" class="btn btn-outline btn-sm">Reset</a>
+        </div>
+    </form>
+
+    @* {{-- Prayers posted in the period --}} *@
+    <h3 class="report-section-title">Prayers posted</h3>
+    <div class="report-stats">
+        <div class="report-stat"><span>@Model.Posted</span>Prayers posted</div>
+        <div class="report-stat">
+            <span>@Model.Answered</span>Answered
+            <small>@Model.AnswerRate.ToString("0")% of those posted</small>
+        </div>
+        <div class="report-stat">
+            <span>@Model.WithTestimony</span>With testimony
+            <small>@(Model.Answered == 0 ? "–" : (100.0 * Model.WithTestimony / Model.Answered).ToString("0") + "% of answered")</small>
+        </div>
+        <div class="report-stat"><span>@Model.StillActive</span>Still active</div>
+        <div class="report-stat">
+            <span>@Model.NotYetPrayedFor</span>Not yet prayed for
+            <small>Active, nobody has prayed yet</small>
+        </div>
+        <div class="report-stat">
+            <span>@(Model.AvgDaysToAnswer.HasValue ? Days(Model.AvgDaysToAnswer.Value) : "–")</span>Avg. time to answer
+        </div>
+    </div>
+    <div class="report-stats prayer-stats-2">
+        <div class="report-stat"><span>@Model.MembersWhoPosted</span>Members who posted</div>
+        <div class="report-stat">
+            <span>@Model.Anonymous</span>Anonymous
+            <small>@(Model.Posted == 0 ? "–" : (100.0 * Model.Anonymous / Model.Posted).ToString("0") + "% of posted")</small>
+        </div>
+        <div class="report-stat">
+            <span>@Model.Private</span>Private
+            <small>Not on the Prayer Wall</small>
+        </div>
+    </div>
+
+    @* {{-- Activity in the period, whenever the prayer was posted --}} *@
+    <h3 class="report-section-title" style="margin-top:1.25rem">Activity during the period</h3>
+    <div class="report-stats">
+        <div class="report-stat">
+            <span>@Model.PrayersOffered</span>Times prayed for
+            <small>"Pray" taps on the Prayer Wall</small>
+        </div>
+        <div class="report-stat"><span>@Model.MembersWhoPrayed</span>Members who prayed</div>
+        <div class="report-stat">
+            <span>@Model.AnsweredDuringPeriod</span>Marked answered
+            <small>Including prayers posted earlier</small>
+        </div>
+    </div>
+
+    @* {{-- Month by month --}} *@
+    <div class="chart-card prayer-chart" style="margin:1.5rem 0">
+        <h3 class="report-section-title">Posted, answered and testimonies by month</h3>
+        @if (!Model.ByMonth.Any(m => m.Posted > 0 || m.Answered > 0 || m.Testimonies > 0))
+        {
+            <p class="meta report-empty">No prayers in this period.</p>
+        }
+        else
+        {
+            <div class="prayer-legend">
+                <span><span class="prayer-swatch" style="background:var(--series-0)"></span>Posted</span>
+                <span><span class="prayer-swatch" style="background:var(--series-1)"></span>Answered</span>
+                <span><span class="prayer-swatch" style="background:var(--series-2)"></span>Testimonies</span>
+            </div>
+            <div class="prayer-canvas-wrap"><canvas id="prayerMonthChart"></canvas></div>
+        }
+    </div>
+
+    @* {{-- By category --}} *@
+    <div class="table-card" style="margin-bottom:1.5rem">
+        <h3 class="report-section-title">By category</h3>
+        @if (!Model.ByCategory.Any())
+        {
+            <p class="meta report-empty">No prayers for these filters.</p>
+        }
+        else
+        {
+            <div style="overflow-x:auto">
+                <table class="data-table prayer-num-table">
+                    <thead>
+                        <tr>
+                            <th>Category</th>
+                            <th>Posted</th>
+                            <th>Answered</th>
+                            <th>Answer rate</th>
+                            <th>With testimony</th>
+                            <th>Times prayed for</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var r in Model.ByCategory)
+                        {
+                            <tr>
+                                <td><span class="prayer-tag">@r.Category</span></td>
+                                <td>@r.Posted</td>
+                                <td>@r.Answered</td>
+                                <td>@(r.Posted == 0 ? "–" : r.AnswerRate.ToString("0") + "%")</td>
+                                <td>@r.WithTestimony</td>
+                                <td>@r.PrayersOffered</td>
+                            </tr>
+                        }
+                    </tbody>
+                    <tfoot>
+                        <tr>
+                            <td><strong>Total</strong></td>
+                            <td><strong>@Model.ByCategory.Sum(r => r.Posted)</strong></td>
+                            <td><strong>@Model.ByCategory.Sum(r => r.Answered)</strong></td>
+                            <td><strong>@(Model.Posted == 0 ? "–" : Model.AnswerRate.ToString("0") + "%")</strong></td>
+                            <td><strong>@Model.ByCategory.Sum(r => r.WithTestimony)</strong></td>
+                            <td><strong>@Model.ByCategory.Sum(r => r.PrayersOffered)</strong></td>
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>
+        }
+    </div>
+
+    <div class="prayer-lists">
+        @* {{-- Most prayed for --}} *@
+        <div class="table-card">
+            <h3 class="report-section-title"><i class="fas fa-hands-praying"></i> Most prayed for <small class="pl-top">Top 5</small></h3>
+            @if (!Model.MostPrayedFor.Any())
+            {
+                <p class="meta report-empty">Nobody has prayed for these prayers yet.</p>
+            }
+            else
+            {
+                <ol class="prayer-list">
+                    @foreach (var p in Model.MostPrayedFor)
+                    {
+                        <li>
+                            <div class="pl-text">@Short(p.Request)</div>
+                            <div class="pl-meta">
+                                <span class="prayer-tag">@p.Category</span>
+                                @Who(p) · @p.CreatedAt.ToLocalTime().ToString("dd MMM yyyy")
+                                @if (p.IsAnswered) { <span class="pl-answered"><i class="fas fa-check"></i> Answered</span> }
+                                @if (!p.IsPublic) { <span class="pl-private">Private</span> }
+                            </div>
+                            <strong class="pl-count">@p.PrayerCount</strong>
+                        </li>
+                    }
+                </ol>
+            }
+        </div>
+
+        @* {{-- Testimonies --}} *@
+        <div class="table-card">
+            <h3 class="report-section-title"><i class="fas fa-star"></i> Answered with testimony <small class="pl-top">Latest 5</small></h3>
+            @if (!Model.Testimonies.Any())
+            {
+                <p class="meta report-empty">No testimonies for these filters yet.</p>
+            }
+            else
+            {
+                <ul class="prayer-list">
+                    @foreach (var p in Model.Testimonies)
+                    {
+                        <li>
+                            <div class="pl-text">“@Short(p.AnswerTestimony, 160)”</div>
+                            <div class="pl-meta">
+                                <span class="prayer-tag">@p.Category</span>
+                                @Who(p) · answered @(p.AnsweredAt?.ToLocalTime().ToString("dd MMM yyyy") ?? "")
+                            </div>
+                            <div class="pl-request">Prayer: @Short(p.Request, 80)</div>
+                        </li>
+                    }
+                </ul>
+            }
+        </div>
+
+        @* {{-- Waiting for prayer --}} *@
+        <div class="table-card">
+            <h3 class="report-section-title"><i class="fas fa-hourglass-half"></i> Waiting for prayer <small class="pl-top">Oldest 5</small></h3>
+            <p class="meta" style="margin:-.4rem 0 .6rem;font-size:.8rem">Oldest active prayers nobody has prayed for yet.</p>
+            @if (!Model.Waiting.Any())
+            {
+                <p class="meta report-empty">Every active prayer has been prayed for. 🙏</p>
+            }
+            else
+            {
+                <ul class="prayer-list">
+                    @foreach (var p in Model.Waiting)
+                    {
+                        <li>
+                            <div class="pl-text">@Short(p.Request)</div>
+                            <div class="pl-meta">
+                                <span class="prayer-tag">@p.Category</span>
+                                @Who(p) · posted @p.CreatedAt.ToLocalTime().ToString("dd MMM yyyy")
+                                (@Ago(p.CreatedAt))
+                                @if (!p.IsPublic) { <span class="pl-private">Private</span> }
+                            </div>
+                        </li>
+                    }
+                </ul>
+            }
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <style>
+        .prayer-stats-2 { margin-top: 0; }
+
+        .prayer-chart {
+            --surface-1: #ffffff;
+            --text-secondary: #52514e;
+            --grid: #e7e6e2;
+            --series-0: #2a78d6;   /* posted */
+            --series-1: #1baf7a;   /* answered */
+            --series-2: #eda100;   /* testimonies */
+        }
+
+        html[data-theme="dark"] .prayer-chart {
+            --surface-1: #1a1d27;
+            --text-secondary: #b4b2ad;
+            --grid: #2c3040;
+        }
+
+        .prayer-canvas-wrap { position: relative; height: 280px; }
+        .prayer-legend { display: flex; gap: 1rem; margin: 0 0 .75rem; font-size: .82rem; color: var(--text-secondary); }
+        .prayer-swatch { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: .4rem; }
+
+        .prayer-num-table td, .prayer-num-table th { white-space: nowrap; font-variant-numeric: tabular-nums; }
+        .prayer-num-table tfoot td { border-top: 2px solid var(--border); }
+
+        .prayer-lists {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 1.25rem;
+            align-items: start;
+        }
+
+        .prayer-list { list-style: none; margin: 0; padding: 0; }
+
+            .prayer-list li {
+                position: relative;
+                padding: .7rem 0;
+                border-bottom: 1px solid var(--border);
+            }
+
+                .prayer-list li:last-child { border-bottom: 0; }
+
+        ol.prayer-list li { padding-right: 2.5rem; }
+        .pl-text { font-size: .88rem; line-height: 1.45; }
+        .pl-meta { margin-top: .3rem; font-size: .75rem; color: var(--text-s); display: flex; flex-wrap: wrap; gap: .35rem; align-items: center; }
+        .pl-request { margin-top: .25rem; font-size: .75rem; color: var(--text-s); font-style: italic; }
+        .pl-count { position: absolute; right: 0; top: .7rem; font-size: 1.1rem; font-variant-numeric: tabular-nums; color: var(--purple); }
+        .pl-answered { color: var(--green); font-weight: 600; }
+        .pl-private { background: #f3f4f6; color: var(--text-s); border-radius: 100px; padding: 0 .45rem; font-weight: 600; }
+        .pl-top { font-size: .72rem; font-weight: 600; color: var(--text-s); margin-left: .3rem; }
+    </style>
+    <script>
+        // Show only the date inputs for the chosen period
+        (function () {
+            const sel = document.getElementById('periodSelect');
+            function sync() {
+                document.querySelectorAll('[data-period]').forEach(el => {
+                    const on = el.dataset.period === sel.value;
+                    el.style.display = on ? '' : 'none';
+                    el.querySelectorAll('input, select').forEach(i => i.disabled = !on);
+                });
+            }
+            sel.addEventListener('change', sync);
+            sync();
+        })();
+    </script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <script>
+        (function () {
+            const canvas = document.getElementById('prayerMonthChart');
+            if (!canvas || !window.Chart) return;
+            const card = canvas.closest('.prayer-chart');
+            const css = n => getComputedStyle(card).getPropertyValue(n).trim();
+            const d = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(chartData));
+            const bar = (label, data, color) => ({
+                label, data, backgroundColor: color, borderRadius: { topLeft: 4, topRight: 4 },
+                borderSkipped: false, maxBarThickness: 22
+            });
+            new Chart(canvas, {
+                type: 'bar',
+                data: {
+                    labels: d.labels,
+                    datasets: [bar('Posted', d.posted, css('--series-0')), bar('Answered', d.answered, css('--series-1')), bar('Testimonies', d.testimonies, css('--series-2'))]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: { mode: 'index', intersect: false },
+                    plugins: { legend: { display: false } },
+                    scales: {
+                        x: { grid: { display: false }, ticks: { color: css('--text-secondary') } },
+                        y: {
+                            beginAtZero: true, grid: { color: css('--grid') }, border: { display: false },
+                            ticks: { precision: 0, color: css('--text-secondary') }
+                        }
+                    }
+                }
+            });
+        })();
+    </script>
+}
