@@ -6132,3 +6132,89 @@ body {
 
 .report-section-title { font-size: 1rem; font-weight: 700; margin: 0 0 .75rem; }
 .report-empty { padding: 1rem 0; margin: 0; }
+
+/* ── Lite mode (leaf) and dark mode (moon) buttons in the top menu; <html class="lite"> ── */
+.lite-toggle,
+.theme-nav-btn {
+    position: relative;
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: .4rem .5rem;
+    border-radius: 8px;
+    color: #000;
+    font-size: 1rem;
+}
+
+    .lite-toggle:hover { background: #e7f6ee; color: #15803d; }
+    .lite-toggle.is-on { color: #14532d; }
+    .theme-nav-btn:hover { background: var(--purple-l); color: var(--purple); }
+
+        .lite-toggle.is-on::after {
+            content: "";
+            position: absolute;
+            top: 5px;
+            right: 5px;
+            width: 7px;
+            height: 7px;
+            border-radius: 50%;
+            background: #16a34a;
+            box-shadow: 0 0 0 2px #fff;
+        }
+
+@media (max-width: 768px) {
+    .lite-toggle,
+    .theme-nav-btn {
+        width: 44px;
+        height: 44px;
+        font-size: 1.15rem;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+        .lite-toggle.is-on::after { top: 9px; right: 9px; }
+}
+
+.lite-note {
+    position: fixed;
+    left: 50%;
+    bottom: calc(1.25rem + env(safe-area-inset-bottom, 0px));
+    transform: translateX(-50%);
+    z-index: 10000;
+    background: #1f2937;
+    color: #fff;
+    padding: .55rem 1rem;
+    border-radius: 100px;
+    font-size: .85rem;
+    font-weight: 600;
+    white-space: nowrap;
+    box-shadow: 0 4px 14px rgba(0,0,0,.2);
+}
+
+    .lite-note i { color: #4ade80; margin-right: .35rem; }
+
+/* What lite mode turns off: motion, blur and heavy shadows (they keep the phone's processor busy).
+   Spinners still turn so people can see something is loading. */
+html.lite *,
+html.lite *::before,
+html.lite *::after {
+    animation: none !important;
+    transition: none !important;
+    scroll-behavior: auto !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+}
+
+html.lite .fa-spin,
+html.lite .fa-spinner,
+html.lite .spinner {
+    animation: fa-spin 1s linear infinite !important;
+}
+
+html.lite .card,
+html.lite .glass-card,
+html.lite .table-card,
+html.lite .chart-card {
+    box-shadow: none !important;
+}

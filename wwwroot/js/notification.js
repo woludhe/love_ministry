@@ -102,6 +102,8 @@ async function pollNotifCount() {
     } catch { }
 }
 
-// Load count on page load and poll every 60s
+// Load count on page load, then check every minute (every 5 minutes in lite mode).
+// Skipped while the tab is in the background; checked again as soon as it comes back.
 pollNotifCount();
-setInterval(pollNotifCount, 60000);
+setInterval(() => { if (!document.hidden) pollNotifCount(); }, window.LITE ? 300000 : 60000);
+document.addEventListener('visibilitychange', () => { if (!document.hidden) pollNotifCount(); });

@@ -2,22 +2,25 @@
 @{
     ViewData["Title"] = "Home - Apostle Enock Makoko";
     Layout = "~/Views/Shared/_Layout.cshtml";
+    // Lite mode (leaf button in the menu): one small welcome picture, no rotation; slides 2–4 never download
+    var lite = ChurchMinistry.Services.LiteMode.IsOn(Context);
+    var slide1 = lite ? "/images/hero/slide1-lite.jpg" : "/images/hero/slide1.jpg";
 }
 @using ChurchMinistry.Models
 
 <!-- ═══════════════════════════════════════════
      HERO - sliding background images
 ═══════════════════════════════════════════ -->
-<section class="hero" id="heroSection">
+<section class="hero" id="heroSection" style="@(lite ? "background-image:url('/images/hero/slide1-lite.jpg')" : null)">
 
     @* {{-- Slide layers --}} *@
     <div class="hero-slides">
-        <div class="hero-slide active" style="background-image:url('/images/hero/slide1.jpg')"></div>
+        <div class="hero-slide active" style="background-image:url('@slide1')"></div>
         @* Sermons ticked "Highlight on home page": their thumbnail as the background; the script below
            swaps the headline and turns Watch Live into Watch Sermon while one of these is showing *@
         @foreach (var hs in Model?.HighlightedSermons ?? new List<Sermon>())
         {
-            var thumb = string.IsNullOrEmpty(hs.ThumbnailUrl) ? "/images/hero/slide2.jpg" : hs.ThumbnailUrl;
+            var thumb = string.IsNullOrEmpty(hs.ThumbnailUrl) ? (lite ? slide1 : "/images/hero/slide2.jpg") : hs.ThumbnailUrl;
             var sub = string.Join(" · ", new[] { hs.Speaker, hs.SermonDate.ToString("dd MMM yyyy") }.Where(x => !string.IsNullOrWhiteSpace(x)));
             @* Black slide: the whole thumbnail sits on the right, a black gradient on the left carries the text *@
             <div class="hero-slide hero-slide-sermon"
@@ -26,9 +29,12 @@
                 <img class="hero-sermon-thumb" src="@thumb" alt="" loading="lazy" />
             </div>
         }
+        @if (!lite)
+        {
         <div class="hero-slide" style="background-image:url('/images/hero/slide2.jpg')"></div>
         <div class="hero-slide" style="background-image:url('/images/hero/slide3.jpg')"></div>
         <div class="hero-slide" style="background-image:url('/images/hero/slide4.jpg')"></div>
+        }
     </div>
     @* {{-- Dark gradient so text stays readable over any photo --}} *@
     <div class="hero-overlay"></div>
@@ -125,7 +131,7 @@
             <div class="card sermon-card">
                 @if (!string.IsNullOrEmpty(sermon.ThumbnailUrl))
                 {
-                    <img src="@sermon.ThumbnailUrl" alt="@sermon.Title" class="card-thumb" />
+                    <img src="@sermon.ThumbnailUrl" alt="@sermon.Title" class="card-thumb" loading="lazy" />
                 }
                 else
                 {
@@ -648,7 +654,7 @@
 
             window.heroShift = function (dir) { resetTimer(); goTo(current + dir); };
 
-            function startTimer() { timer = setInterval(() => goTo(current + 1), INTERVAL); }
+            function startTimer() { if (window.LITE) return; clearInterval(timer); timer = setInterval(() => goTo(current + 1), INTERVAL); }
             function resetTimer() { clearInterval(timer); startTimer(); }
 
             // Pause on hover

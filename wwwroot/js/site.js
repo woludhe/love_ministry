@@ -174,7 +174,9 @@ document.addEventListener('DOMContentLoaded', () => {
         document.querySelectorAll('.js-theme-toggle').forEach(b => {
             b.setAttribute('aria-checked', dark);
             b.querySelector('i').className = dark ? 'fas fa-sun' : 'fas fa-moon';
-            b.querySelector('.theme-toggle-label').textContent = dark ? 'Light mode' : 'Dark mode';
+            const label = b.querySelector('.theme-toggle-label');   // the top-bar button is icon-only
+            if (label) label.textContent = dark ? 'Light mode' : 'Dark mode';
+            else b.title = dark ? 'Light mode' : 'Dark mode: saves battery on many phones';
         });
     };
     document.addEventListener('click', e => {
@@ -195,3 +197,31 @@ document.addEventListener('click', e => {
     if (!['date', 'datetime-local', 'month', 'week', 'time'].includes(input.type)) return;
     try { input.showPicker(); } catch { /* already open, or not allowed here */ }
 });
+
+// Lite mode (leaf button in the top menu): remembered in the "lite" cookie so the server sends
+// lighter pages (Services/Services.cs → LiteMode). Switching reloads the page so it applies at once.
+(() => {
+    const btn = document.getElementById('liteToggle');
+    if (btn) btn.addEventListener('click', () => {
+        const on = !document.documentElement.classList.contains('lite');
+        document.cookie = `lite=${on ? 1 : 0}; path=/; max-age=31536000; samesite=lax${location.protocol === 'https:' ? '; secure' : ''}`;
+        try { sessionStorage.setItem('liteNote', on ? 'on' : 'off'); } catch { }
+        location.reload();
+    });
+
+    // After the reload: a short note saying what changed
+    let note = null;
+    try { note = sessionStorage.getItem('liteNote'); sessionStorage.removeItem('liteNote'); } catch { }
+    if (!note) return;
+    const show = () => {
+        const el = document.createElement('div');
+        el.className = 'lite-note';
+        el.setAttribute('role', 'status');
+        el.innerHTML = note === 'on'
+            ? '<i class="fas fa-leaf"></i>Lite mode on: saving data and battery'
+            : '<i class="fas fa-leaf"></i>Lite mode off';
+        document.body.appendChild(el);
+        setTimeout(() => el.remove(), 2500);
+    };
+    if (document.body) show(); else document.addEventListener('DOMContentLoaded', show);
+})();

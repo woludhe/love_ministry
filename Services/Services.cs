@@ -1918,4 +1918,21 @@ namespace ChurchMinistry.Services
             await db.SaveChangesAsync(ct);
         }
     }
+
+    // ── Lite mode: lighter pages for slow phones, low battery and limited data ──
+    // Chosen with the leaf button in the top menu (cookie "lite" = 1/0, see wwwroot/js/site.js).
+    // Before someone chooses, it follows the phone's Data Saver (the "Save-Data: on" header).
+    public static class LiteMode
+    {
+        public const string Cookie = "lite";
+
+        public static bool IsOn(HttpContext? ctx)
+        {
+            if (ctx == null) return false;
+            var c = ctx.Request.Cookies[Cookie];
+            if (c == "1") return true;
+            if (c == "0") return false;
+            return string.Equals(ctx.Request.Headers["Save-Data"].ToString().Trim(), "on", StringComparison.OrdinalIgnoreCase);
+        }
+    }
 }

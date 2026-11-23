@@ -14,6 +14,7 @@
 
     string? Active(string c, string? a = null) =>
         controller == c && (a == null || action == a) ? "active" : null;
+    var lite = ChurchMinistry.Services.LiteMode.IsOn(Context);
 }
 <nav class="navbar">
     <div class="nav-container">
@@ -72,6 +73,17 @@
 
         @* Always in the top bar, including on phones *@
         <div class="nav-actions">
+            @* Lite mode: one tap for lighter pages (less data, battery and processing). Handler in wwwroot/js/site.js *@
+            <button type="button" class="lite-toggle@(lite ? " is-on" : "")" id="liteToggle" aria-pressed="@(lite ? "true" : "false")"
+                    title="@(lite ? "Lite mode is on: saving data and battery. Tap to turn off" : "Lite mode: tap to save data and battery")"
+                    aria-label="Lite mode">
+                <i class="fas fa-leaf"></i>
+            </button>
+            @* Dark mode: same switch as the dashboard menu (wwwroot/js/site.js), remembered in this browser *@
+            <button type="button" class="theme-nav-btn js-theme-toggle" role="switch" aria-checked="false"
+                    title="Dark mode: saves battery on many phones" aria-label="Dark mode">
+                <i class="fas fa-moon"></i>
+            </button>
             @if (signedIn)
             {
                 <div id="pushConfig" hidden data-key="@Config["WebPush:PublicKey"]" data-user="@User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value">@Html.AntiForgeryToken()</div>

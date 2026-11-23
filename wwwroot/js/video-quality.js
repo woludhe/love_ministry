@@ -28,6 +28,14 @@ function VideoQuality(LK, opts = {}) {
         return !!(window.matchMedia && matchMedia('(pointer:coarse) and (max-width: 900px)').matches);
     })();
 
+    // Lite mode (leaf button in the site menu): Auto starts at Low. Pages with the site layout set
+    // window.LITE; the meeting room has its own page, so read the "lite" cookie (or Data Saver) there.
+    const lite = typeof window.LITE === 'boolean' ? window.LITE : (() => {
+        const m = document.cookie.match(/(?:^|;\s*)lite=([01])/);
+        return m ? m[1] === '1' : !!(navigator.connection && navigator.connection.saveData);
+    })();
+    const startLevel = () => lite ? 'low' : isMobile ? 'medium' : 'high';
+
     function read(store, key) { try { return store.getItem(key); } catch { return null; } }
     function write(store, key, v) { try { v == null ? store.removeItem(key) : store.setItem(key, v); } catch { } }
 
@@ -35,7 +43,7 @@ function VideoQuality(LK, opts = {}) {
     if (!(choice in NAMES)) choice = 'auto';
     // Auto's current level; a step-down lasts for this browser tab, so a reload stays cool
     let autoLevel = read(sessionStorage, AUTO_KEY);
-    if (!LEVELS.includes(autoLevel)) autoLevel = isMobile ? 'medium' : 'high';
+    if (!LEVELS.includes(autoLevel)) autoLevel = startLevel();
 
     let room = opts.room || null, lastStep = 0;
     const level = () => choice === 'auto' ? autoLevel : choice;
@@ -61,7 +69,7 @@ function VideoQuality(LK, opts = {}) {
         choice = c;
         write(localStorage, KEY, c === 'auto' ? null : c);
         // Picking Auto again starts it fresh at the device's normal level
-        if (c === 'auto') { autoLevel = isMobile ? 'medium' : 'high'; write(sessionStorage, AUTO_KEY, null); }
+        if (c === 'auto') { autoLevel = startLevel(); write(sessionStorage, AUTO_KEY, null); }
         changed();
     }
 

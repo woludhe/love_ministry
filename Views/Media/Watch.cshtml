@@ -196,8 +196,12 @@
                     }
                     else if (ytId != null)
                     {
+                        var ytSrc = $"https://www.youtube.com/embed/{ytId}?enablejsapi=1&rel=0&modestbranding=1";
+                        var liteMode = ChurchMinistry.Services.LiteMode.IsOn(Context);
+                        @* Lite mode: the YouTube player (about 1 MB) only loads when Play is tapped *@
                         <iframe id="ytPlayer"
-                                src="https://www.youtube.com/embed/@(ytId)?enablejsapi=1&rel=0&modestbranding=1"
+                                src="@(liteMode ? null : ytSrc)"
+                                data-src="@(liteMode ? ytSrc : null)"
                                 width="100%"
                                 height="100%"
                                 frameborder="0"
@@ -598,7 +602,9 @@
                 wrap.classList.add('playing');
                 const media = document.getElementById('htmlPlayer');
                 if (media) { media.play().catch(() => {}); return; }
-                if (document.getElementById('ytPlayer')) {
+                const yt = document.getElementById('ytPlayer');
+                if (yt) {
+                    if (yt.dataset.src && window.__ytLoad) { window.__ytPlayWanted = true; window.__ytLoad(); return; }   // lite mode
                     if (window.__ytPlayer?.playVideo) window.__ytPlayer.playVideo();
                     else window.__ytPlayWanted = true;   // the YouTube API isn't ready yet: it plays on ready
                 }
@@ -902,10 +908,23 @@
         const ytFrame = document.getElementById('ytPlayer');
 
         if (ytFrame) {
-            // Load YouTube IFrame API
-            const tag = document.createElement('script');
-            tag.src = 'https://www.youtube.com/iframe_api';
-            document.head.appendChild(tag);
+            // Load YouTube IFrame API. In lite mode the player itself waits for the Play button
+            // (data-src), so nothing from YouTube downloads until then.
+            const loadApi = () => {
+                const tag = document.createElement('script');
+                tag.src = 'https://www.youtube.com/iframe_api';
+                document.head.appendChild(tag);
+            };
+            if (ytFrame.dataset.src) {
+                window.__ytLoad = () => {
+                    if (ytFrame.getAttribute('src')) return;
+                    ytFrame.src = ytFrame.dataset.src + '&autoplay=1';
+                    delete ytFrame.dataset.src;
+                    loadApi();
+                };
+            } else {
+                loadApi();
+            }
 
             let ytPlayer;
             let ytCountdownStarted = false;

@@ -2,7 +2,7 @@
 @inject ChurchMinistry.Data.ApplicationDbContext Db
 @using Microsoft.EntityFrameworkCore
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" class="@(ChurchMinistry.Services.LiteMode.IsOn(Context) ? "lite" : null)">
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
@@ -230,7 +230,7 @@
                 } catch { }
             }
             pollApprovals();
-            setInterval(pollApprovals, 60000);
+            setInterval(() => { if (!document.hidden) pollApprovals(); }, window.LITE ? 300000 : 60000);   // every 5 min in lite mode
         </script>
     }
 </body>
