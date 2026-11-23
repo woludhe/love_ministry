@@ -326,32 +326,33 @@
             </div>
 
             @* {{-- Respond to the sermon. Guests are sent to Login and come back here. --}} *@
+            @* {{-- On phones these become round icons; data-tip is the tooltip, the label is hidden --}} *@
             <div class="engage-bar" id="engageBar">
                 @if (canEngage)
                 {
-                    <button type="button" class="engage-btn primary" data-open="prayDialog"><i class="fas fa-praying-hands"></i> Request Prayer</button>
-                    <button type="button" class="engage-btn" data-open="askDialog"><i class="fas fa-question-circle"></i> Ask a Question</button>
-                    <a class="engage-btn" href="@testimonyUrl" target="_blank" rel="noopener"><i class="fas fa-star"></i> Share a Testimony</a>
-                    <a class="engage-btn" href="/Giving/Give" target="_blank" rel="noopener"><i class="fas fa-hand-holding-heart"></i> Give</a>
-                    <a class="engage-btn" href="/Members/Dashboard#one-on-one" target="_blank" rel="noopener"><i class="fas fa-user-friends"></i> One-on-One</a>
+                    <button type="button" class="engage-btn primary" data-open="prayDialog" data-tip="Request Prayer" aria-label="Request Prayer"><i class="fas fa-praying-hands"></i> <span class="engage-label">Request Prayer</span></button>
+                    <button type="button" class="engage-btn" data-open="askDialog" data-tip="Ask a Question" aria-label="Ask a Question"><i class="fas fa-question-circle"></i> <span class="engage-label">Ask a Question</span></button>
+                    <a class="engage-btn" href="@testimonyUrl" target="_blank" rel="noopener" data-tip="Share a Testimony" aria-label="Share a Testimony"><i class="fas fa-star"></i> <span class="engage-label">Share a Testimony</span></a>
+                    <a class="engage-btn" href="/Giving/Give" target="_blank" rel="noopener" data-tip="Give" aria-label="Give"><i class="fas fa-hand-holding-heart"></i> <span class="engage-label">Give</span></a>
+                    <a class="engage-btn" href="/Members/Dashboard#one-on-one" target="_blank" rel="noopener" data-tip="One-on-One" aria-label="One-on-One"><i class="fas fa-user-friends"></i> <span class="engage-label">One-on-One</span></a>
                 }
                 else if (!isSignedIn)
                 {
-                    <a class="engage-btn primary" href="@loginUrl"><i class="fas fa-praying-hands"></i> Request Prayer</a>
-                    <a class="engage-btn" href="@loginUrl"><i class="fas fa-question-circle"></i> Ask a Question</a>
-                    <a class="engage-btn" href="@loginUrl"><i class="fas fa-star"></i> Share a Testimony</a>
-                    <a class="engage-btn" href="/Giving/Give" target="_blank" rel="noopener"><i class="fas fa-hand-holding-heart"></i> Give</a>
-                    <a class="engage-btn" href="@loginUrl"><i class="fas fa-user-friends"></i> One-on-One</a>
+                    <a class="engage-btn primary" href="@loginUrl" data-tip="Request Prayer" aria-label="Request Prayer"><i class="fas fa-praying-hands"></i> <span class="engage-label">Request Prayer</span></a>
+                    <a class="engage-btn" href="@loginUrl" data-tip="Ask a Question" aria-label="Ask a Question"><i class="fas fa-question-circle"></i> <span class="engage-label">Ask a Question</span></a>
+                    <a class="engage-btn" href="@loginUrl" data-tip="Share a Testimony" aria-label="Share a Testimony"><i class="fas fa-star"></i> <span class="engage-label">Share a Testimony</span></a>
+                    <a class="engage-btn" href="/Giving/Give" target="_blank" rel="noopener" data-tip="Give" aria-label="Give"><i class="fas fa-hand-holding-heart"></i> <span class="engage-label">Give</span></a>
+                    <a class="engage-btn" href="@loginUrl" data-tip="One-on-One" aria-label="One-on-One"><i class="fas fa-user-friends"></i> <span class="engage-label">One-on-One</span></a>
                 }
                 else
                 {
                     @* Signed in without a member profile (e.g. the seeded admin) *@
-                    <a class="engage-btn" href="/Giving/Give" target="_blank" rel="noopener"><i class="fas fa-hand-holding-heart"></i> Give</a>
+                    <a class="engage-btn" href="/Giving/Give" target="_blank" rel="noopener" data-tip="Give" aria-label="Give"><i class="fas fa-hand-holding-heart"></i> <span class="engage-label">Give</span></a>
                 }
                 @* {{-- Downloading is for signed-in members only --}} *@
                 @if (audioDownload != null)
                 {
-                    <a class="engage-btn" href="@audioDownload" download><i class="fas fa-download"></i> Download Audio</a>
+                    <a class="engage-btn" href="@audioDownload" download data-tip="Download Audio" aria-label="Download Audio"><i class="fas fa-download"></i> <span class="engage-label">Download Audio</span></a>
                 }
             </div>
             <div class="engage-msg" id="engageMsg" role="status" hidden></div>
@@ -362,7 +363,7 @@
             @if (!string.IsNullOrEmpty(Model.Description) || !string.IsNullOrEmpty(Model.Tags))
             {
                 <section class="watch-card about-card">
-                    <h2 class="card-title"><i class="fas fa-align-left"></i> About this message</h2>
+                    <h2 class="card-title"><i class="fas fa-align-left"></i> <span>@Model.Title</span></h2>
                     @if (!string.IsNullOrEmpty(Model.Description))
                     {
                         <p class="sermon-description" id="sermonDescription">@Model.Description.Trim()</p>
@@ -451,7 +452,7 @@
 
         @* {{-- ── Sidebar ── --}} *@
         <aside class="watch-sidebar">
-            <section class="watch-card side-card">
+            <section class="watch-card side-card details-card">
                 <h2 class="card-title"><i class="fas fa-info-circle"></i> Sermon Details</h2>
                 <ul class="detail-list">
                     <li>
@@ -485,7 +486,6 @@
                     }
                 </ul>
                 <div class="side-divider"></div>
-                <h2 class="card-title"><i class="fas fa-share-alt"></i> Key Actions</h2>
                 <button type="button" class="share-this" data-share><i class="fas fa-share"></i> Share This Sermon</button>
                 <div class="share-toast" role="status" hidden>Link copied</div>
             </section>
@@ -695,6 +695,16 @@
                     });
                 } finally { btn.disabled = false; }
             }));
+
+            // Phones have no hover: a touch on a round action icon shows its tooltip briefly
+            document.querySelectorAll('#engageBar [data-tip]').forEach(b => {
+                let t;
+                b.addEventListener('touchstart', () => {
+                    document.querySelectorAll('#engageBar .tip-show').forEach(o => o.classList.remove('tip-show'));
+                    b.classList.add('tip-show');
+                    clearTimeout(t); t = setTimeout(() => b.classList.remove('tip-show'), 1600);
+                }, { passive: true });
+            });
 
             // Pray / Ask pop-ups
             document.querySelectorAll('[data-open]').forEach(b => b.addEventListener('click', () =>
@@ -1083,7 +1093,8 @@
         .view-all:hover { color:var(--purple-d); }
 
         /* About this message */
-        .about-card .card-title { margin-bottom:.6rem; }
+        .about-card .card-title { margin-bottom:.6rem; align-items:flex-start; overflow-wrap:anywhere; }
+        .about-card .card-title i { margin-top:.15rem; }
         .sermon-description { margin:0; font-size:.95rem; line-height:1.75; color:var(--text-s); white-space:pre-line; overflow-wrap:anywhere; }
         .sermon-description.folded { display:-webkit-box; -webkit-line-clamp:6; -webkit-box-orient:vertical; overflow:hidden; }
         .read-more { margin-top:.4rem; padding:0; border:none; background:none; color:var(--purple); font-weight:700; font-size:.9rem; cursor:pointer; }
@@ -1093,8 +1104,8 @@
         .tabs-card { padding:0; }
         .watch-tabs { display:flex; align-items:center; flex-wrap:wrap; gap:0 1.75rem; padding:0 1.5rem; border-bottom:1px solid var(--border); }
         .watch-tab { display:inline-flex; align-items:center; gap:.6rem; padding:1.15rem .3rem; border:none; background:none; cursor:pointer;
-                     font-size:1rem; font-weight:700; color:var(--text-s); box-shadow:inset 0 -3px 0 transparent; transition:color .15s, box-shadow .15s; }
-        .watch-tab i { font-size:1.1rem; }
+                     font-size:.94rem; font-weight:700; color:var(--text-s); box-shadow:inset 0 -3px 0 transparent; transition:color .15s, box-shadow .15s; }
+        .watch-tab i { font-size:1.05rem; }
         .watch-tab:hover { color:var(--text); }
         .watch-tab.active { color:var(--purple); box-shadow:inset 0 -3px 0 var(--purple); }
         .watch-tab:focus-visible { outline:2px solid var(--purple); outline-offset:-2px; border-radius:6px; }
@@ -1132,12 +1143,17 @@
 
         /* ── Sidebar cards ───────────────────────────── */
         .side-card .card-title { margin-bottom:1rem; }
-        .detail-list { list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:1rem; }
-        .detail-list li { display:flex; align-items:center; gap:1rem; }
-        .detail-list i { width:30px; text-align:center; font-size:1.45rem; color:var(--purple); flex-shrink:0; }
-        .detail-list small { display:block; font-size:.85rem; color:var(--text-s); }
-        .detail-list strong { display:block; font-size:1.02rem; color:var(--text); overflow-wrap:anywhere; }
+        /* Sermon Details: compact card */
+        .details-card { padding:1rem 1.15rem; }
+        .details-card .card-title { font-size:.98rem; gap:.5rem; margin-bottom:.7rem; }
+        .details-card .card-title i { font-size:1.05rem; }
+        .detail-list { list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:.55rem; }
+        .detail-list li { display:flex; align-items:center; gap:.7rem; }
+        .detail-list i { width:22px; text-align:center; font-size:1.05rem; color:var(--purple); flex-shrink:0; }
+        .detail-list small { display:block; font-size:.72rem; line-height:1.2; color:var(--text-s); }
+        .detail-list strong { display:block; font-size:.86rem; line-height:1.3; color:var(--text); overflow-wrap:anywhere; }
         .side-divider { height:1px; background:var(--border); margin:1.25rem 0; }
+        .details-card .side-divider { margin:.9rem 0; }
         .share-this { width:100%; display:flex; align-items:center; justify-content:center; gap:.6rem; padding:.85rem 1rem; border-radius:12px;
                       border:1.5px solid var(--purple); background:var(--purple-l); color:var(--purple); font-size:1rem; font-weight:700; cursor:pointer;
                       transition:background .15s, color .15s; }
@@ -1215,10 +1231,22 @@
             .watch-sidebar { display:flex; align-items:stretch; }
             .engage-bar { gap:.5rem; }
             .engage-btn { padding:.6rem 1rem; font-size:.86rem; gap:.45rem; }
+            /* Action pills become round icons; the label shows as a tooltip */
+            #engageBar { gap:.65rem; }
+            #engageBar .engage-btn { position:relative; width:48px; height:48px; padding:0; gap:0; justify-content:center; border-radius:50%; }
+            #engageBar .engage-btn i { font-size:1.15rem; }
+            #engageBar .engage-label { position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap; }
+            #engageBar .engage-btn:hover { transform:none; }
+            #engageBar .engage-btn::after { content:attr(data-tip); position:absolute; bottom:calc(100% + 8px); left:50%; transform:translateX(-50%);
+                                            padding:.35rem .6rem; border-radius:8px; background:#1e1b4b; color:#fff; font-size:.75rem; font-weight:600;
+                                            white-space:nowrap; pointer-events:none; opacity:0; transition:opacity .15s; z-index:5; }
+            #engageBar .engage-btn:first-child::after { left:0; transform:none; }
+            #engageBar .engage-btn:last-child:not(:first-child)::after { left:auto; right:0; transform:none; }
+            #engageBar .engage-btn:hover::after, #engageBar .engage-btn:focus-visible::after, #engageBar .engage-btn.tip-show::after { opacity:1; }
             .watch-card { padding:1.15rem; }
             .tabs-card { padding:0; }
             .watch-tabs { padding:0 1rem; gap:0 1rem; flex-wrap:nowrap; overflow-x:auto; }
-            .watch-tab { font-size:.86rem; padding:.95rem .1rem; gap:.45rem; white-space:nowrap; flex-shrink:0; }
+            .watch-tab { font-size:.8rem; padding:.95rem .1rem; gap:.45rem; white-space:nowrap; flex-shrink:0; }
             .watch-tabs:has(.notes-private:not([hidden])) { flex-wrap:wrap; }
             .notes-private { margin-left:0; width:100%; padding-bottom:.7rem; }
             .watch-panel { padding:1.1rem 1rem 1.3rem; }
