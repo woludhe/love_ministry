@@ -5,10 +5,9 @@
 <html lang="en">
 <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <title>@(ViewData["Title"] ?? @Config["Church:Name"])</title>
-    <link rel="manifest" href="~/site.webmanifest" />
-    <meta name="theme-color" content="#6366f1" />
+    <partial name="_AppHead" />
     <script>/* Dark mode chosen in the dashboard menu; set before the page paints so it never flashes white */ try { if (localStorage.getItem("theme") === "dark") document.documentElement.dataset.theme = "dark"; } catch (e) { }</script>
     <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
     <link rel="stylesheet" href="~/css/dark.css" asp-append-version="true" />
@@ -208,7 +207,8 @@
     @if (User.Identity?.IsAuthenticated == true)
     {
         <link rel="stylesheet" href="~/css/notification.css" asp-append-version="true" />
-        <script src="~/js/notification.js"></script>
+        <script src="~/js/notification.js" asp-append-version="true"></script>
+        <script src="~/js/push.js" asp-append-version="true"></script>
     }
 
     @if (User.IsInRole("Admin") || User.IsInRole("Pastor"))

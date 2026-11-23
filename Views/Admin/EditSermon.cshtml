@@ -298,6 +298,16 @@
                     (they're kept, and come back if you turn it on again).
                 </small>
             </div>
+            <div class="form-group checkbox-group">
+                <label><input asp-for="IsHighlighted" type="checkbox" /> Highlight on home page</label>
+                <small class="meta">
+                    Shows as a slide in the home page banner, with the thumbnail as the background and a Watch Sermon button.
+                    @if (string.IsNullOrEmpty(Model.ThumbnailUrl))
+                    {
+                        <br /><strong>This sermon has no thumbnail yet</strong><text>, so the slide will use the default banner image.</text>
+                    }
+                </small>
+            </div>
 
             <div style="display:flex;gap:.75rem;margin-top:1.5rem;flex-wrap:wrap">
                 <button type="submit" class="btn btn-primary">

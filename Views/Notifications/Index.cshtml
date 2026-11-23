@@ -7,6 +7,15 @@
 </section>
 
 <div class="container" style="max-width:700px;margin:2rem auto;padding:0 1.5rem">
+    @* Push alerts for this phone/browser; wwwroot/js/push.js fills in the status and shows the card *@
+    <div class="push-settings" id="pushSettings" hidden>
+        <div class="push-settings-icon"><i class="fas fa-mobile-screen-button"></i></div>
+        <div class="push-settings-body">
+            <strong>Alerts on this device</strong>
+            <p id="pushSettingsText">Get an alert on this phone or computer when something new arrives.</p>
+        </div>
+        <button type="button" class="btn btn-primary btn-sm" id="pushSettingsBtn">Turn on</button>
+    </div>
     @if (!Model.Any())
     {
         <div style="text-align:center;padding:4rem 1.5rem;color:var(--text-s)">

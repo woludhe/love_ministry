@@ -192,6 +192,10 @@
                                 {
                                     <span class="live-row-badge"><span class="live-dot"></span> LIVE</span>
                                 }
+                                @if (s.IsHighlighted && s.IsPublished)
+                                {
+                                    <span class="highlight-row-badge" title="Shown as a slide in the home page banner"><i class="fas fa-star"></i> Home banner</span>
+                                }
                                 @if (!string.IsNullOrEmpty(s.ScriptureReference))
                                 {
                                     <br />
@@ -556,6 +560,21 @@
             gap: .3rem;
             background: #fee2e2;
             color: #dc2626;
+            font-size: .7rem;
+            font-weight: 700;
+            padding: .15rem .5rem;
+            border-radius: 100px;
+            margin-left: .4rem;
+            vertical-align: middle;
+        }
+
+        /* Sermon highlighted on the home page banner */
+        .highlight-row-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: .3rem;
+            background: #fef3c7;
+            color: #92400e;
             font-size: .7rem;
             font-weight: 700;
             padding: .15rem .5rem;

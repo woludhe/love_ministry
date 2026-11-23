@@ -242,3 +242,77 @@
         max-height: calc(100dvh - 190px);
     }
 }
+
+/* ── Push alerts: bell dropdown row + Notifications page card (wwwroot/js/push.js) ── */
+.notif-push-row {
+    display: flex;
+    align-items: center;
+    gap: .6rem;
+    padding: .6rem 1rem;
+    border-bottom: 1px solid var(--border);
+    background: var(--purple-l);
+    color: var(--text);
+    font-size: .84rem;
+}
+
+    .notif-push-row[hidden] { display: none; }
+    .notif-push-row i { color: var(--purple); font-size: 1rem; }
+    .notif-push-row span { flex: 1; }
+
+.push-on-btn {
+    border: 0;
+    border-radius: 999px;
+    padding: .3rem .8rem;
+    background: var(--purple);
+    color: #fff;
+    font: inherit;
+    font-size: .8rem;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+    .push-on-btn:hover { background: var(--purple-d); }
+    .push-on-btn[hidden] { display: none; }
+
+.push-settings {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+    padding: 1rem 1.15rem;
+    background: var(--white);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+}
+
+    .push-settings[hidden] { display: none; }
+    .push-settings-body { flex: 1; }
+    .push-settings-body p { margin: .15rem 0 0; color: var(--text-s); font-size: .88rem; }
+    .push-settings .btn[hidden] { display: none; }
+
+.push-settings-icon {
+    width: 42px;
+    height: 42px;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    background: var(--purple-l);
+    color: var(--purple);
+    font-size: 1.1rem;
+}
+
+html[data-theme="dark"] .notif-push-row,
+html[data-theme="dark"] .push-settings-icon {
+    background: rgba(99, 102, 241, .18);
+}
+
+html[data-theme="dark"] .push-settings {
+    background: var(--surface-2);
+}
+
+@media (max-width: 480px) {
+    .push-settings { flex-wrap: wrap; }
+    .push-settings .btn { width: 100%; }
+}

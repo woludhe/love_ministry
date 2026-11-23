@@ -1691,6 +1691,51 @@ namespace ChurchMinistry.Migrations
                     b.ToTable("PrayerRequests");
                 });
 
+            modelBuilder.Entity("ChurchMinistry.Models.PushDevice", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    b.Property<string>("Auth")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("varchar(100)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("Endpoint")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("varchar(500)");
+
+                    b.Property<DateTime?>("LastSentAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("P256dh")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("varchar(200)");
+
+                    b.Property<string>("UserAgent")
+                        .HasMaxLength(300)
+                        .HasColumnType("varchar(300)");
+
+                    b.Property<string>("UserId")
+                        .IsRequired()
+                        .HasColumnType("varchar(255)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Endpoint")
+                        .IsUnique();
+
+                    b.HasIndex("UserId");
+
+                    b.ToTable("PushDevices");
+                });
+
             modelBuilder.Entity("ChurchMinistry.Models.RecurringGift", b =>
                 {
                     b.Property<int>("Id")
@@ -1768,6 +1813,9 @@ namespace ChurchMinistry.Migrations
 
                     b.Property<string>("Description")
                         .HasColumnType("longtext");
+
+                    b.Property<bool>("IsHighlighted")
+                        .HasColumnType("tinyint(1)");
 
                     b.Property<bool>("IsLive")
                         .HasColumnType("tinyint(1)");
@@ -2577,6 +2625,15 @@ namespace ChurchMinistry.Migrations
                         .OnDelete(DeleteBehavior.SetNull);
 
                     b.Navigation("Member");
+                });
+
+            modelBuilder.Entity("ChurchMinistry.Models.PushDevice", b =>
+                {
+                    b.HasOne("ChurchMinistry.Models.ApplicationUser", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("ChurchMinistry.Models.RecurringGift", b =>

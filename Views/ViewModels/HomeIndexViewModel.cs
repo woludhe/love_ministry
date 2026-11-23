@@ -11,6 +11,7 @@ namespace ChurchMinistry.ViewModels
         public List<ChurchMinistry.Models.PrayerRequest> PrayerWall { get; set; } = new();
         public List<ChurchMinistry.Models.PaymentMethodConfig> ActivePaymentMethods { get; set; } = new();
         public List<UpcomingItem> UpcomingItems { get; set; } = new();
+        public List<ChurchMinistry.Models.Sermon> HighlightedSermons { get; set; } = new();   // extra hero slides
     }
 
     // A future event or scheduled sermon, shown together on the home page

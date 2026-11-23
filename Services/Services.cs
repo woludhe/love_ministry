@@ -1748,4 +1748,174 @@ namespace ChurchMinistry.Services
             }
         }
     }
+
+    // ─── Push alerts (Web Push) ───
+    // Every Notification saved anywhere in the app (NotificationService or a direct _db.Notifications.Add)
+    // is also pushed to the member's phones/browsers. NotificationPushInterceptor queues them once the save
+    // succeeds; PushSenderService sends them in the background so no page waits on Apple or Google.
+    public record PushItem(int NotificationId, int MemberId, string Title, string Message);
+
+    public class PushQueue
+    {
+        private readonly System.Threading.Channels.Channel<PushItem> _channel =
+            System.Threading.Channels.Channel.CreateBounded<PushItem>(
+                new System.Threading.Channels.BoundedChannelOptions(10_000)
+                {
+                    FullMode = System.Threading.Channels.BoundedChannelFullMode.DropOldest
+                });
+
+        public void Enqueue(PushItem item) => _channel.Writer.TryWrite(item);
+        public System.Threading.Channels.ChannelReader<PushItem> Reader => _channel.Reader;
+    }
+
+    public class NotificationPushInterceptor : Microsoft.EntityFrameworkCore.Diagnostics.SaveChangesInterceptor
+    {
+        private readonly PushQueue _queue;
+        // Notifications being inserted by each context, held between "saving" and "saved"
+        private readonly System.Runtime.CompilerServices.ConditionalWeakTable<DbContext, List<Notification>> _pending = new();
+
+        public NotificationPushInterceptor(PushQueue queue) { _queue = queue; }
+
+        private void Capture(DbContext? ctx)
+        {
+            if (ctx == null) return;
+            var added = ctx.ChangeTracker.Entries<Notification>()
+                .Where(e => e.State == EntityState.Added)
+                .Select(e => e.Entity)
+                .ToList();
+            if (added.Count > 0) _pending.AddOrUpdate(ctx, added);
+        }
+
+        private void Flush(DbContext? ctx)
+        {
+            if (ctx == null || !_pending.TryGetValue(ctx, out var list)) return;
+            _pending.Remove(ctx);
+            foreach (var n in list)
+                if (n.MemberId is int memberId && n.Id > 0)
+                    _queue.Enqueue(new PushItem(n.Id, memberId, n.Title, n.Message));
+        }
+
+        public override Microsoft.EntityFrameworkCore.Diagnostics.InterceptionResult<int> SavingChanges(
+            Microsoft.EntityFrameworkCore.Diagnostics.DbContextEventData eventData,
+            Microsoft.EntityFrameworkCore.Diagnostics.InterceptionResult<int> result)
+        {
+            Capture(eventData.Context);
+            return result;
+        }
+
+        public override ValueTask<Microsoft.EntityFrameworkCore.Diagnostics.InterceptionResult<int>> SavingChangesAsync(
+            Microsoft.EntityFrameworkCore.Diagnostics.DbContextEventData eventData,
+            Microsoft.EntityFrameworkCore.Diagnostics.InterceptionResult<int> result,
+            CancellationToken cancellationToken = default)
+        {
+            Capture(eventData.Context);
+            return ValueTask.FromResult(result);
+        }
+
+        public override int SavedChanges(Microsoft.EntityFrameworkCore.Diagnostics.SaveChangesCompletedEventData eventData, int result)
+        {
+            Flush(eventData.Context);
+            return result;
+        }
+
+        public override ValueTask<int> SavedChangesAsync(
+            Microsoft.EntityFrameworkCore.Diagnostics.SaveChangesCompletedEventData eventData, int result,
+            CancellationToken cancellationToken = default)
+        {
+            Flush(eventData.Context);
+            return ValueTask.FromResult(result);
+        }
+
+        public override void SaveChangesFailed(Microsoft.EntityFrameworkCore.Diagnostics.DbContextErrorEventData eventData)
+        {
+            if (eventData.Context != null) _pending.Remove(eventData.Context);
+        }
+
+        public override Task SaveChangesFailedAsync(
+            Microsoft.EntityFrameworkCore.Diagnostics.DbContextErrorEventData eventData,
+            CancellationToken cancellationToken = default)
+        {
+            if (eventData.Context != null) _pending.Remove(eventData.Context);
+            return Task.CompletedTask;
+        }
+    }
+
+    public class PushSenderService : BackgroundService
+    {
+        private readonly IServiceScopeFactory _scopes;
+        private readonly PushQueue _queue;
+        private readonly IConfiguration _config;
+        private readonly ILogger<PushSenderService> _log;
+        private readonly WebPush.WebPushClient _client = new();
+
+        public PushSenderService(IServiceScopeFactory scopes, PushQueue queue, IConfiguration config, ILogger<PushSenderService> log)
+        {
+            _scopes = scopes; _queue = queue; _config = config; _log = log;
+        }
+
+        protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+        {
+            var publicKey = _config["WebPush:PublicKey"];
+            var privateKey = _config["WebPush:PrivateKey"];
+            var subject = _config["WebPush:Subject"] ?? $"mailto:{_config["Church:Email"]}";
+            var enabled = !string.IsNullOrWhiteSpace(publicKey) && !string.IsNullOrWhiteSpace(privateKey);
+            if (enabled) _client.SetVapidDetails(subject, publicKey, privateKey);
+            else _log.LogWarning("WebPush keys are not set; push alerts are off");
+
+            await foreach (var item in _queue.Reader.ReadAllAsync(stoppingToken))
+            {
+                if (!enabled) continue;
+                try { await SendAsync(item, stoppingToken); }
+                catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { break; }
+                catch (Exception ex) { _log.LogError(ex, "Push alert for notification {Id} failed", item.NotificationId); }
+            }
+        }
+
+        private async Task SendAsync(PushItem item, CancellationToken ct)
+        {
+            using var scope = _scopes.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+
+            var devices = await (from d in db.PushDevices
+                                 join m in db.Members on d.UserId equals m.UserId
+                                 where m.Id == item.MemberId
+                                 select d).ToListAsync(ct);
+            if (devices.Count == 0) return;
+
+            var unread = await db.Notifications.CountAsync(n => n.MemberId == item.MemberId && !n.IsRead, ct);
+            var body = item.Message.Length > 240 ? item.Message[..237] + "…" : item.Message;
+            var payload = System.Text.Json.JsonSerializer.Serialize(new
+            {
+                title = item.Title,
+                body,
+                // Opening the alert marks it read, then follows its link (same as the bell dropdown)
+                url = $"/Notifications/MarkRead/{item.NotificationId}",
+                tag = $"n{item.NotificationId}",
+                badge = unread
+            });
+            var options = new Dictionary<string, object>
+            {
+                ["TTL"] = 60 * 60 * 24 * 3,   // a phone that is off for up to 3 days still gets it
+                ["headers"] = new Dictionary<string, object> { ["Urgency"] = "high" }
+            };
+
+            foreach (var d in devices)
+            {
+                try
+                {
+                    await _client.SendNotificationAsync(new WebPush.PushSubscription(d.Endpoint, d.P256dh, d.Auth), payload, options, ct);
+                    d.LastSentAt = DateTime.UtcNow;
+                }
+                catch (WebPush.WebPushException ex) when (ex.StatusCode is System.Net.HttpStatusCode.Gone or System.Net.HttpStatusCode.NotFound)
+                {
+                    db.PushDevices.Remove(d);   // the browser dropped this subscription (app removed, alerts turned off)
+                }
+                catch (WebPush.WebPushException ex)
+                {
+                    _log.LogWarning("Push to device {Id} failed: {Status} {Message}", d.Id, ex.StatusCode, ex.Message);
+                }
+            }
+            await db.SaveChangesAsync(ct);
+        }
+    }
 }

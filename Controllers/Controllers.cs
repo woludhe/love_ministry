@@ -91,6 +91,12 @@ namespace ChurchMinistry.Controllers
                 .OrderBy(i => i.Date)
                 .Take(6).ToList();
 
+            // Sermons an Admin/Pastor ticked "Highlight on home page": each becomes a hero slide
+            vm.HighlightedSermons = await _db.Sermons
+                .Where(s => s.IsHighlighted && s.IsPublished)
+                .OrderByDescending(s => s.SermonDate)
+                .Take(3).ToListAsync();
+
             return View(vm);
         }
 
@@ -2763,6 +2769,7 @@ namespace ChurchMinistry.Controllers
             sermon.IsPublished = updated.IsPublished;
             sermon.TrackAttendance = updated.TrackAttendance;
             sermon.AllowComments = updated.AllowComments;
+            sermon.IsHighlighted = updated.IsHighlighted;
             sermon.MeetingRoomCode = updated.MeetingRoomCode;
             sermon.LiveStreamUrl = updated.LiveStreamUrl;
             ApplyDeliveryMode(sermon, deliveryMode);

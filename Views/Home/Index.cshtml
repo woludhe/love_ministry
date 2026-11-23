@@ -13,6 +13,19 @@
     @* {{-- Slide layers --}} *@
     <div class="hero-slides">
         <div class="hero-slide active" style="background-image:url('/images/hero/slide1.jpg')"></div>
+        @* Sermons ticked "Highlight on home page": their thumbnail as the background; the script below
+           swaps the headline and turns Watch Live into Watch Sermon while one of these is showing *@
+        @foreach (var hs in Model?.HighlightedSermons ?? new List<Sermon>())
+        {
+            var thumb = string.IsNullOrEmpty(hs.ThumbnailUrl) ? "/images/hero/slide2.jpg" : hs.ThumbnailUrl;
+            var sub = string.Join(" · ", new[] { hs.Speaker, hs.SermonDate.ToString("dd MMM yyyy") }.Where(x => !string.IsNullOrWhiteSpace(x)));
+            @* Black slide: the whole thumbnail sits on the right, a black gradient on the left carries the text *@
+            <div class="hero-slide hero-slide-sermon"
+                 data-sermon-id="@hs.Id" data-title="@hs.Title" data-sub="@sub"
+                 data-url="@Url.Action("Watch", "Media", new { id = hs.Id })">
+                <img class="hero-sermon-thumb" src="@thumb" alt="" loading="lazy" />
+            </div>
+        }
         <div class="hero-slide" style="background-image:url('/images/hero/slide2.jpg')"></div>
         <div class="hero-slide" style="background-image:url('/images/hero/slide3.jpg')"></div>
         <div class="hero-slide" style="background-image:url('/images/hero/slide4.jpg')"></div>
@@ -32,10 +45,10 @@
     <div class="hero-dots" id="heroDots"></div>
 
     @* {{-- Content --}} *@
-    <div class="hero-content">
-        <span class="hero-badge">Welcome Home</span>
-        <h1>Building Lives,<br>Transforming <span class="highlight">Communities</span></h1>
-        <p>Join our family of believers. Experience the love of God through worship, fellowship and service.</p>
+    <div class="hero-content" id="heroContent">
+        <span class="hero-badge" id="heroBadge">Welcome Home</span>
+        <h1 id="heroTitle">Building Lives,<br>Transforming <span class="highlight">Communities</span></h1>
+        <p id="heroText">Join our family of believers. Experience the love of God through worship, fellowship and service.</p>
         <div class="hero-actions">
             @if (User.Identity?.IsAuthenticated == true)
             {
@@ -45,7 +58,7 @@
             {
                 <a asp-controller="Account" asp-action="Register" class="btn btn-primary">Join Our Family</a>
             }
-            <a asp-controller="Media" asp-action="Live" class="btn btn-outline hero-outline-btn">
+            <a asp-controller="Media" asp-action="Live" class="btn btn-outline hero-outline-btn" id="heroWatchBtn">
                 <span class="live-dot"></span> Watch Live
             </a>
         </div>
@@ -266,6 +279,57 @@
             background-image: url('/images/hero/slide1.jpg');
         }
 
+        /* Text swap when a highlighted sermon slide comes and goes */
+        #heroContent { transition: opacity .3s ease; }
+        #heroContent.swap { opacity: 0; }
+
+        /* ── Highlighted sermon slide ───────────────────────────────
+           Black background; the thumbnail is shown whole (not cropped) on the right,
+           and a black gradient on the left sits behind the sermon text and buttons. */
+        .hero-slide-sermon {
+            background: #000;
+        }
+
+            /* Full banner height, natural width (never cropped top/bottom), pinned to the right;
+               anything wider than the screen runs off under the left gradient */
+            .hero-slide-sermon .hero-sermon-thumb {
+                position: absolute;
+                top: 0;
+                right: 0;
+                width: auto;
+                height: 100%;
+                max-width: none;
+                object-fit: contain;
+                object-position: right center;
+                /* Feathered left edge: the image fades in from transparent, so there's no hard line */
+                -webkit-mask-image: linear-gradient(90deg, transparent 0%, #000 22%);
+                mask-image: linear-gradient(90deg, transparent 0%, #000 22%);
+            }
+
+            .hero-slide-sermon::after {
+                content: "";
+                position: absolute;
+                inset: 0;
+                /* Black at 80% so the thumbnail shows faintly behind the text */
+                background: linear-gradient(90deg, rgba(0,0,0,.8) 0%, rgba(0,0,0,.8) 34%, rgba(0,0,0,.68) 42%, rgba(0,0,0,.28) 52%, rgba(0,0,0,0) 62%);
+            }
+
+        /* While a sermon slide shows: no photo tint over the thumbnail, no upcoming-event card */
+        .hero-overlay,
+        .hero-visual {
+            transition: opacity .6s ease, visibility .6s ease;
+        }
+
+        .hero.hero-sermon-on .hero-overlay {
+            opacity: 0;
+        }
+
+        .hero.hero-sermon-on .hero-visual {
+            opacity: 0;
+            visibility: hidden;
+            pointer-events: none;
+        }
+
         /* ── Slide layers ────────────────────────────────────────── */
         .hero-slides {
             position: absolute;
@@ -448,6 +512,74 @@
             .hero-prev, .hero-next {
                 display: none;
             }
+
+            /* Phones/tablets: the thumbnail fills a 16:9 band at the top, and the badge, title,
+               speaker/date and buttons start below it, on the black */
+            .hero {
+                /* Same height for every slide (tall enough for the picture band plus the sermon text),
+                   so the page below never jumps when a sermon slide comes or goes */
+                min-height: max(70vh, calc(56.25vw + 28rem));
+            }
+
+            .hero-slide-sermon .hero-sermon-thumb {
+                width: 100%;
+                height: 56.25vw;
+                object-position: center top;
+                -webkit-mask-image: none;   /* full width here, no left edge to feather */
+                mask-image: none;
+            }
+
+            .hero-slide-sermon::after {
+                background: linear-gradient(180deg, rgba(0,0,0,0) 0, rgba(0,0,0,0) calc(56.25vw - 3rem), #000 56.25vw);
+            }
+
+            .hero.hero-sermon-on {
+                align-content: start;
+                padding-top: calc(56.25vw + 1.5rem);
+            }
+
+            /* Long sermon titles stop at two lines, so the slide never grows taller than the others */
+            .hero.hero-sermon-on h1 {
+                display: -webkit-box;
+                -webkit-box-orient: vertical;
+                -webkit-line-clamp: 2;
+                line-clamp: 2;
+                overflow: hidden;
+            }
+
+            /* Both buttons on one row (My Dashboard / Join Our Family + Watch Live / Watch Sermon) */
+            .hero-actions {
+                flex-wrap: nowrap;
+                gap: .6rem;
+            }
+
+                .hero-actions .btn {
+                    flex: 0 1 auto;
+                    min-width: 0;
+                    white-space: nowrap;
+                    padding: .7rem 1rem;
+                    font-size: .9rem;
+                }
+        }
+
+        @@media (max-width: 380px) {
+            .hero {
+                padding-left: 1rem;
+                padding-right: 1rem;
+            }
+
+            .hero-content {
+                padding: 0;
+            }
+
+            .hero-actions .btn {
+                flex: 1 1 0;
+                justify-content: center;
+                overflow: hidden;
+                text-overflow: ellipsis;
+                padding: .65rem .5rem;
+                font-size: .8rem;
+            }
         }
     </style>
 
@@ -468,12 +600,50 @@
                 dotsEl.appendChild(btn);
             });
 
+            // Highlighted sermon slides swap the hero text and turn Watch Live into Watch Sermon
+            const heroEl = document.getElementById('heroSection');
+            const content = document.getElementById('heroContent');
+            const badge = document.getElementById('heroBadge');
+            const title = document.getElementById('heroTitle');
+            const text = document.getElementById('heroText');
+            const watch = document.getElementById('heroWatchBtn');
+            const defaults = { badge: badge.innerHTML, title: title.innerHTML, text: text.innerHTML, watch: watch.innerHTML, href: watch.getAttribute('href') };
+            let shownSermon = '';   // id of the sermon the text currently shows ('' = welcome text)
+            let swapTimer;
+
+            function applyContent(slide) {
+                const id = slide.dataset.sermonId || '';
+                if (id === shownSermon) return;
+                shownSermon = id;
+                clearTimeout(swapTimer);
+                content.classList.add('swap');
+                swapTimer = setTimeout(() => {
+                    if (id) {
+                        badge.textContent = 'Featured Sermon';
+                        title.textContent = slide.dataset.title;
+                        text.textContent = slide.dataset.sub;
+                        watch.innerHTML = '<i class="fas fa-play"></i> Watch Sermon';
+                        watch.setAttribute('href', slide.dataset.url);
+                    } else {
+                        badge.innerHTML = defaults.badge;
+                        title.innerHTML = defaults.title;
+                        text.innerHTML = defaults.text;
+                        watch.innerHTML = defaults.watch;
+                        watch.setAttribute('href', defaults.href);
+                    }
+                    // Switch the layout (picture band, text position, event card) while the text is invisible
+                    heroEl.classList.toggle('hero-sermon-on', !!id);
+                    content.classList.remove('swap');
+                }, 300);
+            }
+
             function goTo(index) {
                 slides[current].classList.remove('active');
                 dotsEl.children[current].classList.remove('active');
                 current = (index + slides.length) % slides.length;
                 slides[current].classList.add('active');
                 dotsEl.children[current].classList.add('active');
+                applyContent(slides[current]);
             }
 
             window.heroShift = function (dir) { resetTimer(); goTo(current + dir); };

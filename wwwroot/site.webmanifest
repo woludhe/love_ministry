@@ -1,1 +1,21 @@
-{"name":"Apostle Enock Makoko","short_name":"Apostle Enock","start_url":"/","scope":"/","icons":[{"src":"/android-chrome-192x192.png","sizes":"192x192","type":"image/png"},{"src":"/android-chrome-512x512.png","sizes":"512x512","type":"image/png"}],"theme_color":"#6366f1","background_color":"#f9fafb","display":"standalone"}
+{
+  "id": "/",
+  "name": "Apostle Enock Makoko",
+  "short_name": "Apostle Enock",
+  "description": "Love Fellowship Ministry: sermons, live services, meetings, giving and prayer.",
+  "start_url": "/Members/Dashboard?source=app",
+  "scope": "/",
+  "display": "standalone",
+  "theme_color": "#6366f1",
+  "background_color": "#1e1b4b",
+  "icons": [
+    { "src": "/android-chrome-192x192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/android-chrome-512x512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/apple-touch-icon.png", "sizes": "180x180", "type": "image/png", "purpose": "any" }
+  ],
+  "shortcuts": [
+    { "name": "Watch Live", "url": "/Media/Live?source=app", "icons": [{ "src": "/android-chrome-192x192.png", "sizes": "192x192" }] },
+    { "name": "Give", "url": "/Giving/Give?source=app", "icons": [{ "src": "/android-chrome-192x192.png", "sizes": "192x192" }] },
+    { "name": "Sermons", "url": "/Media?source=app", "icons": [{ "src": "/android-chrome-192x192.png", "sizes": "192x192" }] }
+  ]
+}

@@ -27,7 +27,16 @@ async function loadNotifications() {
     }
 }
 
+// Unread count on the installed app's icon (push alerts set it too; see sw.js)
+function setAppBadge(count) {
+    try {
+        if (!navigator.setAppBadge) return;
+        (count > 0 ? navigator.setAppBadge(count) : navigator.clearAppBadge()).catch(() => { });
+    } catch { }
+}
+
 function renderNotifications({ count, items }) {
+    setAppBadge(count);
     // Update badge
     const badge = document.getElementById('notifCount');
     if (count > 0) {
@@ -58,6 +67,7 @@ function renderNotifications({ count, items }) {
 
 async function markAllRead() {
     await fetch('/Notifications/MarkAllRead', { method: 'POST' });
+    setAppBadge(0);
     document.getElementById('notifCount').style.display = 'none';
     document.querySelectorAll('.notif-drop-item.unread').forEach(el => el.classList.remove('unread'));
     document.querySelectorAll('.notif-unread-dot').forEach(el => el.remove());
@@ -82,6 +92,7 @@ async function pollNotifCount() {
         const res = await fetch('/Notifications/Recent');
         const data = await res.json();
         const badge = document.getElementById('notifCount');
+        setAppBadge(data.count);
         if (data.count > 0) {
             badge.textContent = data.count > 99 ? '99+' : data.count;
             badge.style.display = 'flex';

@@ -291,6 +291,7 @@ namespace ChurchMinistry.Models
         public bool IsOnlineMeeting { get; set; } = false;
         public bool TrackAttendance { get; set; } = false;
         public bool AllowComments { get; set; } = true;   // members can comment on the Watch page
+        public bool IsHighlighted { get; set; }   // shown as a slide in the home page hero (thumbnail as background)
         public string? RecordingUrl { get; set; }   // audio recorded from its meeting room while live
 
         // Delivery mode derived from which delivery field is set: video | audio | live | meeting
@@ -612,6 +613,20 @@ namespace ChurchMinistry.Models
         public string? Link { get; set; }
         public bool IsRead { get; set; }
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    }
+
+    // One phone/browser that turned on push alerts (Home Screen app on iPhone, Chrome on Android/desktop).
+    // Every new Notification for the user's member record is also pushed to each of their devices.
+    public class PushDevice
+    {
+        public int Id { get; set; }
+        public string UserId { get; set; } = "";
+        public string Endpoint { get; set; } = "";
+        public string P256dh { get; set; } = "";
+        public string Auth { get; set; } = "";
+        public string? UserAgent { get; set; }
+        public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+        public DateTime? LastSentAt { get; set; }
     }
 
     // ─────────────────────────────────────────────

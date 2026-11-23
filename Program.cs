@@ -11,8 +11,12 @@ var builder = WebApplication.CreateBuilder(args);
 
 // ── Database ──
 var conn = builder.Configuration.GetConnectionString("DefaultConnection");
-builder.Services.AddDbContext<ApplicationDbContext>(opt =>
-    opt.UseMySql(conn, ServerVersion.AutoDetect(conn)));
+// Push alerts: every saved Notification is queued for push (see NotificationPushInterceptor in Services.cs)
+builder.Services.AddSingleton<PushQueue>();
+builder.Services.AddSingleton<NotificationPushInterceptor>();
+builder.Services.AddDbContext<ApplicationDbContext>((sp, opt) =>
+    opt.UseMySql(conn, ServerVersion.AutoDetect(conn))
+       .AddInterceptors(sp.GetRequiredService<NotificationPushInterceptor>()));
 
 // ── Identity ──
 builder.Services.AddIdentity<ApplicationUser, IdentityRole>(opt =>
@@ -56,6 +60,7 @@ builder.Services.AddScoped<IAttendanceService, AttendanceService>();
 builder.Services.AddScoped<INotificationService, NotificationService>();
 builder.Services.AddScoped<IActivityService, ActivityService>();
 builder.Services.AddHostedService<RecurringGiftReminderService>();
+builder.Services.AddHostedService<PushSenderService>();
 builder.Services.AddScoped<ILiveKitService, LiveKitService>();
 builder.Services.AddScoped<IMeetingAccessService, MeetingAccessService>();
 builder.Services.AddScoped<IMeetingSeriesService, MeetingSeriesService>();
@@ -82,6 +87,7 @@ app.UseHttpsRedirection();
 // .apk isn't a type served by default; the Android app downloads from /downloads
 var contentTypes = new FileExtensionContentTypeProvider();
 contentTypes.Mappings[".apk"] = "application/vnd.android.package-archive";
+contentTypes.Mappings[".webmanifest"] = "application/manifest+json";
 app.UseStaticFiles(new StaticFileOptions { ContentTypeProvider = contentTypes });
 app.UseRouting();
 app.UseSession();

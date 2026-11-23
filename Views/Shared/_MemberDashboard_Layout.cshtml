@@ -18,10 +18,9 @@
 <html lang="en">
 <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <title>@(ViewData["Title"] ?? @Config["Church:Name"])</title>
-    <link rel="manifest" href="~/site.webmanifest" />
-    <meta name="theme-color" content="#6366f1" />
+    <partial name="_AppHead" />
     <script>/* Dark mode chosen in the dashboard menu; set before the page paints so it never flashes white */ try { if (localStorage.getItem("theme") === "dark") document.documentElement.dataset.theme = "dark"; } catch (e) { }</script>
     <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
     <link rel="stylesheet" href="~/css/dark.css" asp-append-version="true" />
@@ -157,7 +156,35 @@
     @if (User.Identity?.IsAuthenticated == true)
     {
         <link rel="stylesheet" href="~/css/notification.css" asp-append-version="true" />
-        <script src="~/js/notification.js"></script>
+        <script src="~/js/notification.js" asp-append-version="true"></script>
+        <script src="~/js/push.js" asp-append-version="true"></script>
     }
+
+    @* iPhone Safari only: suggest installing the site as a Home Screen app *@
+    <div class="a2hs-banner" id="a2hsBanner" role="dialog" aria-label="Install the app" hidden>
+        <img src="~/apple-touch-icon.png" alt="" />
+        <div class="a2hs-text">
+            <strong>Install the app</strong><br />
+            Tap <i class="fas fa-arrow-up-from-bracket a2hs-share" aria-label="Share"></i> then <strong>Add to Home Screen</strong>.
+        </div>
+        <button type="button" class="a2hs-close" id="a2hsClose" aria-label="Dismiss"><i class="fas fa-xmark"></i></button>
+    </div>
+    <script>
+        (function () {
+            var ua = navigator.userAgent;
+            var isIos = /iPhone|iPad|iPod/.test(ua) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+            var isSafari = /Safari/.test(ua) && !/CriOS|FxiOS|EdgiOS|OPiOS/.test(ua);
+            var installed = navigator.standalone === true || window.matchMedia("(display-mode: standalone)").matches;
+            var dismissed = false;
+            try { dismissed = localStorage.getItem("a2hsDismissed") === "1"; } catch (e) { }
+            if (!isIos || !isSafari || installed || dismissed) return;
+            var banner = document.getElementById("a2hsBanner");
+            banner.hidden = false;
+            document.getElementById("a2hsClose").addEventListener("click", function () {
+                banner.hidden = true;
+                try { localStorage.setItem("a2hsDismissed", "1"); } catch (e) { }
+            });
+        })();
+    </script>
 </body>
 </html>

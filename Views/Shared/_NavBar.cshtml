@@ -1,6 +1,7 @@
 @* Main site menu, shared by _Layout, _MemberDashboard_Layout and _AdminDashboard_Layout.
    On phones the links fold into a drop-down panel, but the notification bell stays in the top bar. *@
 @inject ChurchMinistry.ViewComponents.CurrentMemberViewComponent MemberVc
+@inject Microsoft.Extensions.Configuration.IConfiguration Config
 @{
     var controller =ViewContext.RouteData.Values["controller"]?.ToString();
     var action = ViewContext.RouteData.Values["action"]?.ToString();
@@ -73,6 +74,7 @@
         <div class="nav-actions">
             @if (signedIn)
             {
+                <div id="pushConfig" hidden data-key="@Config["WebPush:PublicKey"]" data-user="@User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value">@Html.AntiForgeryToken()</div>
                 <div class="nav-notif" id="notifBell">
                     <button class="notif-bell-btn" onclick="toggleNotifDropdown()" title="Notifications" aria-label="Notifications">
                         <i class="fas fa-bell"></i>
@@ -82,6 +84,12 @@
                         <div class="notif-dropdown-header">
                             <strong>Notifications</strong>
                             <button class="mark-all-btn" onclick="markAllRead()">Mark all read</button>
+                        </div>
+                        @* Push alerts on this phone/browser (wwwroot/js/push.js shows it when they are off) *@
+                        <div class="notif-push-row" id="pushRow" hidden>
+                            <i class="fas fa-mobile-screen-button"></i>
+                            <span id="pushRowText">Get alerts on this device</span>
+                            <button type="button" class="push-on-btn" id="pushRowBtn">Turn on</button>
                         </div>
                         <div class="notif-dropdown-list" id="notifList">
                             <div class="notif-loading"><i class="fas fa-spinner fa-spin"></i></div>

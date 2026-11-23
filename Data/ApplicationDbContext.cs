@@ -33,6 +33,7 @@ namespace ChurchMinistry.Data
         public DbSet<ChurchEvent> ChurchEvents => Set<ChurchEvent>();
         public DbSet<EventRegistration> EventRegistrations => Set<EventRegistration>();
         public DbSet<Notification> Notifications => Set<Notification>();
+        public DbSet<PushDevice> PushDevices => Set<PushDevice>();
         public DbSet<MeetingRoom> MeetingRooms => Set<MeetingRoom>();
         public DbSet<MeetingParticipant> MeetingParticipants => Set<MeetingParticipant>();
         public DbSet<MeetingMessage> MeetingMessages => Set<MeetingMessage>();
@@ -52,6 +53,18 @@ namespace ChurchMinistry.Data
         protected override void OnModelCreating(ModelBuilder builder)
         {
             base.OnModelCreating(builder);
+
+            // Push alert devices: one row per browser subscription, removed with the user
+            builder.Entity<PushDevice>(e =>
+            {
+                e.Property(p => p.Endpoint).HasMaxLength(500);
+                e.Property(p => p.P256dh).HasMaxLength(200);
+                e.Property(p => p.Auth).HasMaxLength(100);
+                e.Property(p => p.UserAgent).HasMaxLength(300);
+                e.HasIndex(p => p.Endpoint).IsUnique();
+                e.HasIndex(p => p.UserId);
+                e.HasOne<ApplicationUser>().WithMany().HasForeignKey(p => p.UserId).OnDelete(DeleteBehavior.Cascade);
+            });
 
             // Member
             builder.Entity<Member>(e =>
