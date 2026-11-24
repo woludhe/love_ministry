@@ -45,6 +45,16 @@
                    color: var(--text-s); cursor: pointer; transition: all .15s; }
     .meet-code:hover { border-color: var(--purple); color: var(--purple); }
     .timer       { font-size: .85rem; color: var(--text-s); font-variant-numeric: tabular-nums; white-space:nowrap; }
+    /* Everything between the badge and the X; only moves on phones held upright */
+    .topbar-scroll { flex: 1; min-width: 0; }
+    .topbar-track  { display: flex; align-items: center; justify-content: space-between; gap: .75rem; width: 100%; }
+    .meet-close    { color: var(--text-s); font-size: .85rem; flex-shrink: 0; }
+    .rec-indicator .rec-state { display: none; }
+    .ctrl-btn.ctrl-rec { display: none; }   /* beats .ctrl-btn's display:flex */
+    @@keyframes topbarMarquee {
+        from { transform: translateX(var(--mq-from, 100%)); }
+        to   { transform: translateX(-100%); }
+    }
 
     /* ── LIVE indicator ── */
     .live-indicator { display:flex; align-items:center; gap:.4rem;
@@ -341,6 +351,26 @@
       .ctrl-end { width: 44px; height: 44px; padding: 0; justify-content: center; font-size: 1rem; }
       .ctrl-end-label { display: none; }
       .ctrl-people-via-chat { display: none; }
+      /* Top bar: badge fixed left, X fixed right, the rest scrolls across when it doesn't fit */
+      .topbar-scroll { overflow: hidden;
+                       -webkit-mask-image: linear-gradient(90deg, transparent, #000 10px, #000 calc(100% - 10px), transparent);
+                               mask-image: linear-gradient(90deg, transparent, #000 10px, #000 calc(100% - 10px), transparent); }
+      .topbar-track  { width: max-content; justify-content: flex-start; }
+      .topbar-track .meet-title { flex: none; }
+      .topbar-track .meet-title h1 { overflow: visible; text-overflow: clip; }
+      .topbar-track .count-chips { display: flex; }
+      .topbar-scroll.marquee .topbar-track { animation: topbarMarquee var(--mq-dur, 20s) linear var(--mq-delay, 0s) infinite; }
+      .topbar-scroll.held .topbar-track { animation-play-state: paused; }
+      /* Recording: the badge just says Recording / Paused; pause/play is in the controls bar */
+      .rec-indicator { padding-right: .65rem; }
+      .rec-indicator button, .rec-indicator #recTime { display: none; }
+      .rec-indicator .rec-state { display: inline; }
+      .ctrl-btn.ctrl-rec:not([hidden]) { display: flex; }
+    }
+    @@media (max-width: 768px) and (orientation: portrait) and (prefers-reduced-motion: reduce) {
+      .topbar-scroll { overflow-x: auto; scrollbar-width: none; }
+      .topbar-scroll::-webkit-scrollbar { display: none; }
+      .topbar-scroll.marquee .topbar-track { animation: none; }
     }
   </style>
 </head>
@@ -371,8 +401,11 @@
 
 <!-- Top bar -->
 <div class="meet-topbar">
+  <span class="meet-badge">@Model.Room.MeetingType</span>
+  @* On phones held upright everything between the badge and the X scrolls across (see updateMarquee) *@
+  <div class="topbar-scroll" id="topbarScroll">
+  <div class="topbar-track" id="topbarTrack">
   <div class="meet-title">
-    <span class="meet-badge">@Model.Room.MeetingType</span>
     <h1>@Model.Room.Title</h1>
     @* LIVE only while this room is streamed to the Live page as a live sermon; updated by SermonLiveChanged *@
     <div class="live-indicator" id="liveBadge" title="Being streamed live on the Live page"
@@ -383,7 +416,7 @@
     @if (isHost)
     {
       <div class="rec-indicator" id="recBadge" style="display:none" title="Your page is recording the meeting's audio">
-        <span class="rec-dot"></span><span id="recTime">REC 00:00</span>
+        <span class="rec-dot"></span><span id="recTime">REC 00:00</span><span class="rec-state" id="recState">Recording</span>
         <button type="button" id="recPauseBtn" onclick="toggleRecPause()" title="Pause recording"><i class="fas fa-pause"></i></button>
       </div>
     }
@@ -406,8 +439,10 @@
     </div>
     <span class="timer" id="meetTimer">00:00</span>
     <button class="meet-code" onclick="copyCode()"><i class="fas fa-copy"></i> @Model.Room.RoomCode</button>
-    <a href="/Meeting" style="color:var(--text-s);font-size:.85rem"><i class="fas fa-times"></i></a>
   </div>
+  </div>
+  </div>
+  <a href="/Meeting" class="meet-close" title="Back to meetings" aria-label="Back to meetings"><i class="fas fa-times"></i></a>
 </div>
 
 <!-- Body -->
@@ -476,6 +511,10 @@
           <i class="fas fa-star"></i><span>Spotlight</span>
         </button>
         <button class="ctrl-btn ctrl-default" onclick="muteAll()"><i class="fas fa-microphone-slash"></i><span>Mute All</span></button>
+        @* Phones held upright only, while recording: the top bar scrolls, so its pause button moves here *@
+        <button class="ctrl-btn ctrl-default ctrl-rec" id="btnRecPause" onclick="toggleRecPause()" title="Pause recording" hidden>
+          <i class="fas fa-pause"></i><span>Pause rec</span>
+        </button>
         <button class="ctrl-end" onclick="confirmEnd()" title="End meeting" aria-label="End meeting"><i class="fas fa-phone-slash"></i><span class="ctrl-end-label">End</span></button>
       }
       else
@@ -1004,14 +1043,22 @@ function showRecUi(){
   badge.style.display=r?'flex':'none';
   const notice=document.getElementById('recNotice');
   if(notice) notice.style.display=r?'none':'flex';
+  const barBtn=document.getElementById('btnRecPause');   // controls-bar copy, shown on phones held upright
+  if(barBtn) barBtn.hidden=!r;
   if(!r) return;
   const paused=r.state==='paused';
   badge.classList.toggle('paused',paused);
   const m=Math.floor(rec.seconds/60);
   document.getElementById('recTime').textContent=`${paused?'PAUSED':'REC'} ${m>=60?Math.floor(m/60)+':'+pad(m%60):pad(m)}:${pad(rec.seconds%60)}`;
+  document.getElementById('recState').textContent=paused?'Paused':'Recording';
   const btn=document.getElementById('recPauseBtn');
   btn.title=paused?'Resume recording':'Pause recording';
   btn.innerHTML=`<i class="fas fa-${paused?'play':'pause'}"></i>`;
+  if(barBtn&&barBtn.dataset.paused!==String(paused)){
+    barBtn.dataset.paused=String(paused);
+    barBtn.title=btn.title;
+    barBtn.innerHTML=`<i class="fas fa-${paused?'play':'pause'}"></i><span>${paused?'Resume rec':'Pause rec'}</span>`;
+  }
 }
 // The browser may hold back sound until the page is clicked
 document.addEventListener('click',()=>{if(rec.ctx?.state==='suspended')rec.ctx.resume().catch(()=>{});});
@@ -1503,6 +1550,37 @@ window.__meet = { room, peerInfo, get spotlightId(){return spotlightId;}, get my
     set();
     if(window.ResizeObserver) new ResizeObserver(set).observe(bar);
     window.addEventListener('resize',set);
+})();
+
+// Phones held upright: the top bar between the badge and the X scrolls across when it doesn't fit.
+// Pressing on it stops the scroll so the room-code button can be tapped.
+(function topbarMarquee(){
+    const box=document.getElementById('topbarScroll'), track=document.getElementById('topbarTrack');
+    if(!box||!track) return;
+    const portrait=matchMedia('(max-width: 768px) and (orientation: portrait)');
+    const SPEED=40;                       // px per second
+    let lastBox=-1, lastTrack=-1;
+    function update(){
+        const on=portrait.matches&&track.scrollWidth>box.clientWidth+1;
+        if(!on){ box.classList.remove('marquee'); lastBox=lastTrack=-1; return; }
+        const bw=box.clientWidth, tw=track.scrollWidth;
+        // The timer ticking changes the width by a pixel or two; don't restart the scroll for that
+        if(box.classList.contains('marquee')&&Math.abs(bw-lastBox)<8&&Math.abs(tw-lastTrack)<8) return;
+        lastBox=bw; lastTrack=tw;
+        box.style.setProperty('--mq-from',bw+'px');
+        box.style.setProperty('--mq-dur',((bw+tw)/SPEED).toFixed(2)+'s');
+        // Start with the strip already in place instead of entering from the right on an empty bar
+        box.style.setProperty('--mq-delay',(-bw/SPEED).toFixed(2)+'s');
+        box.classList.add('marquee');
+    }
+    update();
+    if(window.ResizeObserver){ const ro=new ResizeObserver(update); ro.observe(box); ro.observe(track); }
+    window.addEventListener('resize',update);
+    portrait.addEventListener?.('change',update);
+    let resume=null;
+    box.addEventListener('pointerdown',()=>{ clearTimeout(resume); box.classList.add('held'); });
+    const release=()=>{ clearTimeout(resume); resume=setTimeout(()=>box.classList.remove('held'),1500); };
+    ['pointerup','pointercancel','pointerleave'].forEach(e=>box.addEventListener(e,release));
 })();
 window.addEventListener('beforeunload',()=>{
     room.disconnect();
